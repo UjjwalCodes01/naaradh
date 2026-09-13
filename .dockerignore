@@ -1,0 +1,59 @@
+# Build context for apps/{api,hooks,voice,workers,console,web,shopify}/Dockerfile (context = repo root).
+# Everything here is either rebuilt inside the image, irrelevant to it, or must never reach a
+# registry (secrets, customer data — CLAUDE.md invariant 8, AGENTS.md §11).
+
+# VCS, editors, local tooling
+.git
+.github
+.claude
+.idea
+.vscode
+**/.DS_Store
+**/*.log
+
+# Secrets and local config — never in an image layer, even a discarded build stage.
+.env
+.env.*
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+
+# Dependencies and build output (rebuilt inside the image from the frozen lockfile)
+**/node_modules
+**/dist
+**/build
+**/.react-router
+**/.turbo
+**/.next
+**/.shopify
+**/coverage
+**/*.tsbuildinfo
+
+# Tests and fixtures: not part of any runtime bundle
+**/test
+**/tests
+**/fixtures
+**/__fixtures__
+vitest*.config.ts
+**/playwright-report
+
+# Customer data must never be in the context at all
+recordings
+transcripts
+**/*.mp3
+**/*.wav
+**/*.m4a
+
+# Not needed to build a Node service
+docs
+infra
+!infra/docker
+**/*.md
+PLAN.md
+AGENTS.md
+CLAUDE.md
+docker
+docker-compose.yml
+tools
+scripts

@@ -1,0 +1,21 @@
+{
+  "name": "@naaradh/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "Source-only workspace package: exports point at TypeScript. Consumers run it through tsx in dev and bundle it with tsup (noExternal) for production, so there is no build step and no dist to go stale.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./test/fake-phones": "./test/fake-phones.ts"
+  },
+  "dependencies": {
+    "libphonenumber-js": "1.13.13",
+    "luxon": "3.7.2",
+    "pino": "10.3.1",
+    "ulid": "2.3.0",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@types/luxon": "3.7.5"
+  }
+}

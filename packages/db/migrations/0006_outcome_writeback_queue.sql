@@ -1,0 +1,3 @@
+ALTER TABLE "call_outcomes" ADD COLUMN "writeback_attempts" smallint DEFAULT 0 NOT NULL;--> statement-breakpoint
+ALTER TABLE "call_outcomes" ADD COLUMN "writeback_next_at" timestamp with time zone;--> statement-breakpoint
+CREATE INDEX "call_outcomes_writeback_due_idx" ON "call_outcomes" USING btree ("writeback_next_at") WHERE "call_outcomes"."writeback_status" in ('pending','failed') and "call_outcomes"."writeback_next_at" is not null;

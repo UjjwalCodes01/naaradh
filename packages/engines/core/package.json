@@ -1,0 +1,13 @@
+{
+  "name": "@naaradh/engines-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "The only engine package product code may import (invariant 13). Types and the adapter contract, no vendor code and no runtime dependencies.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@naaradh/shared": "workspace:*"
+  }
+}

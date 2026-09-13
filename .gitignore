@@ -1,0 +1,44 @@
+node_modules/
+dist/
+build/
+.turbo/
+coverage/
+.next/
+*.tsbuildinfo
+
+# Secrets and local config — invariant: never commit .env* (CLAUDE.md)
+.env
+.env.*
+!.env.example
+
+# Never commit customer data. Recordings, transcripts and real phone numbers do not
+# belong in git under any circumstance (invariant 8).
+*.mp3
+*.wav
+*.m4a
+recordings/
+transcripts/
+**/fixtures/live/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+# infra/envs/*.tfvars are committed: project ids and sizing only — they must NEVER hold secrets.
+!infra/envs/*.tfvars
+.terraform.lock.hcl
+# The provider lock file is committed so every plan uses the same provider builds.
+!infra/.terraform.lock.hcl
+
+# Shopify CLI
+.shopify/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.log
+.react-router/

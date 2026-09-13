@@ -1,0 +1,90 @@
+name: terraform plan
+
+# Read-only `terraform plan` on PRs that touch infra/. NEVER apply from CI (AGENTS.md §1): a human
+# reviews the plan and applies from their own machine (docs/runbooks/deploy.md).
+#
+# Uses Workload Identity Federation as the read-only `tf-planner` SA of each environment. Skips
+# cleanly (green, with a notice) when the repository variables below are not set — e.g. before
+# the projects are bootstrapped, or on PRs from forks (no OIDC token, no variables).
+#
+# Repository variables (Settings → Secrets and variables → Actions → Variables; not secrets):
+#   TF_PLAN_WIF_PROVIDER_STAGE / _PROD_IN   projects/<n>/locations/global/workloadIdentityPools/github/providers/github-actions
+#   TF_PLAN_SA_STAGE / _PROD_IN             tf-planner@<project>.iam.gserviceaccount.com
+#   TF_STATE_BUCKET_STAGE / _PROD_IN        naaradh-tfstate-<env>
+
+on:
+  pull_request:
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform-plan.yml'
+
+concurrency:
+  group: tf-plan-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  plan:
+    name: plan ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - env: stage
+            key: STAGE
+          - env: prod-in
+            key: PROD_IN
+    env:
+      WIF_PROVIDER: ${{ vars[format('TF_PLAN_WIF_PROVIDER_{0}', matrix.key)] }}
+      PLANNER_SA: ${{ vars[format('TF_PLAN_SA_{0}', matrix.key)] }}
+      STATE_BUCKET: ${{ vars[format('TF_STATE_BUCKET_{0}', matrix.key)] }}
+    steps:
+      - name: configured?
+        id: check
+        run: |
+          if [ -z "$WIF_PROVIDER" ] || [ -z "$PLANNER_SA" ] || [ -z "$STATE_BUCKET" ]; then
+            echo "::notice::terraform plan for ${{ matrix.env }} skipped: TF_PLAN_*_${{ matrix.key }} variables are not set"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.check.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+
+      - if: steps.check.outputs.enabled == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.PLANNER_SA }}
+
+      - if: steps.check.outputs.enabled == 'true'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: '1.16.2'
+          terraform_wrapper: false
+
+      - if: steps.check.outputs.enabled == 'true'
+        name: init (read state, no lock)
+        run: |
+          terraform -chdir=infra init -input=false -lockfile=readonly \
+            -backend-config="bucket=${STATE_BUCKET}" \
+            -backend-config="prefix=naaradh/${{ matrix.env }}"
+
+      - if: steps.check.outputs.enabled == 'true'
+        name: plan (read-only)
+        # -lock=false: the planner has object READ on the state bucket only. Sensitive values are
+        # masked by Terraform; secret payloads are never in state (only empty containers).
+        run: |
+          set -o pipefail
+          terraform -chdir=infra plan -input=false -lock=false -no-color \
+            -var-file="envs/${{ matrix.env }}.tfvars" | tee plan.txt
+          echo '### terraform plan (${{ matrix.env }})' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^(Plan:|No changes|  # )' plan.txt | head -200 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

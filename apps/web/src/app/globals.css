@@ -1,0 +1,28 @@
+@import 'tailwindcss';
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Noto Sans',
+    'Noto Sans Devanagari',
+    sans-serif;
+}
+
+.prose-legal h2 {
+  @apply mt-8 mb-2 text-lg font-semibold text-slate-900;
+}
+.prose-legal p,
+.prose-legal li {
+  @apply text-sm leading-6 text-slate-700;
+}
+.prose-legal ul {
+  @apply ml-5 list-disc space-y-1;
+}

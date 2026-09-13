@@ -1,0 +1,48 @@
+{
+  "name": "naaradh",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=22 <25",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:shopify": "turbo dev --filter=@naaradh/shopify-app",
+    "build": "turbo build",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p apps/web && pnpm --filter @naaradh/shopify-app typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "lint:pii": "node scripts/lint-pii.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:int": "vitest run --config vitest.int.config.ts",
+    "test:compliance": "vitest run --config vitest.compliance.config.ts",
+    "test:contracts": "vitest run --config vitest.contracts.config.ts",
+    "db:generate": "pnpm --filter @naaradh/db generate",
+    "db:migrate": "pnpm --filter @naaradh/db migrate",
+    "db:seed": "pnpm --filter @naaradh/db seed",
+    "keys:dev": "node scripts/gen-dev-keys.mjs",
+    "openapi": "pnpm --filter @naaradh/api openapi",
+    "tf:plan": "bash scripts/tf-plan.sh",
+    "services:up": "docker compose up -d --wait",
+    "services:down": "docker compose down",
+    "services:reset": "docker compose down -v && docker compose up -d --wait"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.17.0",
+    "@types/node": "22.10.2",
+    "eslint": "9.17.0",
+    "eslint-config-prettier": "9.1.0",
+    "prettier": "3.4.2",
+    "tsup": "8.3.5",
+    "tsx": "4.19.2",
+    "turbo": "2.3.3",
+    "typescript": "5.7.2",
+    "typescript-eslint": "8.18.1",
+    "vitest": "2.1.8"
+  }
+}

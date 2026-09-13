@@ -1,0 +1,182 @@
+name: deploy
+
+# main → stage automatically; production only by hand (workflow_dispatch) through the GitHub
+# environment "production", which must have required reviewers configured (Settings →
+# Environments). This workflow ONLY ships images: build + push, run the `migrate` Cloud Run Job,
+# roll each Cloud Run service to the new image. It never runs Terraform and never touches IAM,
+# secrets or infrastructure (docs/runbooks/deploy.md).
+#
+# Gate: repository variable DEPLOY_ENABLED must be 'true' (set it once the stage project is
+# bootstrapped), otherwise every job is skipped.
+#
+# Per-environment variables (Settings → Environments → <stage|production> → Variables; values
+# come from `terraform output github_actions`; none of them is a secret):
+#   GCP_PROJECT, GCP_REGION, GCP_WIF_PROVIDER, GCP_DEPLOYER_SA, GCP_ARTIFACT_REPOSITORY
+#   SMOKE_HOSTS   optional, space-separated public hostnames probed at /healthz after the deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        type: choice
+        options: [stage, production]
+        default: stage
+      ref:
+        description: Git commit SHA to deploy (production must name the SHA that is on stage)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  # One deploy per environment at a time; never cancel a half-finished rollout.
+  group: deploy-${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'stage' }}
+  cancel-in-progress: false
+
+env:
+  TARGET_ENV: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || 'stage' }}
+  SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+jobs:
+  resolve:
+    name: resolve
+    if: vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      environment: ${{ steps.r.outputs.environment }}
+      sha: ${{ steps.r.outputs.sha }}
+    steps:
+      - id: r
+        run: |
+          if ! echo "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::ref must be a full 40-character commit SHA (got '$SHA')"; exit 1
+          fi
+          echo "environment=$TARGET_ENV" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: image ${{ matrix.app }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ needs.resolve.outputs.environment }}
+    strategy:
+      fail-fast: true
+      matrix:
+        app: [api, hooks, voice, workers, console, shopify, web]
+    env:
+      IMAGE: ${{ vars.GCP_ARTIFACT_REPOSITORY }}/${{ matrix.app }}:${{ needs.resolve.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.sha }}
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+      - name: already pushed?
+        id: exists
+        # Tags are immutable in Artifact Registry: a re-run for the same SHA reuses the image.
+        run: |
+          if gcloud artifacts docker images describe "$IMAGE" >/dev/null 2>&1; then
+            echo "::notice::$IMAGE exists — skipping build"
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.exists.outputs.found != 'true'
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - if: steps.exists.outputs.found != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ env.IMAGE }}
+          labels: |
+            org.opencontainers.image.revision=${{ needs.resolve.outputs.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=image-${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=image-${{ matrix.app }}
+
+  migrate:
+    name: migrate (Cloud Run Job)
+    needs: [resolve, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: ${{ needs.resolve.outputs.environment }}
+    steps:
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: point the job at this commit's workers image (it carries the migrations)
+        run: |
+          gcloud run jobs update migrate \
+            --project "${{ vars.GCP_PROJECT }}" --region "${{ vars.GCP_REGION }}" \
+            --image "${{ vars.GCP_ARTIFACT_REPOSITORY }}/workers:${{ needs.resolve.outputs.sha }}" \
+            --command node --args dist/migrate.js
+      - name: run migrations (forward-only; services roll only if this succeeds)
+        run: |
+          gcloud run jobs execute migrate \
+            --project "${{ vars.GCP_PROJECT }}" --region "${{ vars.GCP_REGION }}" --wait
+
+  deploy:
+    name: roll services
+    needs: [resolve, migrate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ needs.resolve.outputs.environment }}
+    steps:
+      - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOYER_SA }}
+      - uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+      - name: update images (config stays as Terraform set it)
+        env:
+          PROJECT: ${{ vars.GCP_PROJECT }}
+          REGION: ${{ vars.GCP_REGION }}
+          REPO: ${{ vars.GCP_ARTIFACT_REPOSITORY }}
+          TAG: ${{ needs.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # Order: consumers first (they must understand anything the new producers emit),
+          # then webhooks, the API, and voice last — it carries live calls; each update waits
+          # for the new revision's /readyz startup probe before shifting traffic.
+          services=(
+            workers-intents:workers workers-dispatcher:workers workers-results:workers
+            workers-reconcile:workers workers-deliveries:workers workers-actions:workers
+            workers-writebacks:workers workers-complaints:workers workers-retention:workers
+            workers-billing:workers workers-notifications:workers
+            hooks:hooks api:api console:console shopify:shopify web:web voice:voice
+          )
+          for entry in "${services[@]}"; do
+            svc="${entry%%:*}"; image="${entry##*:}"
+            if ! gcloud run services describe "$svc" --project "$PROJECT" --region "$REGION" --format='value(metadata.name)' >/dev/null 2>&1; then
+              echo "::notice::$svc is not deployed in this environment — skipped"
+              continue
+            fi
+            echo "→ $svc ← $image:$TAG"
+            gcloud run services update "$svc" --project "$PROJECT" --region "$REGION" \
+              --image "$REPO/$image:$TAG" --quiet
+          done
+      - name: smoke /healthz
+        if: vars.SMOKE_HOSTS != ''
+        run: |
+          set -eu
+          for host in ${{ vars.SMOKE_HOSTS }}; do
+            curl --fail --silent --show-error --max-time 10 --retry 5 --retry-delay 6 --retry-all-errors \
+              "https://$host/healthz" >/dev/null
+            echo "ok  https://$host/healthz"
+          done

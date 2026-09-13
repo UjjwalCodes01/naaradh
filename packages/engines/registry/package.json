@@ -1,0 +1,16 @@
+{
+  "name": "@naaradh/engines-registry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "The one place vendor adapters are instantiated. Product code asks the registry for an adapter by vendor name and only ever holds a VoiceEngineAdapter (invariant 13).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@naaradh/engine-simulator": "workspace:*",
+    "@naaradh/engines-core": "workspace:*",
+    "@naaradh/shared": "workspace:*",
+    "zod": "3.24.1"
+  }
+}

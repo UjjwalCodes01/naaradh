@@ -1,0 +1,13 @@
+{
+  "name": "@naaradh/payments",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "Direct payment providers (Razorpay now, Stripe in Phase 6): HTTP clients and webhook signature checks. No SDKs — fetch + typed shapes, so nothing phones home.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@naaradh/shared": "workspace:*"
+  }
+}

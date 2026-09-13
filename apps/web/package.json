@@ -1,0 +1,35 @@
+{
+  "name": "@naaradh/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "Merchant dashboard (app.naaradh.com/app) + marketing and public pages (naaradh.com). Next.js 15 App Router, server components and server actions over @naaradh/pipeline; RLS app role only (ADR-0009).",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env.local ./node_modules/next/dist/bin/next dev --port 3000",
+    "build": "next build",
+    "start": "next start --port ${PORT:-3000}",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "@google-cloud/storage": "8.1.0",
+    "@naaradh/compliance": "workspace:*",
+    "@naaradh/db": "workspace:*",
+    "@naaradh/notify": "workspace:*",
+    "@naaradh/payments": "workspace:*",
+    "@naaradh/pipeline": "workspace:*",
+    "@naaradh/scripts": "workspace:*",
+    "@naaradh/shared": "workspace:*",
+    "drizzle-orm": "0.44.7",
+    "ioredis": "5.6.1",
+    "next": "15.5.25",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "tailwindcss": "4.3.3"
+  }
+}

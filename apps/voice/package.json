@@ -1,0 +1,34 @@
+{
+  "name": "@naaradh/voice",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "voice.naaradh.com — the synchronous runtime for two-way calls (ADR-0006): inbound context (who answers, with what) and mid-call tools. Holds the customer PUBLIC key and the STAFF private key only.",
+  "scripts": {
+    "dev": "node --env-file-if-exists=../../.env.local --import tsx --watch src/index.ts",
+    "build": "tsup",
+    "start": "node dist/index.js",
+    "lint": "eslint src test"
+  },
+  "dependencies": {
+    "@fastify/rate-limit": "11.2.0",
+    "@naaradh/compliance": "workspace:*",
+    "@naaradh/db": "workspace:*",
+    "@naaradh/engines-core": "workspace:*",
+    "@naaradh/engines-registry": "workspace:*",
+    "@naaradh/pipeline": "workspace:*",
+    "@naaradh/scripts": "workspace:*",
+    "@naaradh/shared": "workspace:*",
+    "drizzle-orm": "0.44.7",
+    "fastify": "5.2.1",
+    "ioredis": "5.6.1",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@naaradh/engine-simulator": "workspace:*",
+    "@naaradh/notify": "workspace:*",
+    "@testcontainers/redis": "12.1.0",
+    "tsup": "8.3.5",
+    "tsx": "4.19.2"
+  }
+}

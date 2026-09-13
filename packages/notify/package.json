@@ -1,0 +1,10 @@
+{
+  "name": "@naaradh/notify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "Transactional email (P2-WEB-4): Postmark over fetch, templates, a memory mailer for dev/test. No SDK.",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

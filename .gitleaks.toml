@@ -1,0 +1,41 @@
+title = "Naaradh gitleaks config"
+
+# Start from the maintained default rule set, then add the credential shapes specific to
+# this stack. AGENTS.md §11: no secrets in code, tests, fixtures, docs or commit messages.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "naaradh-api-key"
+description = "Naaradh tenant API key"
+regex = '''nrd_(live|test)_[A-Za-z0-9]{16,}'''
+tags = ["naaradh", "api-key"]
+
+[[rules]]
+id = "naaradh-public-site-key"
+description = "Naaradh public site key (lower risk, still not committed)"
+regex = '''nrd_pk_[A-Za-z0-9]{16,}'''
+tags = ["naaradh", "api-key"]
+
+[[rules]]
+id = "shopify-app-secret"
+description = "Shopify app secret / access token"
+regex = '''(shpss_|shpat_|shpca_|shppa_)[a-fA-F0-9]{32,}'''
+tags = ["shopify"]
+
+[[rules]]
+id = "razorpay-key"
+description = "Razorpay key id or secret"
+regex = '''rzp_(live|test)_[A-Za-z0-9]{10,}'''
+tags = ["razorpay"]
+
+[allowlist]
+description = "Non-secrets that match secret shapes"
+paths = [
+  '''pnpm-lock\.yaml''',
+  '''\.env\.example''',
+]
+regexes = [
+  # The literal placeholder values used in docs and the env template.
+  '''local_dev_only''',
+]
