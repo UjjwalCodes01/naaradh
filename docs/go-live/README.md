@@ -13,7 +13,7 @@ registration, number, key and approval the code depends on, in the order to get 
 
 | Area | State | Blocks live calls? |
 |---|---|---|
-| Call pipeline, compliance gate, inbound agent runtime, billing, dashboards, Shopify app, staff console | Built; 168 unit · 170 compliance · 29 contract · 185 integration tests pass; all 7 services build | — |
+| Call pipeline, compliance gate, inbound agent runtime, billing, dashboards, Shopify app, staff console, Phase 3 hardening (`docs/phase-reviews/phase-3.md`) | Built and tested locally; all 7 services build | — |
 | Voice engine adapter (Bolna / OmniDimension / Retell) | **Not built** — deliberately waits for the bake-off (ADR-0001). Only the simulator works today | **Yes** |
 | Phone numbers (+91) | None. Needs the entity (KYC) and an answer on the number series (Q-01) | **Yes** |
 | Company (Pvt Ltd), GST, bank account | In progress | **Yes** — needed for numbers, DLT, Razorpay, payouts |
@@ -23,12 +23,11 @@ registration, number, key and approval the code depends on, in the order to get 
 | Database (Neon), Redis, email (Postmark), Razorpay | Accounts not created | Yes |
 | Legal pages (privacy, terms, DPA…) | Drafts live in `apps/web`, marked "pending counsel" | Yes for App Store / Level 2 |
 
-Gaps found while checking the implementation (small, but you will hit them — see
-[08-first-merchants.md](08-first-merchants.md#gaps-you-will-hit)): numbers are registered in the
-database by SQL (no screen yet); a direct (non-Shopify) merchant's account is created by SQL; staff
-cannot yet mark a merchant's DLT link from the console; transfer numbers are verified by
-attestation only (no test call); the BigQuery analytics export and the Shopify Flow trigger are
-not built.
+Gaps found while checking the implementation, and what Phase 3 closed (see
+[08-first-merchants.md](08-first-merchants.md#gaps-you-will-hit)): numbers, direct merchants and
+the DLT link are now staff-console screens; the number answer-rate job, the OpenAPI reference and
+the BigQuery export exist. Still open: transfer numbers are verified by attestation only (no test
+call, needs the engine) and the Shopify Flow trigger (needs the Partner app).
 
 ## The dependency chain
 

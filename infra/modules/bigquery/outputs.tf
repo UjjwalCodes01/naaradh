@@ -3,5 +3,5 @@ output "dataset_id" {
 }
 
 output "exporter_email" {
-  value = google_service_account.exporter.email
+  value = var.exporter_email
 }

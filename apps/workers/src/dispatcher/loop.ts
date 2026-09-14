@@ -1,4 +1,5 @@
 import type { WorkerContext } from '../context.js';
+import { runLoop } from '../loop.js';
 import { claimDueIntents } from './claim.js';
 import { dispatchIntent, type DispatchOutcome } from './dispatch.js';
 
@@ -23,28 +24,23 @@ export async function dispatchOnce(ctx: WorkerContext): Promise<DispatchOutcome[
   return outcomes;
 }
 
-/** Always-on loop (ADR-0005): immediate when the batch was full, else poll. */
+/**
+ * Always-on loop (ADR-0005): immediate when the batch was full, else poll. A failed claim
+ * (database or Redis away) backs off and retries; it never ends the loop (see ../loop.ts).
+ */
 export async function runDispatcher(
   ctx: WorkerContext,
   pollMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  ctx.log.info({ worker: ctx.workerId, poll_ms: pollMs }, 'dispatcher started');
-  while (!signal.aborted) {
-    const outcomes = await dispatchOnce(ctx);
-    if (outcomes.length < ctx.dispatchBatch) {
-      await new Promise<void>((resolve) => {
-        const t = setTimeout(resolve, pollMs);
-        signal.addEventListener(
-          'abort',
-          () => {
-            clearTimeout(t);
-            resolve();
-          },
-          { once: true },
-        );
-      });
-    }
-  }
-  ctx.log.info('dispatcher stopped');
+  await runLoop({
+    name: 'dispatcher',
+    log: ctx.log,
+    intervalMs: pollMs,
+    signal,
+    async tick() {
+      const outcomes = await dispatchOnce(ctx);
+      return outcomes.length >= ctx.dispatchBatch;
+    },
+  });
 }

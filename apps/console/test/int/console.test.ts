@@ -60,6 +60,7 @@ beforeAll(async () => {
     hashKey: HASH_KEY,
     origin: ORIGIN,
     logLevel: 'silent',
+    dashboardUrl: 'https://app.naaradh.test',
     // Tests stand in for IAP with a header; production verifies the IAP JWT (iap.ts).
     authenticate: async (request) => {
       const v = request.headers['x-test-staff'];
@@ -297,5 +298,289 @@ describe('IAP JWT verification', () => {
     expect(isStaff('ops@naaradh.com', 'naaradh.com', [])).toBe(true);
     expect(isStaff('ops@naaradh.com.evil.com', 'naaradh.com', [])).toBe(false);
     expect(isStaff('contractor@gmail.com', 'naaradh.com', ['contractor@gmail.com'])).toBe(true);
+  });
+});
+
+describe('numbers and merchants (P3 go-live gaps)', () => {
+  const profile = newId('inboundProfile');
+
+  beforeAll(async () => {
+    await q(
+      `insert into inbound_profiles (id, tenant_id, name, status, greeting, business_hours, tools_enabled, pinned_facts, closed_message)
+       values ($1, $2, 'Support line', 'active', 'Namaste, main Client A ki taraf se automated AI assistant bol rahi hoon. Yeh call record ho rahi hai.',
+               '{"zone":"Asia/Kolkata","days":[1,2,3,4,5],"open":"09:00","close":"18:00"}', array['lookup_order'], array[]::text[], 'Hum abhi band hain.')`,
+      [profile, T],
+    );
+  });
+
+  it('registers a pool number as warming, refuses activation without purposes, then activates — all audited as staff', async () => {
+    const created = await post('/numbers', {
+      e164: FAKE_IN.merchant,
+      region: 'IN',
+      series: '10digit',
+      provider: 'exotel',
+      engine: 'simulator',
+      provisioning_note: '',
+    });
+    expect(created.statusCode).toBe(303);
+    const [n] = await q<{
+      id: string;
+      status: string;
+      purpose_allowed: string[];
+      tenant_id: string | null;
+    }>(
+      `select id, status, purpose_allowed::text[] as purpose_allowed, tenant_id from numbers where e164 = $1`,
+      [FAKE_IN.merchant],
+    );
+    expect(n).toMatchObject({ status: 'warming', purpose_allowed: [], tenant_id: null });
+    expect(created.headers.location).toBe(`/numbers/${n?.id ?? ''}`);
+
+    // No purposes and no inbound profile → nothing it could do; activation refused.
+    await post(`/numbers/${n?.id ?? ''}/status`, {
+      status: 'active',
+      reason: 'TSP letter received',
+    });
+    expect(
+      (await q<{ status: string }>(`select status from numbers where id = $1`, [n?.id]))[0]?.status,
+    ).toBe('warming');
+
+    await post(`/numbers/${n?.id ?? ''}/purposes`, {
+      purpose_transactional: 'on',
+      purpose_service: 'on',
+      provisioning_note: 'TSP letter 2026-09-10, docs/legal/tsp-responses/exotel.pdf',
+    });
+    await post(`/numbers/${n?.id ?? ''}/status`, {
+      status: 'active',
+      reason: 'TSP letter received, answer URL set',
+    });
+    const [after] = await q<{ status: string; purpose_allowed: string[] }>(
+      `select status, purpose_allowed::text[] as purpose_allowed from numbers where id = $1`,
+      [n?.id],
+    );
+    expect(after).toEqual({ status: 'active', purpose_allowed: ['transactional', 'service'] });
+    const actions = await q<{ action: string; actor_id: string }>(
+      `select action, actor_id from audit_log where target_id = $1 order by at`,
+      [n?.id],
+    );
+    expect(actions.map((a) => a.action)).toEqual([
+      'number.registered',
+      'number.purposes_changed',
+      'number.active',
+    ]);
+    expect(new Set(actions.map((a) => a.actor_id))).toEqual(new Set([`staff:${STAFF}`]));
+    const page = await get('/numbers');
+    expect(page.body).toContain(FAKE_IN.merchant);
+    expect(page.body).toContain('transactional, service');
+  });
+
+  it('refuses a duplicate, a number outside its region, and a profile of another tenant; assigns a support line', async () => {
+    const dup = await post('/numbers', {
+      e164: FAKE_IN.merchant,
+      series: '10digit',
+      provider: 'exotel',
+      engine: 'simulator',
+    });
+    expect(dup.headers.location).toBe('/numbers');
+    expect((await q(`select 1 from numbers where e164 = $1`, [FAKE_IN.merchant])).length).toBe(1);
+
+    await post('/numbers', {
+      e164: '+12125550100',
+      region: 'IN',
+      series: 'intl',
+      provider: 'twilio',
+      engine: 'simulator',
+    });
+    expect((await q(`select 1 from numbers where e164 = '+12125550100'`)).length).toBe(0);
+
+    const other = newId('tenant');
+    await q(
+      `insert into tenants (id, name, country, data_region) values ($1, 'Other', 'IN', 'in')`,
+      [other],
+    );
+    await post('/numbers', {
+      e164: FAKE_IN.transferTarget,
+      series: '10digit',
+      provider: 'exotel',
+      engine: 'simulator',
+      tenant_id: other,
+      inbound_profile_id: profile,
+      inbound_enabled: 'on',
+    });
+    expect(
+      (await q(`select 1 from numbers where e164 = $1`, [FAKE_IN.transferTarget])).length,
+    ).toBe(0);
+
+    await post('/numbers', {
+      e164: FAKE_IN.transferTarget,
+      series: '10digit',
+      provider: 'exotel',
+      engine: 'simulator',
+      tenant_id: T,
+      inbound_profile_id: profile,
+      inbound_enabled: 'on',
+    });
+    const [line] = await q<{
+      id: string;
+      tenant_id: string;
+      inbound_profile_id: string;
+      inbound_enabled: boolean;
+    }>(`select id, tenant_id, inbound_profile_id, inbound_enabled from numbers where e164 = $1`, [
+      FAKE_IN.transferTarget,
+    ]);
+    expect(line).toMatchObject({
+      tenant_id: T,
+      inbound_profile_id: profile,
+      inbound_enabled: true,
+    });
+    // A support line needs no outbound purposes to go active.
+    await post(`/numbers/${line?.id ?? ''}/status`, {
+      status: 'active',
+      reason: 'forwarding agreed with merchant',
+    });
+    expect(
+      (await q<{ status: string }>(`select status from numbers where id = $1`, [line?.id]))[0]
+        ?.status,
+    ).toBe('active');
+    // Back to the pool: the profile must go too (database rule), and both tenants get an audit row.
+    await post(`/numbers/${line?.id ?? ''}/assign`, {
+      tenant_id: '',
+      inbound_profile_id: '',
+      note: 'merchant churned, number rests',
+    });
+    const [pool] = await q<{
+      tenant_id: string | null;
+      inbound_profile_id: string | null;
+      inbound_enabled: boolean;
+    }>(`select tenant_id, inbound_profile_id, inbound_enabled from numbers where id = $1`, [
+      line?.id,
+    ]);
+    expect(pool).toEqual({ tenant_id: null, inbound_profile_id: null, inbound_enabled: false });
+  });
+
+  it('creates a direct merchant with an owner, use cases OFF and draft scripts; the page shows the sign-in URL', async () => {
+    const r = await post('/tenants', {
+      name: 'Client B',
+      legal_name: 'Client B Private Limited',
+      country: 'IN',
+      timezone: 'Asia/Kolkata',
+      currency: 'INR',
+      gstin: '29abcde1234f1z5',
+      pan: '',
+      owner_email: 'Owner@Client-B.example',
+      owner_name: 'B Owner',
+      usecase_cod_confirm: 'on',
+      usecase_lead_callback: 'on',
+      default_locale: 'en-IN',
+      note: 'pilot merchant B, website leads; agreement signed',
+    });
+    expect(r.statusCode).toBe(303);
+    const tenantId = (r.headers.location ?? '').replace('/tenants/', '');
+    expect(tenantId).toMatch(/^ten_/);
+    const [t] = await q<{ status: string; gstin: string; review_until: Date; data_region: string }>(
+      `select status, gstin, review_until, data_region from tenants where id = $1`,
+      [tenantId],
+    );
+    expect(t).toMatchObject({
+      status: 'pending_review',
+      gstin: '29ABCDE1234F1Z5',
+      data_region: 'in',
+    });
+    expect(t?.review_until.getTime()).toBe(NOW.getTime() + 7 * 86_400_000);
+    const users = await q<{ email: string; role: string }>(
+      `select email, role from users where tenant_id = $1`,
+      [tenantId],
+    );
+    expect(users).toEqual([{ email: 'owner@client-b.example', role: 'owner' }]);
+    const useCases = await q<{ kind: string; enabled: boolean; purpose: string }>(
+      `select kind, enabled, purpose from use_cases where tenant_id = $1 order by kind`,
+      [tenantId],
+    );
+    expect(useCases).toEqual([
+      { kind: 'cod_confirm', enabled: false, purpose: 'transactional' },
+      { kind: 'lead_callback', enabled: false, purpose: 'service' },
+    ]);
+    const scripts = await q<{ locale: string; status: string }>(
+      `select locale, status from scripts where tenant_id = $1 order by locale`,
+      [tenantId],
+    );
+    expect(scripts).toEqual([
+      { locale: 'en-IN', status: 'draft' },
+      { locale: 'en-IN', status: 'draft' },
+      { locale: 'hi-IN', status: 'draft' },
+    ]);
+    const actions = await q<{ action: string }>(
+      `select action from audit_log where tenant_id = $1 and actor_id = $2 order by at`,
+      [tenantId, `staff:${STAFF}`],
+    );
+    expect(actions.map((a) => a.action)).toEqual([
+      'tenant.created',
+      'user.invited',
+      'tenant.default_setup',
+    ]);
+    // The flash on the next page tells staff where the owner signs in.
+    const follow = await app.inject({
+      method: 'GET',
+      url: r.headers.location ?? '/',
+      headers: {
+        'x-test-staff': STAFF,
+        cookie: (r.headers['set-cookie'] as string).split(';')[0] ?? '',
+      },
+    });
+    expect(follow.body).toContain('sign in at https://app.naaradh.test/login');
+
+    // Shopify stores are not created here; a bad GSTIN is refused before anything is written.
+    const bad = await post('/tenants', {
+      name: 'Client C',
+      owner_email: 'c@client-c.example',
+      gstin: 'nope',
+      usecase_cod_confirm: 'on',
+      note: 'typo in the GSTIN on purpose',
+    });
+    expect(bad.headers.location).toBe('/tenants/new');
+    expect((await q(`select 1 from tenants where name = 'Client C'`)).length).toBe(0);
+  });
+
+  it('records and removes the DLT link with evidence; the PE id is required', async () => {
+    const noPe = await post(`/tenants/${T}/dlt`, {
+      linked: 'true',
+      evidence: 'checked portal 2026-09-13',
+    });
+    expect(noPe.statusCode).toBe(303);
+    expect(
+      (
+        await q<{ dlt_linked_at: Date | null }>(`select dlt_linked_at from tenants where id = $1`, [
+          T,
+        ])
+      )[0]?.dlt_linked_at,
+    ).toBeNull();
+
+    await post(`/tenants/${T}/dlt`, {
+      dlt_pe_id: '1234567890123456',
+      linked: 'true',
+      evidence: 'PE → telemarketer link visible on Vodafone DLT portal, screenshot in drive',
+    });
+    const [linked] = await q<{ dlt_pe_id: string; dlt_linked_at: Date | null }>(
+      `select dlt_pe_id, dlt_linked_at from tenants where id = $1`,
+      [T],
+    );
+    expect(linked).toEqual({ dlt_pe_id: '1234567890123456', dlt_linked_at: NOW });
+    expect((await get(`/tenants/${T}`)).body).toContain('Remove DLT link');
+
+    await post(`/tenants/${T}/dlt`, {
+      linked: 'false',
+      evidence: 'merchant switched telemarketer, link removed',
+    });
+    expect(
+      (
+        await q<{ dlt_linked_at: Date | null }>(`select dlt_linked_at from tenants where id = $1`, [
+          T,
+        ])
+      )[0]?.dlt_linked_at,
+    ).toBeNull();
+    const actions = await q<{ action: string }>(
+      `select action from audit_log where tenant_id = $1 and action like 'tenant.dlt%' order by at`,
+      [T],
+    );
+    expect(actions.map((a) => a.action)).toEqual(['tenant.dlt_linked', 'tenant.dlt_unlinked']);
   });
 });

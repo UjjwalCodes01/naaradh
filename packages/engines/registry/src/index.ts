@@ -14,18 +14,63 @@ import { SimulatorAdapter, type SimulatorOptions } from '@naaradh/engine-simulat
 export const KNOWN_VENDORS = ['simulator', 'bolna', 'omnidim', 'retell'] as const;
 export type Vendor = (typeof KNOWN_VENDORS)[number];
 
+export const SIMULATOR_DEV_SECRET = 'local_dev_only_simulator_secret';
+
 export const engineEnv = {
   ENGINE_DEFAULT_IN: z.enum(KNOWN_VENDORS).default('simulator'),
   ENGINE_DEFAULT_US: z.enum(KNOWN_VENDORS).default('simulator'),
   ENGINE_SECONDARY_IN: z.enum(KNOWN_VENDORS).optional(),
   ENGINE_SECONDARY_US: z.enum(KNOWN_VENDORS).optional(),
-  SIMULATOR_WEBHOOK_SECRET: z.string().min(16).default('local_dev_only_simulator_secret'),
+  SIMULATOR_WEBHOOK_SECRET: z.string().min(16).default(SIMULATOR_DEV_SECRET),
+  /**
+   * The simulator never dials a real number, but a production service configured with it
+   * silently places no calls at all. Staging sets this to run load tests on the simulator;
+   * production must not (refineEngineEnv).
+   */
+  SIMULATOR_ALLOWED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   BOLNA_API_KEY: z.string().optional(),
   OMNIDIM_API_KEY: z.string().optional(),
   RETELL_API_KEY: z.string().optional(),
 };
 
-export type EngineEnv = z.infer<z.ZodObject<typeof engineEnv>>;
+/** SIMULATOR_ALLOWED is optional for callers that build the env by hand (tests, registries). */
+export type EngineEnv = Omit<z.infer<z.ZodObject<typeof engineEnv>>, 'SIMULATOR_ALLOWED'> & {
+  readonly SIMULATOR_ALLOWED?: boolean;
+};
+
+/**
+ * Cross-field rules every service that spreads `engineEnv` must apply in its `superRefine`
+ * (hooks, voice, workers): in production the simulator is refused unless SIMULATOR_ALLOWED is
+ * set explicitly, and the shared dev webhook secret is never accepted — with it, anyone could
+ * forge "signed" call events for a simulator-backed tenant.
+ */
+export function refineEngineEnv(env: EngineEnv & { NODE_ENV: string }, ctx: z.RefinementCtx): void {
+  if (env.NODE_ENV !== 'production') return;
+  const usesSimulator = (
+    [
+      env.ENGINE_DEFAULT_IN,
+      env.ENGINE_DEFAULT_US,
+      env.ENGINE_SECONDARY_IN,
+      env.ENGINE_SECONDARY_US,
+    ] as const
+  ).some((v) => v === 'simulator');
+  if (usesSimulator && env.SIMULATOR_ALLOWED !== true)
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['ENGINE_DEFAULT_IN'],
+      message:
+        'the simulator engine is configured in production; set the ADR-0001 engine, or SIMULATOR_ALLOWED=true on a staging-like environment',
+    });
+  if (usesSimulator && env.SIMULATOR_WEBHOOK_SECRET === SIMULATOR_DEV_SECRET)
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['SIMULATOR_WEBHOOK_SECRET'],
+      message: 'the shared development secret is not allowed in production',
+    });
+}
 
 export interface RegistryOptions {
   readonly env: EngineEnv;

@@ -10,7 +10,7 @@ import {
   serviceDatabaseEnv,
   shopifyTokenEnv,
 } from '@naaradh/shared';
-import { engineEnv } from '@naaradh/engines-registry';
+import { engineEnv, refineEngineEnv } from '@naaradh/engines-registry';
 
 export const WORKERS = [
   'intents',
@@ -24,6 +24,7 @@ export const WORKERS = [
   'retention',
   'billing',
   'notifications',
+  'analytics',
   'all',
 ] as const;
 export type WorkerName = (typeof WORKERS)[number];
@@ -50,6 +51,9 @@ export const workersEnvSchema = z
      */
     SHOPIFY_TOKEN_KEY: shopifyTokenEnv.SHOPIFY_TOKEN_KEY.optional(),
     SHOPIFY_TOKEN_KID: shopifyTokenEnv.SHOPIFY_TOKEN_KID,
+    /** The retiring key during a rotation (docs/runbooks/secret-rotation.md); opens only, never seals. */
+    SHOPIFY_TOKEN_KEY_PREVIOUS: shopifyTokenEnv.SHOPIFY_TOKEN_KEY_PREVIOUS,
+    SHOPIFY_TOKEN_KID_PREVIOUS: shopifyTokenEnv.SHOPIFY_TOKEN_KID_PREVIOUS,
     SHOPIFY_API_KEY: z.string().min(1).optional(),
     SHOPIFY_API_SECRET: z.string().min(1).optional(),
     /** Postmark server token; without it merchant emails go to an in-memory outbox (dev only). */
@@ -86,8 +90,16 @@ export const workersEnvSchema = z
     DISPATCH_BATCH: z.coerce.number().int().positive().max(100).default(10),
     DISPATCH_POLL_MS: z.coerce.number().int().positive().default(1000),
     RECONCILE_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+    /**
+     * Nightly BigQuery export (P2-INF-2). Unset outside production → an in-memory sink, so
+     * `pnpm dev` and CI never need BigQuery; production requires it for WORKER=analytics.
+     */
+    BIGQUERY_DATASET: z.string().min(1).optional(),
+    BIGQUERY_TABLE: z.string().min(1).default('daily_call_facts'),
+    BIGQUERY_LOCATION: z.string().min(1).optional(),
   })
   .superRefine((env, ctx) => {
+    refineEngineEnv(env, ctx);
     const needsPrivate =
       env.WORKER === 'dispatcher' ||
       env.WORKER === 'results' ||
@@ -118,6 +130,17 @@ export const workersEnvSchema = z
             path: [k],
             message: `required for WORKER=${env.WORKER} in production (ADR-0007)`,
           });
+    if (
+      env.NODE_ENV === 'production' &&
+      (env.WORKER === 'analytics' || env.WORKER === 'all') &&
+      env.BIGQUERY_DATASET === undefined
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['BIGQUERY_DATASET'],
+        message: `required for WORKER=${env.WORKER} in production`,
+      });
+    }
     // Merchant alerts (capped, paused, complaints) must actually leave the building in production.
     if (
       env.NODE_ENV === 'production' &&

@@ -1,8 +1,7 @@
-import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import { and, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
-import type { Redis } from 'ioredis';
 import { z } from 'zod';
-import { schema, type Db } from '@naaradh/db';
+import { schema } from '@naaradh/db';
 import {
   COMPLAINT_WINDOW_DAYS,
   ERASURE_COMPLETION_TARGET_DAYS,
@@ -12,17 +11,22 @@ import {
   suppress,
 } from '@naaradh/compliance';
 import { audit, explainOutcome, resolveDispute } from '@naaradh/pipeline';
+import { NaaradhError, addDays, fastifyLoggerOptions, newId, trustProxyOf } from '@naaradh/shared';
+import { badge, h, when, type Raw } from './html.js';
 import {
-  NaaradhError,
-  addDays,
-  fastifyLoggerOptions,
-  hashPhone,
-  isNaaradhError,
-  newId,
-  normalizePhone,
-  type PhoneRegion,
-} from '@naaradh/shared';
-import { badge, h, page, when, type Raw } from './html.js';
+  Reason,
+  body,
+  done,
+  phoneHashOf,
+  problem,
+  render,
+  staffActor,
+  type ConsoleDeps,
+} from './support.js';
+import { registerNumberRoutes } from './routes/numbers.js';
+import { registerMerchantRoutes } from './routes/merchants.js';
+
+export type { ConsoleDeps } from './support.js';
 
 /**
  * Staff console (P2-OPS). Every route requires a verified staff identity (IAP in production);
@@ -30,80 +34,10 @@ import { badge, h, page, when, type Raw } from './html.js';
  * `staff:<email>`. Service role: this is the cross-tenant operator's tool, not a merchant surface.
  */
 
-export interface ConsoleDeps {
-  readonly db: Db;
-  readonly redis: Redis;
-  readonly clock: () => Date;
-  readonly hashKey: string;
-  readonly origin: string;
-  /** Resolves the verified staff email for a request, or null (→ 403). */
-  readonly authenticate: (request: FastifyRequest) => Promise<string | null>;
-  /** Transcript reader for dispute evidence; null where no bucket is configured. */
-  readonly readTranscript: ((uri: string) => Promise<{ role: string; text: string }[]>) | null;
-  readonly logLevel?: string;
-}
-
-declare module 'fastify' {
-  interface FastifyRequest {
-    staff?: string;
-  }
-}
-
-const FLASH = 'console_flash';
-
-function readFlash(request: FastifyRequest): { ok: boolean; message: string } | undefined {
-  const cookie = request.headers.cookie ?? '';
-  const m = new RegExp(`(?:^|;\\s*)${FLASH}=([^;]+)`).exec(cookie);
-  if (m?.[1] === undefined) return undefined;
-  try {
-    const v = JSON.parse(Buffer.from(m[1], 'base64url').toString('utf8')) as {
-      ok?: unknown;
-      message?: unknown;
-    };
-    return typeof v.message === 'string'
-      ? { ok: v.ok === true, message: v.message.slice(0, 300) }
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function done(reply: FastifyReply, to: string, ok: boolean, message: string): FastifyReply {
-  const value = Buffer.from(JSON.stringify({ ok, message })).toString('base64url');
-  return reply
-    .header(
-      'set-cookie',
-      `${FLASH}=${value}; Path=/; Max-Age=15; HttpOnly; SameSite=Strict; Secure`,
-    )
-    .redirect(to, 303);
-}
-
-function body(request: FastifyRequest): Record<string, string> {
-  const b = request.body;
-  return b !== null && typeof b === 'object' ? (b as Record<string, string>) : {};
-}
-
-const staffActor = (email: string) => `staff:${email}`;
-
-const Reason = z.string().trim().min(10, 'give a reason of at least 10 characters').max(500);
-
-function phoneHashOf(hashKey: string, phone: string, region: string): string {
-  const parsed = normalizePhone(phone, (region || 'IN').toUpperCase() as PhoneRegion);
-  if (!parsed.ok) throw new NaaradhError('VALIDATION_FAILED', 'not a valid phone number');
-  return hashPhone(parsed.phone.e164, hashKey);
-}
-
-function problem(error: unknown): string {
-  if (error instanceof z.ZodError) return error.issues.map((i) => i.message).join('; ');
-  if (isNaaradhError(error)) return error.message;
-  if (error instanceof TypeError) return error.message;
-  return 'failed — see logs';
-}
-
 export async function buildConsole(deps: ConsoleDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: fastifyLoggerOptions(deps.logLevel ?? process.env['LOG_LEVEL'] ?? 'info'),
-    trustProxy: true,
+    trustProxy: trustProxyOf(deps.trustProxyHops),
     bodyLimit: 32 * 1024,
   });
 
@@ -138,12 +72,6 @@ export async function buildConsole(deps: ConsoleDeps): Promise<FastifyInstance> 
       return reply.code(403).type('text/plain').send('Cross-origin request refused.');
     return undefined;
   });
-
-  const render = (reply: FastifyReply, request: FastifyRequest, title: string, content: Raw) =>
-    reply
-      .header('set-cookie', `${FLASH}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict; Secure`)
-      .type('text/html; charset=utf-8')
-      .send(page(title, request.staff ?? '', content, readFlash(request)));
 
   // ---- overview ---------------------------------------------------------------------------------
 
@@ -228,7 +156,7 @@ export async function buildConsole(deps: ConsoleDeps): Promise<FastifyInstance> 
       reply,
       request,
       'Tenants',
-      h`<form method="get"><input name="q" value="${q}" placeholder="name or ten_ id"> <button>Search</button></form>
+      h`<form method="get"><input name="q" value="${q}" placeholder="name or ten_ id"> <button>Search</button> <a href="/tenants/new" style="margin-left:12px">+ New merchant (API / website)</a></form>
       <table><tr><th>Tenant</th><th>Status</th><th>Billing</th><th>Created</th></tr>
       ${rows.map(
         (
@@ -311,6 +239,20 @@ export async function buildConsole(deps: ConsoleDeps): Promise<FastifyInstance> 
           <input type="hidden" name="active" value="${sw(scope) ? 'false' : 'true'}"><input name="reason" size="40" required minlength="10" placeholder="reason">
           <button class="${sw(scope) ? '' : 'danger'}">${sw(scope) ? `Turn OFF ${scope} kill switch` : `Turn ON ${scope} kill switch`}</button></form>`,
         )}
+      </div>
+      <h2>DLT principal entity (promotional calling)</h2>
+      <div class="card">PE id: <code>${t.dltPeId ?? '—'}</code> · ${
+        t.dltLinkedAt === null
+          ? badge('not linked — promotional blocked', 'warn')
+          : badge(`linked ${when(t.dltLinkedAt)}`, 'good')
+      }
+        <form method="post" action="/tenants/${t.id}/dlt" style="margin-top:8px">
+          <input name="dlt_pe_id" size="22" value="${t.dltPeId ?? ''}" placeholder="PE id (15–20 digits)">
+          <input type="hidden" name="linked" value="${t.dltLinkedAt === null ? 'true' : 'false'}">
+          <input name="evidence" size="50" required minlength="10" placeholder="What you checked on the DLT portal, date, reference">
+          <button class="${t.dltLinkedAt === null ? '' : 'danger'}">${t.dltLinkedAt === null ? 'Mark PE linked to Naaradh' : 'Remove DLT link'}</button>
+        </form>
+        <p class="muted">Only after seeing on the DLT portal that this PE authorised Naaradh as its telemarketer (docs/go-live/02-phone-numbers-and-dlt.md §3). <a href="/numbers?tenant=${t.id}">Numbers owned by this tenant →</a></p>
       </div>
       <h2>Complaints (${COMPLAINT_WINDOW_DAYS} days)</h2>
       <table><tr><th>Received</th><th>Source</th><th>Status</th></tr>${complaints.map((c) => h`<tr><td>${when(c.receivedAt)}</td><td>${c.source}</td><td>${c.status}</td></tr>`)}</table>
@@ -777,6 +719,9 @@ export async function buildConsole(deps: ConsoleDeps): Promise<FastifyInstance> 
       return await done(reply, back, false, problem(error));
     }
   });
+
+  registerNumberRoutes(app, deps);
+  registerMerchantRoutes(app, deps);
 
   return app;
 }

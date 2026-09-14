@@ -236,3 +236,55 @@ variable "recordings_soft_delete_seconds" {
   type        = number
   default     = 0
 }
+
+variable "pagerduty_service_key" {
+  description = <<-EOT
+    PagerDuty Events API v2 integration key for the on-call service; creates a channel that
+    CRITICAL alert policies page (P3-OPS-1). It is a secret: pass it as
+    TF_VAR_pagerduty_service_key in the applying shell, never in envs/*.tfvars. Empty → no
+    PagerDuty channel. Terraform keeps it in state (as it does the Redis AUTH string).
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "alert_webhook_url" {
+  description = <<-EOT
+    Token-in-URL incoming-webhook of an on-call service (Better Stack, Opsgenie, Zenduty, …);
+    CRITICAL alert policies POST to it. Secret (the token is in the URL): TF_VAR_alert_webhook_url,
+    never in tfvars. Empty → no webhook channel.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+# ---------------------------------------------------------------------------------------------
+# Audit logs (P3-INF-5)
+# ---------------------------------------------------------------------------------------------
+
+variable "audit_data_access_logging" {
+  description = <<-EOT
+    Enable Data Access audit logs (DATA_READ + DATA_WRITE) for Secret Manager, Cloud Storage,
+    Cloud KMS, BigQuery and IAP. Admin Activity logs are always on regardless. The entries are
+    billed as log ingestion (modules/audit-logs has the cost notes): off in dev, on in stage and
+    prod so the evidence trail after an incident is complete.
+  EOT
+  type        = bool
+  default     = true
+}
+
+variable "audit_lock_retention" {
+  description = <<-EOT
+    Lock the audit bucket's 365-day retention policy (GCS Bucket Lock). IRREVERSIBLE: a locked
+    policy can never be removed or shortened and the bucket cannot be deleted until every object
+    has aged out. false everywhere except prod-in.tfvars.
+  EOT
+  type        = bool
+  default     = false
+  validation {
+    condition     = !var.audit_lock_retention || startswith(var.env, "prod")
+    error_message = "audit_lock_retention is irreversible; it may only be true in a prod environment."
+  }
+}

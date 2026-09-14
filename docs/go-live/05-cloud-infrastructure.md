@@ -110,6 +110,18 @@ switch, billing reconciliation delta, low margin, write-back give-up, erasure ov
 letters, Redis memory). Set `alert_email` in the tfvars so they reach someone. On-call rota and a
 status page are Phase 3 (P3-OPS-1).
 
+
+**On-call channels (P3-OPS-1):** `alert_email` in the tfvars gets every alert. For paging, pass a
+PagerDuty Events v2 integration key and/or a Better Stack-style webhook URL as
+`TF_VAR_pagerduty_service_key` / `TF_VAR_alert_webhook_url` in the shell that runs `terraform
+apply` — never in a tfvars file. CRITICAL policies (uptime, voice p95 > 700 ms, 5xx > 2 %, global
+kill, complaint auto-pause) page; ERROR and WARNING go to the mailbox. Runbook: `on-call.md`.
+
+**Audit logs (P3-INF-5):** `audit_data_access_logging` (Data Access logs for Secret Manager, GCS,
+KMS, BigQuery, IAP — on in stage and prod) and `audit_lock_retention` (**irreversible** 365-day
+Bucket Lock on `<project>-audit-logs`, true only in `prod-in.tfvars`) are set per environment.
+Review the plan line for the audit bucket before the first production apply.
+
 ## 8. Staff console access (IAP)
 
 The console is reachable only through Identity-Aware Proxy. Put staff Google accounts (or a group

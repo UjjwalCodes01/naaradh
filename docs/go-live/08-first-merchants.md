@@ -12,7 +12,7 @@ phone and name, so every COD order would be refused with `no_phone`. So:
 1. **Pilot on the existing custom-app mirror** (P1-SHOP-1): Client A's own custom app sends its
    webhooks to hooks, verified with its secret in `SHOPIFY_WEBHOOK_SECRETS`. Confirm the custom
    app has protected customer data (phone, name) enabled in the store's app settings `[VERIFY]`.
-2. Staff create the tenant for Client A's shop (see §3 while the gap exists) or, once the public
+2. Staff create the tenant for Client A's shop in the console (§3) or, once the public
    app is approved, install it — provisioning creates the tenant, integration and owner user.
 3. In the dashboard (or the Shopify app): Settings (business details, spend caps; auto-cancel stays
    **off** for the pilot), approve the COD script, set up the support line (profile, fallback
@@ -28,14 +28,14 @@ phone and name, so every COD order would be refused with `no_phone`. So:
 
 ## 2. Client B — website, lead callback via the API
 
-1. Staff create the tenant, the owner user and the `lead_callback` use case (§3).
+1. Staff create the tenant with the owner and the `lead_callback` use case in the console (§3).
 2. The owner signs in at `app.naaradh.com/login` (email link), approves the lead-callback script,
    and creates an API key under **Developers** (owner role): a **secret** key for their server, or
    a **public site key** (`nrd_pk_…`, domain-restricted) for the website snippet.
 3. Integration options:
    - **Server:** `POST https://api.naaradh.com/v1/intents` with `use_case: "lead_callback"`,
-     phone, name, `external_ref`, `event_ts`, optional consent — see `apps/api/src/routes/intents.ts`
-     for the exact body until the OpenAPI document is published (gap).
+     phone, name, `external_ref`, `event_ts`, optional consent — reference: `docs/api/openapi.json`
+     (also served at `GET /v1/openapi.json`) and the quickstart in `docs/api/README.md`.
    - **Website snippet:** add
      `<script src="https://app.naaradh.com/naaradh.js" data-key="nrd_pk_…" async></script>`
      and mark the form with `data-naaradh` (usage in the header of `apps/web/public/naaradh.js`).
@@ -45,34 +45,20 @@ phone and name, so every COD order would be refused with `no_phone`. So:
 4. Billing: Razorpay subscription from the dashboard Billing page (owner), or manual during the
    pilot.
 
-## 3. Creating a direct merchant (today: SQL, by staff)
+## 3. Creating a direct merchant (staff console → Tenants → New merchant)
 
-There is no "create merchant" screen yet (gap). Run as the **service** role against the target
-environment, with generated ids (`ten_`/`usr_`/`usc_` + a ULID — generate with
-`node --input-type=module -e "import {ulid} from 'ulid'; console.log(ulid())"` from
-`packages/shared`). Placeholders only — never commit real values.
+Console → **Tenants** → *+ New merchant*: brand and legal name, country/time zone/currency,
+GSTIN/PAN (validated), the owner's email, the use cases to set up (`cod_confirm`,
+`abandoned_cart`, `lead_callback` — all OFF, with draft scripts from the default templates for
+the owner to approve), the default script language, and a note saying why the merchant is
+created by hand. The tenant starts in **pending review** for 7 days (E-73). No email is sent:
+the owner requests a sign-in link at `app.naaradh.com/login` (the console shows the exact URL).
+Shopify stores are never created here — they provision themselves on install.
 
-```sql
-begin;
-insert into tenants (id, name, legal_name, country, data_region, timezone, currency,
-                     status, review_until, gstin, pan)
-values ('ten_<ULID>', 'Client B', '<legal name>', 'IN', 'in', 'Asia/Kolkata', 'INR',
-        'pending_review', now() + interval '7 days', '<GSTIN or null>', '<PAN or null>');
-insert into users (id, tenant_id, email, name, role)
-values ('usr_<ULID>', 'ten_<ULID>', '<owner email>', '<owner name>', 'owner');
-insert into use_cases (id, tenant_id, kind, purpose, enabled, config)
-values ('usc_<ULID>', 'ten_<ULID>', 'lead_callback', 'service', false,
-        '{"defaultLocale":"en-IN","pilotPercent":100}');
-commit;
-```
-
-Then add a draft script for the use case (shape: the `LEAD_CALLBACK_EN_IN` template in
-`packages/scripts/src/templates.ts`; the local seed in `packages/db/src/seed.ts` shows a complete
-insert). The owner approves it in the dashboard, which re-validates the disclosure.
-
-**DLT link (promotional only):** after checking on the DLT portal that the merchant's PE is linked
-to Naaradh: `update tenants set dlt_linked_at = now() where id = 'ten_…';` (service role; gap —
-no console button yet).
+**DLT link (promotional only):** after checking on the DLT portal that the merchant's PE
+authorised Naaradh as its telemarketer, open the tenant in the console → *DLT principal entity*
+card → PE id + what you checked → **Mark PE linked**. Promotional use cases stay blocked until
+then; the link can be removed the same way.
 
 ## 4. Running the pilot
 
@@ -118,13 +104,13 @@ compared with the external items:
 | Gap | Today | Suggested fix |
 |---|---|---|
 | Voice engine adapter | Simulator only | Build after ADR-0001 ([03](03-voice-engine.md#5-after-the-decision--code-work)) |
-| Registering numbers | SQL by staff | Console "Numbers" page: add, assign to tenant/profile, set `purpose_allowed` with the evidence note, retire |
-| Creating a direct (non-Shopify) merchant | SQL by staff | Console "New merchant": tenant + owner + use case + draft script, sends the sign-in invite |
-| Marking a merchant's DLT PE link | SQL by staff | Console button on the tenant page |
+| Registering numbers | ✅ Console → Numbers (Phase 3) | — |
+| Creating a direct (non-Shopify) merchant | ✅ Console → Tenants → New merchant (Phase 3); the owner requests the sign-in link | — |
+| Marking a merchant's DLT PE link | ✅ Console → tenant → DLT card (Phase 3) | — |
 | Transfer-number verification | Attestation only | Test call from onboarding (needs the engine) |
-| Number answer-rate job (`cli-health`) | Not built | Nightly job computing `answer_rate_7d` from attempts |
-| API reference for Client B | Code only (`pnpm openapi` is a stub) | Generate OpenAPI from the Zod route schemas; publish at docs.naaradh.com |
-| RTO analytics export (BigQuery) | Dataset in Terraform; no export job | Nightly export job (P2-WEB-2 / P2-INF-2) |
+| Number answer-rate job (`cli-health`) | ✅ Nightly in the reconcile worker (Phase 3); staff decide retirements in the console | — |
+| API reference for Client B | ✅ `docs/api/openapi.json` (generated from the route schemas, drift-checked in CI) and `GET /v1/openapi.json` | Publish a rendered copy at docs.naaradh.com (Phase 5) |
+| RTO analytics export (BigQuery) | ✅ Nightly `workers-analytics` load job (Phase 3); no PII in the facts | Baseline/RTO dashboards on top of the dataset (P2-WEB-2) |
 | Shopify Flow trigger | Not built | Flow extension (P2-SHOP-7) |
 | Voice choice in onboarding | Not built | Needs the engine's voice list |
 | Snippet hosting | Served by the web app | `cdn.naaradh.com` (Cloud CDN) |

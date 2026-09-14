@@ -100,30 +100,16 @@ decides who the number belongs to and what it may be used for).
 
 The exact field names depend on the engine and are finalised with its adapter (ADR-0001).
 
-### 5.2 In Naaradh (today: SQL, by staff)
+### 5.2 In Naaradh (staff console → Numbers)
 
-There is no screen for numbers yet (gap). Staff insert the row with the **service** role against
-the environment's database. The number below is a placeholder — never commit a real number.
-
-```sql
--- Pool number for outbound (tenant_id NULL = shared pool; set a tenant id for a dedicated number)
-insert into numbers (id, tenant_id, e164, region, series, provider, engine,
-                     purpose_allowed, status, provisioning_note)
-values ('num_<ULID>', null, '+91XXXXXXXXXX', 'IN', '10digit', 'exotel', 'bolna',
-        array['transactional','service']::purpose[],   -- only what the TSP letter allows (Q-01)
-        'active',
-        'TSP letter 2026-09-xx ref <file in docs/legal/tsp-responses/>');
-
--- Support line for one merchant: tenant-owned, answered by that merchant's active inbound profile
-insert into numbers (id, tenant_id, e164, region, series, provider, engine,
-                     purpose_allowed, status, inbound_enabled, inbound_profile_id, provisioning_note)
-values ('num_<ULID>', 'ten_<merchant>', '+91XXXXXXXXXX', 'IN', '10digit', 'exotel', 'bolna',
-        array[]::purpose[], 'active', true, 'ipr_<active profile>', 'support line for <merchant>');
-```
-
-Rules the database enforces: a support number may only be answered by a profile of the tenant that
-owns it (trigger `numbers_profile_same_tenant`); the app role cannot insert or change numbers;
-merchants only ever see their own and pool numbers (RLS).
+Console → **Numbers** → *Register a number*: the number (any format), region, series, provider,
+engine, the **allowed purposes** (only what the TSP's letter allows — Q-01) with the evidence
+note, and optionally the owning merchant and the inbound profile that answers it (a support
+line). It starts **warming**; activate it from its page once the engine's answer URL points at
+`voice`. Every change is audited as `staff:<you>`; the owning merchant sees it in their access
+log. Rules the database enforces: a support number may only be answered by a profile of the
+tenant that owns it; the app role cannot write numbers; merchants only ever see their own and
+pool numbers (RLS). Runbook: `docs/runbooks/cli-health.md`.
 
 How a call uses it:
 
@@ -136,10 +122,10 @@ How a call uses it:
 
 ### 5.3 Number health
 
-Warm new numbers with low volume. The gate skips numbers whose 7-day answer rate is below 25%
-(E-28); **the job that computes `answer_rate_7d` is not built yet** (`cli-health`, needs live
-numbers), so watch answer rates by hand in the first weeks and set `status = 'retired'` on a
-number the carriers flag as spam.
+Warm new numbers with low volume. Every night the reconcile worker computes each number's 7-day
+human-answer rate (`answer_rate_7d`, dials that reached the network only, minimum 20); the gate
+skips active numbers below 25% (E-28) and the console shows them in red. Retiring, resting and
+reintroducing a number is a staff decision on the number's page — `docs/runbooks/cli-health.md`.
 
 ## 6. Checklist
 

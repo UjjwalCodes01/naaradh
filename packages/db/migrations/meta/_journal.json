@@ -78,6 +78,13 @@
       "when": 1789234385585,
       "tag": "0010_merchant_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789300000000,
+      "tag": "0011_agent_actions_erasure",
+      "breakpoints": true
     }
   ]
 }

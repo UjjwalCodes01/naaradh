@@ -1,0 +1,103 @@
+name: load
+
+# k6 load tests against STAGING (P3-INF-4, AGENTS.md §12: weekly). Never production: the scripts
+# themselves refuse any host outside *.stage.naaradh.com, and this workflow only knows the stage
+# environment's variables. Manual runs pick the script; the weekly schedule runs all three once
+# the repository variable LOAD_ENABLED is 'true' (set it when staging exists).
+#
+# Stage environment (Settings → Environments → stage):
+#   variables  LOAD_HOOKS_URL, LOAD_VOICE_URL, LOAD_API_URL, LOAD_SHOP_DOMAIN, LOAD_CALLED_NUMBER
+#   secrets    LOAD_SHOPIFY_SECRET (staging app client secret), LOAD_SIMULATOR_SECRET
+#              (staging SIMULATOR_WEBHOOK_SECRET), LOAD_API_KEY (a staging tenant's secret key)
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: Which script to run
+        type: choice
+        options: [hooks, voice, api, all]
+        default: all
+  schedule:
+    - cron: '30 4 * * 2' # Tuesdays 04:30 UTC = 10:00 IST, inside the calling window (api-intents needs it)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: load-stage
+  cancel-in-progress: false
+
+jobs:
+  k6:
+    name: k6 ${{ matrix.script }}
+    if: github.event_name == 'workflow_dispatch' || vars.LOAD_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: stage
+    strategy:
+      fail-fast: false
+      matrix:
+        script: [hooks, voice, api]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: skip scripts not selected
+        id: sel
+        run: |
+          want="${{ github.event.inputs.script || 'all' }}"
+          if [ "$want" = "all" ] || [ "$want" = "${{ matrix.script }}" ]; then echo run=true >> "$GITHUB_OUTPUT"; else echo run=false >> "$GITHUB_OUTPUT"; fi
+
+      - name: refuse anything that is not staging
+        if: steps.sel.outputs.run == 'true'
+        run: |
+          for u in "${{ vars.LOAD_HOOKS_URL }}" "${{ vars.LOAD_VOICE_URL }}" "${{ vars.LOAD_API_URL }}"; do
+            case "$u" in
+              https://*.stage.naaradh.com|https://*.stage.naaradh.com/) ;;
+              *) echo "::error::$u is not a staging URL"; exit 1 ;;
+            esac
+          done
+
+      # Grafana's official apt repository (https://grafana.com/docs/k6/latest/set-up/install-k6/).
+      - name: install k6
+        if: steps.sel.outputs.run == 'true'
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg \
+            --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" \
+            | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update -q && sudo apt-get install -y k6
+          mkdir -p load/results
+
+      - name: hooks — 500 webhooks / 60 s
+        if: steps.sel.outputs.run == 'true' && matrix.script == 'hooks'
+        env:
+          HOOKS_URL: ${{ vars.LOAD_HOOKS_URL }}
+          SHOP_DOMAIN: ${{ vars.LOAD_SHOP_DOMAIN }}
+          SHOPIFY_SECRET: ${{ secrets.LOAD_SHOPIFY_SECRET }}
+        run: k6 run load/hooks-webhooks.js
+
+      - name: voice — 100 inbound contexts / 10 s with tool calls
+        if: steps.sel.outputs.run == 'true' && matrix.script == 'voice'
+        env:
+          VOICE_URL: ${{ vars.LOAD_VOICE_URL }}
+          CALLED_NUMBER: ${{ vars.LOAD_CALLED_NUMBER }}
+          SIMULATOR_WEBHOOK_SECRET: ${{ secrets.LOAD_SIMULATOR_SECRET }}
+        run: k6 run load/voice-inbound.js
+
+      - name: api — 50 concurrent intents
+        if: steps.sel.outputs.run == 'true' && matrix.script == 'api'
+        env:
+          API_URL: ${{ vars.LOAD_API_URL }}
+          API_KEY: ${{ secrets.LOAD_API_KEY }}
+        run: k6 run load/api-intents.js
+
+      - name: upload summary
+        if: always() && steps.sel.outputs.run == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-${{ matrix.script }}-${{ github.run_id }}
+          path: load/results/*.json
+          if-no-files-found: ignore
+          retention-days: 30

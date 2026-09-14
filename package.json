@@ -28,6 +28,9 @@
     "keys:dev": "node scripts/gen-dev-keys.mjs",
     "openapi": "pnpm --filter @naaradh/api openapi",
     "tf:plan": "bash scripts/tf-plan.sh",
+    "load:hooks": "k6 run load/hooks-webhooks.js",
+    "load:voice": "k6 run load/voice-inbound.js",
+    "load:api": "k6 run load/api-intents.js",
     "services:up": "docker compose up -d --wait",
     "services:down": "docker compose down",
     "services:reset": "docker compose down -v && docker compose up -d --wait"

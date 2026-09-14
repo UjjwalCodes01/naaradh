@@ -1,0 +1,93 @@
+# Dependency updates (P3-INF-6; SPEC §14 "Dependency scanning (Dependabot)").
+#
+# Everything is pinned exactly (AGENTS.md §11), so `versioning-strategy: increase` keeps pins
+# exact while moving them. Minor + patch updates arrive as one grouped PR per ecosystem per week;
+# major updates come as their own PR each so they get a real review. Commit messages follow
+# Conventional Commits (`chore(deps): …`) like the rest of the history.
+#
+# Security updates are separate from this schedule: Dependabot opens them as soon as an advisory
+# matches (Settings → Code security → Dependabot security updates must be on).
+version: 2
+
+updates:
+  # pnpm workspace: one manifest tree from the root (pnpm-workspace.yaml).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 10
+    versioning-strategy: increase
+    labels: [dependencies, npm]
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      # @shopify/* moves together (App Bridge, Polaris, CLI, shopify-app-react-router share a
+      # release train; ADR-0007) and gets its own PR so a Shopify bump is reviewed on its own.
+      shopify:
+        patterns: ['@shopify/*']
+        update-types: [minor, patch]
+      minor-and-patch:
+        patterns: ['*']
+        exclude-patterns: ['@shopify/*']
+        update-types: [minor, patch]
+
+  # Third-party actions are pinned by commit SHA with a version comment (ci.yml); Dependabot
+  # bumps the SHA and rewrites the comment.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 5
+    labels: [dependencies, github-actions]
+    commit-message:
+      prefix: chore(deps)
+
+  # The seven production images pin `node:22.<x>.<y>-bookworm-slim@sha256:…` in
+  # `ARG NODE_IMAGE=` (docs/runbooks/deploy.md "Refresh the Node base image"). One grouped PR so
+  # every Dockerfile moves in the same commit; the `images` CI job builds and trivy-scans them.
+  - package-ecosystem: docker
+    directories:
+      - /apps/api
+      - /apps/console
+      - /apps/hooks
+      - /apps/shopify
+      - /apps/voice
+      - /apps/web
+      - /apps/workers
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 2
+    labels: [dependencies, docker]
+    commit-message:
+      prefix: chore(deps)
+    groups:
+      node-base-image:
+        patterns: ['node']
+
+  # Provider pins in infra/versions.tf (+ .terraform.lock.hcl). Major provider upgrades are a
+  # deliberate review (versions.tf stays on the 7.x line on purpose), so majors are ignored here.
+  - package-ecosystem: terraform
+    directory: /infra
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Asia/Kolkata
+    open-pull-requests-limit: 2
+    labels: [dependencies, terraform]
+    commit-message:
+      prefix: chore(deps)
+    ignore:
+      - dependency-name: hashicorp/google
+        update-types: ['version-update:semver-major']
+      - dependency-name: hashicorp/google-beta
+        update-types: ['version-update:semver-major']

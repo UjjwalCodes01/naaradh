@@ -68,3 +68,13 @@ output "github_actions" {
 output "runtime_service_accounts" {
   value = module.iam.runtime_emails
 }
+
+output "audit_logs_bucket" {
+  description = "Locked bucket every Cloud Audit Log is exported to (P3-INF-5)."
+  value       = module.audit_logs.bucket_name
+}
+
+output "audit_logs_sink_writer" {
+  description = "Identity the audit log sink writes as (objectCreator on the audit bucket only)."
+  value       = module.audit_logs.sink_writer_identity
+}

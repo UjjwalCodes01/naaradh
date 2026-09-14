@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { pingDb } from '@naaradh/db';
-import { fastifyLoggerOptions } from '@naaradh/shared';
+import { fastifyLoggerOptions, trustProxyOf } from '@naaradh/shared';
 import type { VoiceDeps } from './context.js';
 import { registerInboundRoutes } from './inbound.js';
 import { registerToolRoutes } from './tools/route.js';
@@ -18,7 +18,7 @@ import { registerToolRoutes } from './tools/route.js';
 export async function buildServer(deps: VoiceDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: fastifyLoggerOptions(deps.logLevel ?? process.env['LOG_LEVEL'] ?? 'info'),
-    trustProxy: true,
+    trustProxy: trustProxyOf(deps.trustProxyHops),
     bodyLimit: 262_144, // 256 KiB — context and tool payloads are tiny
     requestIdHeader: 'x-cloud-trace-context',
     // An engine waits on us mid-conversation; a slow request is worse than a failed one.

@@ -10,6 +10,12 @@ const env = loadVoiceEnv();
 
 const { db, close } = createDb({ url: env.DATABASE_URL, applicationName: 'naaradh-voice' });
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2, lazyConnect: false });
+// Reconnects are handled by ioredis; logged so an outage is visible, never fatal.
+redis.on('error', (error) => {
+  process.stderr.write(
+    `${JSON.stringify({ severity: 'WARNING', message: 'redis client error', error: error.message })}\n`,
+  );
+});
 const registry = new EngineRegistry({ env });
 
 const app = await buildServer({
@@ -31,6 +37,7 @@ const app = await buildServer({
   concurrency: concurrencyPort(redis),
   rateLimitPerMinute: env.RATE_LIMIT_PER_MINUTE,
   logLevel: env.LOG_LEVEL,
+  trustProxyHops: env.TRUST_PROXY_HOPS,
 });
 
 const shutdown = async (signal: string) => {

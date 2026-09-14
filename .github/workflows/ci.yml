@@ -35,6 +35,8 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm build
+      - name: openapi drift (docs/api/openapi.json is generated — run `pnpm openapi` and commit)
+        run: pnpm openapi && git diff --exit-code -- docs/api/openapi.json
 
   # The gate that blocks merges (CLAUDE.md). Kept as its own job so a red compliance suite
   # is unmistakable in the checks list rather than buried in a combined test run.

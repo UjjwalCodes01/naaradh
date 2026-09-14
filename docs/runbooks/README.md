@@ -20,6 +20,9 @@ Written for whoever is on call at 2 a.m. — symptom first, then the exact comma
 | [`billing-dispute.md`](billing-dispute.md) | Evidence bundle, accept/reject, credit row, Shopify manual refund | done |
 | [`billing-postings.md`](billing-postings.md) | Postings to Shopify/Razorpay, capped / frozen tenants, reconciliation deltas, margin alert | done |
 | [`deploy.md`](deploy.md) | Deploy (stage/prod), roll back a revision, plan → review → apply Terraform, add a secret version, run migrations, dead letters | done |
-| `cli-health.md` | Answer-rate monitoring, CLI rotation, retirement below 25% | P2-OPS-1 |
-| `shopify-api-upgrade.md` | Quarterly API version bump checklist | P3-OPS-2 |
-| `restore-drill.md` | Quarterly Cloud SQL restore test | P3-OPS-2 |
+| [`cli-health.md`](cli-health.md) | Answer-rate job (E-28), the Numbers page, when to retire, rest or reintroduce a number | done |
+| [`shopify-api-upgrade.md`](shopify-api-upgrade.md) | Quarterly Admin API version bump: where it is pinned, staging checks, rollback | done |
+| [`restore-drill.md`](restore-drill.md) | Neon point-in-time recovery, the quarterly drill (`scripts/restore-drill.sh`), fail-over | done |
+| [`secret-rotation.md`](secret-rotation.md) | Every secret's rotation class; the re-encryption jobs for `SHOPIFY_TOKEN_KEY`, `PHONE_ENC_*`, `STAFF_ENC_*`; the first-rotation checklist | done |
+| [`on-call.md`](on-call.md) | Rota, alert sources and severities, first 15 minutes, escalation, weekly review | done |
+| [`load-test.md`](load-test.md) | k6 scripts against staging, thresholds (SLOs), what a failure means; the chaos test | done |

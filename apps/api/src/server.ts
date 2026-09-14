@@ -3,7 +3,7 @@ import rateLimit from '@fastify/rate-limit';
 import type { Redis } from 'ioredis';
 import { pingDb, type Db } from '@naaradh/db';
 import type { PhoneKeys } from '@naaradh/pipeline';
-import { fastifyLoggerOptions } from '@naaradh/shared';
+import { fastifyLoggerOptions, trustProxyOf } from '@naaradh/shared';
 import { registerSnippetCors } from './cors.js';
 import { registerAuth } from './auth.js';
 import { errorHandler } from './errors.js';
@@ -15,6 +15,13 @@ import { registerBillingRoutes } from './routes/billing.js';
 import { registerPrivacyRoutes } from './routes/privacy.js';
 import { registerSupportRoutes } from './routes/support.js';
 import { registerWebhookRoutes } from './routes/webhooks.js';
+import { buildOpenApiDocument, serializeOpenApiDocument } from './openapi.js';
+
+let openApiCache: string | undefined;
+function openApiJson(): string {
+  openApiCache ??= serializeOpenApiDocument(buildOpenApiDocument());
+  return openApiCache;
+}
 import type { RazorpayClient } from '@naaradh/payments';
 import type { SecretStore } from './secrets.js';
 
@@ -36,6 +43,8 @@ export interface ApiDeps {
   readonly secrets: SecretStore;
   readonly clock: () => Date;
   readonly rateLimitKeyPerMinute: number;
+  /** TRUST_PROXY_HOPS — trailing X-Forwarded-For entries that are ours (see @naaradh/shared baseEnv). */
+  readonly trustProxyHops?: number;
   readonly rateLimitPublicPerMinute: number;
   readonly defaultDailyCap: number;
   readonly logLevel?: string;
@@ -44,7 +53,7 @@ export interface ApiDeps {
 export async function buildServer(deps: ApiDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: fastifyLoggerOptions(deps.logLevel ?? process.env['LOG_LEVEL'] ?? 'info'),
-    trustProxy: true,
+    trustProxy: trustProxyOf(deps.trustProxyHops),
     bodyLimit: 256 * 1024,
     requestIdHeader: 'x-cloud-trace-context',
   });
@@ -93,6 +102,13 @@ export async function buildServer(deps: ApiDeps): Promise<FastifyInstance> {
   registerIdempotency(app, deps.db, deps.clock);
 
   app.get('/healthz', { config: { public: true, rateLimit: false } }, () => ({ status: 'ok' }));
+  // The API's own description (docs/api/openapi.json is the committed copy): public, cacheable.
+  app.get('/v1/openapi.json', { config: { public: true } }, (_req, reply) =>
+    reply
+      .header('cache-control', 'public, max-age=300')
+      .type('application/json; charset=utf-8')
+      .send(openApiJson()),
+  );
   app.get('/readyz', { config: { public: true, rateLimit: false } }, async (_req, reply) => {
     const db = await pingDb(deps.db);
     return reply.code(db ? 200 : 503).send({ status: db ? 'ok' : 'degraded', checks: { db } });

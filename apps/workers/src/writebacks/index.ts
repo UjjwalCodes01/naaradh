@@ -3,6 +3,7 @@ import { schema, withTenant } from '@naaradh/db';
 import { audit } from '@naaradh/pipeline';
 import { addMinutes } from '@naaradh/shared';
 import type { WorkerContext } from '../context.js';
+import { runLoop } from '../loop.js';
 import { isRetryableWritebackError } from '../results/shopify-writeback.js';
 import { planWriteback, type WritebackPlan } from '../results/writeback.js';
 
@@ -232,14 +233,14 @@ export async function runWritebacks(
   pollMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  ctx.log.info({ poll_ms: pollMs }, 'writebacks worker started');
-  while (!signal.aborted) {
-    try {
+  await runLoop({
+    name: 'writebacks',
+    log: ctx.log,
+    intervalMs: pollMs,
+    signal,
+    async tick() {
       const report = await runWritebacksOnce(ctx);
       if (report.claimed > 0) ctx.log.info(report, 'writebacks pass');
-    } catch (error) {
-      ctx.log.error({ err: error }, 'writebacks pass failed');
-    }
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
-  }
+    },
+  });
 }

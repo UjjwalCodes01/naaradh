@@ -41,6 +41,17 @@ export default tseslint.config(
     },
   },
 
+  // k6 load scripts (load/): ES modules run by k6, not Node — its globals, no type info.
+  {
+    ...tseslint.configs.disableTypeChecked,
+    files: ['load/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: { __ENV: 'readonly', __VU: 'readonly', __ITER: 'readonly', open: 'readonly' },
+    },
+  },
+
   // The website snippet runs in merchants' pages: browser globals, ES2017, no modules.
   {
     files: ['apps/web/public/naaradh.js'],

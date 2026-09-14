@@ -32,8 +32,9 @@ Later: `naaradh-prod-us` / `naaradh-prod-eu` from the same modules (P6-INF-1). `
 | `modules/armor` | Cloud Armor policies `api`, `hooks`, `voice`, `standard`, `console` |
 | `modules/iam` | runtime SAs `run-<service>`, GitHub **Workload Identity Federation**, `deployer` and read-only `tf-planner` |
 | `modules/artifact-registry` | Docker repo `naaradh` (immutable tags, cleanup policies in dry-run) |
-| `modules/bigquery` | dataset `naaradh_analytics` (CMEK), table `daily_call_facts` (no PII), SA `analytics-export` |
-| `modules/monitoring` | `/healthz` uptime checks, log-match alerts for events that need a human, error-rate metrics, dead-letter and Redis-memory alerts |
+| `modules/bigquery` | dataset `naaradh_analytics` (CMEK), table `daily_call_facts` (no PII); `workers-analytics` is the only writer (dataEditor + jobUser for its nightly load jobs) |
+| `modules/audit-logs` | Data Access audit logs for Secret Manager, GCS, KMS, BigQuery, IAP (`audit_data_access_logging`); every audit log exported to `<project>-audit-logs` (CMEK, 365-day retention policy, **locked** in prod via `audit_lock_retention`, irreversible) |
+| `modules/monitoring` | `/healthz` uptime checks, log-match alerts for events that need a human, Cloud Run SLO alerts (hooks p99 < 800 ms, voice p95 < 700 ms, 5xx < 2 %), Pub/Sub backlog, error-rate metrics, dead-letter and Redis-memory alerts; channels: email (all), PagerDuty / webhook (CRITICAL only — `TF_VAR_pagerduty_service_key`, `TF_VAR_alert_webhook_url`, never in tfvars) |
 | `docker/` | build helpers for `apps/*/Dockerfile` (import check, migrate-job entrypoint + tsup config) |
 
 **Not here:** Postgres. The database is Neon (ADR-0004); its connection strings are secrets. `DATABASE_MIGRATOR_URL` is the direct endpoint and only the `migrate` job holds it.
@@ -47,7 +48,7 @@ Later: `naaradh-prod-us` / `naaradh-prod-eu` from the same modules (P6-INF-1). `
 | `voice` | LB | **2** / 10 | **always** | a cold start mid-call is dead air; guard fails the plan below 2 |
 | `web` / `shopify` | LB | 0 / 5 | request | `enabled = false` until their images exist |
 | `console` | LB + **IAP** | 0 / 2 | request | staff only; invoker is the IAP service agent |
-| `workers-<role>` × 11 | internal only | 1 / 1–2 | **always** | `WORKER=<role>`: intents, dispatcher, results, reconcile, deliveries, actions, writebacks, complaints, retention, billing, notifications |
+| `workers-<role>` × 12 | internal only | 1 / 1–2 | **always** | `WORKER=<role>`: intents, dispatcher, results, reconcile, deliveries, actions, writebacks, complaints, retention, billing, notifications, analytics |
 | `migrate` (job) | — | — | — | runs before every rollout |
 
 Sizing and on/off are overridable per env (`services = { … }`); ingress, identity and secrets are not.

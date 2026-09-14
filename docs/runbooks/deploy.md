@@ -112,7 +112,7 @@ terraform -chdir=infra output services
 gcloud run services update api --project $PROJECT --region $REGION --update-labels=secret-rotated=$(date +%s)
 ```
 
-Keys with special rules — read before touching:
+Keys with special rules — read before touching (full procedures: `secret-rotation.md`):
 
 - `PHONE_HASH_KEY` — rotating it orphans every suppression and consent row (hashes change). It is a re-hash migration, not a rotation. Never "just add a version".
 - `PHONE_ENC_*` / `STAFF_ENC_*` — add the new key pair with a new `*_KID`; old ciphertexts stay readable only while the old private key is still available to the dispatcher/results/reconcile (customer) or voice (staff).

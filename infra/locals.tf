@@ -19,7 +19,7 @@ locals {
   # -------------------------------------------------------------------------------------------
   worker_roles = [
     "intents", "dispatcher", "results", "reconcile", "deliveries",
-    "actions", "writebacks", "complaints", "retention", "billing", "notifications",
+    "actions", "writebacks", "complaints", "retention", "billing", "notifications", "analytics",
   ]
   workers = [for r in local.worker_roles : "workers-${r}"]
 
@@ -98,6 +98,9 @@ locals {
     "RAZORPAY_KEY_SECRET",
     "RAZORPAY_WEBHOOK_SECRET",
     "WEBHOOK_SIGNING_KEY",
+    # Staging only (SIMULATOR_ALLOWED=true there): signs the simulator engine's webhooks and tool
+    # calls. Production refuses the simulator, so this secret never exists there.
+    "SIMULATOR_WEBHOOK_SECRET",
   ]
 
   # ===========================================================================================
@@ -132,10 +135,11 @@ locals {
     STAFF_ENC_PRIVATE_KEY = ["voice"]
 
     # Binds engine webhook/tool URLs to a tenant; every worker role's env schema requires it.
-    ENGINE_WEBHOOK_KEY = concat(["hooks", "voice"], local.workers)
-    BOLNA_API_KEY      = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
-    OMNIDIM_API_KEY    = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
-    RETELL_API_KEY     = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
+    ENGINE_WEBHOOK_KEY       = concat(["hooks", "voice"], local.workers)
+    BOLNA_API_KEY            = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
+    SIMULATOR_WEBHOOK_SECRET = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
+    OMNIDIM_API_KEY          = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
+    RETELL_API_KEY           = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
 
     # Offline Admin tokens are sealed in Postgres under SHOPIFY_TOKEN_KEY (ADR-0007 §3). Only the
     # app and the workers that call the Admin API hold it; those workers also hold the app's
@@ -199,9 +203,16 @@ locals {
       local.base_env,
       contains(["voice"], k) || startswith(k, "workers-") ? local.url_env : {},
       contains(local.recordings_users, k) ? { RECORDINGS_BUCKET = module.gcs.recordings_bucket } : {},
+      # Behind the external HTTPS LB the client IP is the second-to-last X-Forwarded-For entry
+      # (Cloud Run front end + LB = 2 trusted hops). Never `true`: rate limits and API-key IP
+      # allow-lists key on this address. [VERIFY on stage: `gcloud logging read` a request's
+      # httpRequest.remoteIp against the app's request.ip.]
+      v.public ? { TRUST_PROXY_HOPS = "2" } : {},
       var.common_env,
       startswith(k, "workers-") ? { WORKER = trimprefix(k, "workers-") } : {},
       k == "workers-notifications" && contains(keys(var.hostnames), "web") ? { DASHBOARD_URL = "https://${var.hostnames["web"]}" } : {},
+      # Nightly facts export (P2-INF-2): dataset + location; the loader runs where the dataset lives.
+      k == "workers-analytics" ? { BIGQUERY_DATASET = module.bigquery.dataset_id, BIGQUERY_LOCATION = var.region } : {},
       # Public origins the apps put in links and check Origin against.
       k == "web" && contains(keys(var.hostnames), "web") ? { APP_URL = "https://${var.hostnames["web"]}" } : {},
       k == "shopify" && contains(keys(var.hostnames), "shopify") ? { SHOPIFY_APP_URL = "https://${var.hostnames["shopify"]}" } : {},

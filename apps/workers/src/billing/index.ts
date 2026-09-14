@@ -20,6 +20,7 @@ import { ShopifyUserError, createUsageRecord, fetchSubscription } from '@naaradh
 import { addDays, addMinutes, newId } from '@naaradh/shared';
 import type { EventMessage } from '../bus.js';
 import type { WorkerContext } from '../context.js';
+import { runLoop } from '../loop.js';
 import { isRetryableWritebackError } from '../results/shopify-writeback.js';
 import { shopifyClientFor } from '../shopify-client.js';
 import { loadWebhookEvent, markWebhookFailed, markWebhookProcessed } from '../webhook-events.js';
@@ -461,10 +462,13 @@ export async function runBilling(
   pollMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  ctx.log.info({ poll_ms: pollMs }, 'billing worker started');
   let lastReconcile = '';
-  while (!signal.aborted) {
-    try {
+  await runLoop({
+    name: 'billing',
+    log: ctx.log,
+    intervalMs: pollMs,
+    signal,
+    async tick() {
       const r = await runBillingOnce(ctx);
       if (r.created.shopify + r.created.razorpay + r.posted + r.capped + r.failed > 0)
         ctx.log.info(r, 'billing pass');
@@ -475,9 +479,6 @@ export async function runBilling(
         lastReconcile = day;
         ctx.log.info(await runReconciliationOnce(ctx), 'billing reconciliation');
       }
-    } catch (error) {
-      ctx.log.error({ err: error }, 'billing pass failed');
-    }
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
-  }
+    },
+  });
 }

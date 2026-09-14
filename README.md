@@ -14,6 +14,8 @@ appointment confirmation, lead callback — through the same gate, the same tool
 | [docs/NAARADH_BUILD_SPEC.md](docs/NAARADH_BUILD_SPEC.md) | Product, pricing, regulatory spec; edge cases `E-xx` |
 | [docs/open-questions.md](docs/open-questions.md) | What is unresolved, and the safe default until it is |
 | [docs/go-live/](docs/go-live/README.md) | **Everything needed from outside the code to go live** — company, numbers and DLT, voice engine, Shopify Partner app, cloud, email, payments, secrets, first merchants |
+| [docs/api/](docs/api/README.md) | The generated OpenAPI reference (`openapi.json`, also served at `/v1/openapi.json`) and the Client B quickstart |
+| [docs/security/](docs/security/checklist.md) | SPEC §14 checklist with evidence, the 14 Sep 2026 implementation audit, VPC-SC evaluation, restore-drill log |
 
 ## Quick start
 

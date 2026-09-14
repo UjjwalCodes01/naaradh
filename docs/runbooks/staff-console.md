@@ -22,6 +22,9 @@ audited as `staff:<you>` and visible to the merchant in their access log.
 | A person asks privacy@ to delete their data (identity verified) | Erasure & DNC → "Erase across every tenant" | erasure-request.md |
 | Abuse, AUP breach | Tenants → Suspend (reason shown to the merchant as a suspended banner) | kill-switch.md |
 | Engine incident, runaway calling | Kill switches → global / engine / tenant / inbound | kill-switch.md, engine-outage.md |
+| A new number was bought, or one must be retired / rested / moved to a merchant | Numbers → register (starts `warming`), the number's page → purposes (from the TSP's letter, Q-01), status, owner + inbound profile | cli-health.md, go-live 02 §5 |
+| A merchant integrates by API or website (no Shopify) | Tenants → + New merchant: brand, owner email, use cases (OFF, draft scripts). The owner signs in at the dashboard's `/login` | merchant-access.md |
+| The merchant's DLT principal entity authorised Naaradh on the portal | Tenants → the tenant → DLT card → PE id + evidence → "Mark PE linked" (promotional use cases stay blocked until then) | go-live 02 §3 |
 
 ## Rules
 

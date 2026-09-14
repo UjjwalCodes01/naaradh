@@ -24,6 +24,9 @@ common_env = {
   LOG_LEVEL         = "info"
   ENGINE_DEFAULT_IN = "simulator" # until the bake-off picks an engine (ADR-0001)
   ENGINE_DEFAULT_US = "simulator"
+  # The simulator is refused in production unless said so explicitly (refineEngineEnv); its
+  # webhook secret is a real secret here (SIMULATOR_WEBHOOK_SECRET below), never the dev default.
+  SIMULATOR_ALLOWED = "true"
   SHOPIFY_WRITEBACK = "recording"
 }
 
@@ -57,3 +60,15 @@ iap_members = [
 ]
 
 alert_email = ""
+
+# Audit logs (P3-INF-5): Data Access logs on (same evidence trail as prod, exercised here first);
+# retention policy NOT locked — stage buckets must stay deletable.
+audit_data_access_logging = true
+audit_lock_retention      = false
+
+# On-call channels (P3-OPS-1): email only in stage. pagerduty_service_key / alert_webhook_url are
+# secrets and are never set in a tfvars file (TF_VAR_* in the applying shell).
+
+# Add a version with `gcloud secrets versions add SIMULATOR_WEBHOOK_SECRET` (openssl rand -hex 32)
+# before the first apply: Cloud Run will not start a holder whose secret has no version.
+enabled_optional_secrets = ["SIMULATOR_WEBHOOK_SECRET"]

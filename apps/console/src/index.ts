@@ -11,6 +11,12 @@ const service = createServiceDb({
   applicationName: 'naaradh-console',
 });
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 });
+// Reconnects are handled by ioredis; logged so an outage is visible, never fatal.
+redis.on('error', (error) => {
+  process.stderr.write(
+    `${JSON.stringify({ severity: 'WARNING', message: 'redis client error', error: error.message })}\n`,
+  );
+});
 const keys = iapKeyFetcher();
 const allowList = env.CONSOLE_STAFF_EMAILS.split(',')
   .map((e) => e.trim().toLowerCase())
@@ -23,6 +29,8 @@ const app = await buildConsole({
   hashKey: env.PHONE_HASH_KEY,
   origin: env.CONSOLE_ORIGIN,
   logLevel: env.LOG_LEVEL,
+  trustProxyHops: env.TRUST_PROXY_HOPS,
+  dashboardUrl: env.DASHBOARD_URL,
   async authenticate(request) {
     // Local development only (refused in production by the env schema).
     if (env.CONSOLE_DEV_STAFF_EMAIL !== undefined) return env.CONSOLE_DEV_STAFF_EMAIL;

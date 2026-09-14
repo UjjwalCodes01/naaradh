@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { pingDb, type Db } from '@naaradh/db';
-import { fastifyLoggerOptions } from '@naaradh/shared';
+import { fastifyLoggerOptions, trustProxyOf } from '@naaradh/shared';
 import type { EngineRegistry } from '@naaradh/engines-registry';
 import type { Publisher } from './pubsub.js';
 import { registerEngineRoutes } from './routes/engine.js';
@@ -26,13 +26,15 @@ export interface HooksDeps {
   /** Null → the Razorpay route answers 404 (not configured in this environment). */
   readonly razorpayWebhookSecret?: string | null;
   readonly rateLimitPerMinute: number;
+  /** TRUST_PROXY_HOPS — trailing X-Forwarded-For entries that are ours (see @naaradh/shared baseEnv). */
+  readonly trustProxyHops?: number;
   readonly logLevel?: string;
 }
 
 export async function buildServer(deps: HooksDeps): Promise<FastifyInstance> {
   const app = Fastify({
     logger: fastifyLoggerOptions(deps.logLevel ?? process.env['LOG_LEVEL'] ?? 'info'),
-    trustProxy: true,
+    trustProxy: trustProxyOf(deps.trustProxyHops),
     bodyLimit: 1_048_576, // 1 MiB — webhook bodies are small; a cheap defence on a public endpoint
     requestIdHeader: 'x-cloud-trace-context',
   });

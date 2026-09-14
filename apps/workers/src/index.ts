@@ -2,7 +2,7 @@ import { hostname } from 'node:os';
 import { Redis } from 'ioredis';
 import { createDb } from '@naaradh/db';
 import { createServiceDb } from '@naaradh/db/service';
-import { createLogger, parseSecretKey, systemClock } from '@naaradh/shared';
+import { createLogger, shopifyTokenKeyring, systemClock } from '@naaradh/shared';
 import { EngineRegistry } from '@naaradh/engines-registry';
 import { createPubSubBus } from './bus.js';
 import type { WorkerContext } from './context.js';
@@ -14,6 +14,7 @@ import { runRetention } from './retention/index.js';
 import { startHealthServer } from './health.js';
 import { shopifyTokenResolver } from './shopify-tokens.js';
 import { runNotifications } from './notifications/index.js';
+import { bigQuerySink, memorySink, runAnalytics } from './analytics/index.js';
 import { memoryMailer, postmarkMailer } from '@naaradh/notify';
 import { runDeliveries } from './deliveries/index.js';
 import { inlineSecretResolver, secretManagerResolver } from './deliveries/secrets.js';
@@ -40,6 +41,10 @@ const service = createServiceDb({
   applicationName: `naaradh-workers-${env.WORKER}-svc`,
 });
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3, lazyConnect: false });
+// Reconnects are handled by ioredis; the error is logged so an outage is visible, never fatal.
+redis.on('error', (error) => {
+  log.warn({ err: error }, 'redis client error');
+});
 const registry = new EngineRegistry({ env });
 
 const baseSecrets =
@@ -51,8 +56,12 @@ const secretsResolver =
   env.SHOPIFY_API_SECRET !== undefined
     ? shopifyTokenResolver(baseSecrets, {
         service: service.db,
-        keys: new Map([[env.SHOPIFY_TOKEN_KID, parseSecretKey(env.SHOPIFY_TOKEN_KEY)]]),
-        currentKid: env.SHOPIFY_TOKEN_KID,
+        ...shopifyTokenKeyring({
+          SHOPIFY_TOKEN_KEY: env.SHOPIFY_TOKEN_KEY,
+          SHOPIFY_TOKEN_KID: env.SHOPIFY_TOKEN_KID,
+          SHOPIFY_TOKEN_KEY_PREVIOUS: env.SHOPIFY_TOKEN_KEY_PREVIOUS,
+          SHOPIFY_TOKEN_KID_PREVIOUS: env.SHOPIFY_TOKEN_KID_PREVIOUS,
+        }),
         clientId: env.SHOPIFY_API_KEY,
         clientSecret: env.SHOPIFY_API_SECRET,
         now: () => systemClock.now(),
@@ -149,6 +158,18 @@ if (role === 'complaints' || role === 'all')
 if (role === 'retention' || role === 'all') runs.push(runRetention(ctx, 60_000, controller.signal));
 if (role === 'notifications' || role === 'all')
   runs.push(runNotifications(ctx, 30_000, controller.signal));
+if (role === 'analytics' || role === 'all') {
+  const sink =
+    env.BIGQUERY_DATASET === undefined
+      ? memorySink()
+      : bigQuerySink({
+          projectId: env.GCP_PROJECT,
+          datasetId: env.BIGQUERY_DATASET,
+          tableId: env.BIGQUERY_TABLE,
+          ...(env.BIGQUERY_LOCATION === undefined ? {} : { location: env.BIGQUERY_LOCATION }),
+        });
+  runs.push(runAnalytics(ctx, sink, 60_000, controller.signal));
+}
 
 const health =
   env.PORT === undefined ? null : startHealthServer({ port: env.PORT, db: app.db, redis });

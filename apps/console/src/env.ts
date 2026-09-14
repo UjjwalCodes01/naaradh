@@ -20,6 +20,8 @@ export const consoleEnvSchema = z
     /** Staff allow-list on top of IAP: a domain, a comma list of emails, or both. */
     CONSOLE_ALLOWED_DOMAIN: z.string().default('naaradh.com'),
     CONSOLE_STAFF_EMAILS: z.string().default(''),
+    /** Merchant dashboard origin, shown to staff after creating a merchant (sign-in link). */
+    DASHBOARD_URL: z.string().url().default('http://localhost:3000'),
     /** Local only: act as this staff email without IAP. Refused in production. */
     CONSOLE_DEV_STAFF_EMAIL: z.string().email().optional(),
     RECORDINGS_BUCKET: z.string().optional(),

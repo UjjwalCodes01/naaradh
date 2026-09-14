@@ -3,6 +3,7 @@ import { schema } from '@naaradh/db';
 import { processComplaintReport } from '@naaradh/compliance';
 import { audit, emitMerchantEvent } from '@naaradh/pipeline';
 import type { WorkerContext } from '../context.js';
+import { runLoop } from '../loop.js';
 
 /**
  * complaints worker (P2-CMP-1, E-05). Drains `complaint_reports`: attribute each to the tenant
@@ -110,14 +111,14 @@ export async function runComplaints(
   pollMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  ctx.log.info({ poll_ms: pollMs }, 'complaints worker started');
-  while (!signal.aborted) {
-    try {
+  await runLoop({
+    name: 'complaints',
+    log: ctx.log,
+    intervalMs: pollMs,
+    signal,
+    async tick() {
       const r = await runComplaintsOnce(ctx);
       if (r.processed > 0) ctx.log.info(r, 'complaints pass');
-    } catch (error) {
-      ctx.log.error({ err: error }, 'complaints pass failed');
-    }
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
-  }
+    },
+  });
 }

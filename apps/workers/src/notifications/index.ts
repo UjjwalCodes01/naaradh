@@ -11,6 +11,7 @@ import {
 import { notificationSettingsOf, overview } from '@naaradh/pipeline';
 import { inZone, newId } from '@naaradh/shared';
 import type { WorkerContext } from '../context.js';
+import { runLoop } from '../loop.js';
 
 /**
  * notifications worker (P2-WEB-4). Two jobs:
@@ -278,17 +279,17 @@ export async function runNotifications(
   pollMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  ctx.log.info({ poll_ms: pollMs }, 'notifications worker started');
-  while (!signal.aborted) {
-    try {
+  await runLoop({
+    name: 'notifications',
+    log: ctx.log,
+    intervalMs: pollMs,
+    signal,
+    async tick() {
       const r = await runNotificationsOnce(ctx);
       if (r.queued + r.sent + r.skipped + r.retried + r.dead > 0)
         ctx.log.info(r, 'notifications pass');
-    } catch (error) {
-      ctx.log.error({ err: error }, 'notifications pass failed');
-    }
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
-  }
+    },
+  });
 }
 
 /** Test/ops helper: how many are waiting. */

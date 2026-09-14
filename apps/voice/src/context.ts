@@ -9,6 +9,8 @@ import type { Clock } from '@naaradh/shared';
  * kill-switch port is built ONCE so its ≤5 s cache is shared across requests (invariant 12).
  */
 export interface VoiceDeps {
+  /** TRUST_PROXY_HOPS — trailing X-Forwarded-For entries that are ours (see @naaradh/shared baseEnv). */
+  readonly trustProxyHops?: number;
   /** naaradh_app — RLS-bound. apps/voice never holds the service role. */
   readonly db: Db;
   readonly redis: Redis;

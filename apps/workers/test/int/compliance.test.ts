@@ -334,6 +334,13 @@ describe('erasure worker (DPDP, Shopify customers/redact)', () => {
       `insert into suppressions (id, tenant_id, phone_hash, purpose, reason, created_by) values ($1, $2, $3, 'all', 'opt_out', 'test')`,
       [newId('suppression'), TA, h(phone)],
     );
+    // A tool call whose arguments are the caller's own words (an address) — audit 2026-09-14.
+    const actionId = newId('agentAction');
+    await q(
+      `insert into agent_actions (id, tenant_id, attempt_id, tool, args, status, result)
+       values ($1, $2, $3, 'request_address_change', '{"order_ref":"#1001","new_address_summary":"Flat 2, New Road, near the temple"}', 'ticketed', '{"ok":true,"data":{"address_change":"requested"}}')`,
+      [actionId, TA, a.attemptId],
+    );
     for (const uri of [a.rec, a.tr, b.rec, b.tr]) expect(recordings.objects.has(uri)).toBe(true);
 
     const erasureId = newId('erasure');
@@ -390,6 +397,14 @@ describe('erasure worker (DPDP, Shopify customers/redact)', () => {
         ])
       )[0]?.summary,
     ).toBe('[erased]');
+    expect(
+      (
+        await q<{ args: unknown; result: unknown }>(
+          `select args, result from agent_actions where id = $1`,
+          [actionId],
+        )
+      )[0],
+    ).toEqual({ args: { erased: true }, result: { erased: true } });
     // The legal record stays.
     expect(
       await q(`select 1 from suppressions where phone_hash = $1 and lifted_at is null`, [h(phone)]),

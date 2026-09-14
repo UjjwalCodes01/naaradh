@@ -24,6 +24,7 @@ const app = await buildServer({
   razorpayWebhookSecret: env.RAZORPAY_WEBHOOK_SECRET ?? null,
   rateLimitPerMinute: env.RATE_LIMIT_PER_MINUTE,
   logLevel: env.LOG_LEVEL,
+  trustProxyHops: env.TRUST_PROXY_HOPS,
 });
 
 const shutdown = async (signal: string) => {

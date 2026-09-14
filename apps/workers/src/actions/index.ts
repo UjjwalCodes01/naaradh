@@ -4,6 +4,7 @@ import { isShipped } from '@naaradh/compliance';
 import { audit, createTicket, emitMerchantEvent, markOrderCancelled } from '@naaradh/pipeline';
 import { addMinutes } from '@naaradh/shared';
 import type { WorkerContext } from '../context.js';
+import { runLoop } from '../loop.js';
 import { isRetryableWritebackError } from '../results/shopify-writeback.js';
 
 /**
@@ -319,14 +320,14 @@ export async function runActions(
   pollMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  ctx.log.info({ poll_ms: pollMs }, 'actions worker started');
-  while (!signal.aborted) {
-    try {
+  await runLoop({
+    name: 'actions',
+    log: ctx.log,
+    intervalMs: pollMs,
+    signal,
+    async tick() {
       const report = await runActionsOnce(ctx);
       if (report.claimed > 0) ctx.log.info(report, 'actions pass');
-    } catch (error) {
-      ctx.log.error({ err: error }, 'actions pass failed');
-    }
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
-  }
+    },
+  });
 }

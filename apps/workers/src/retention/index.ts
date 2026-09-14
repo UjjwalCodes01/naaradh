@@ -13,6 +13,7 @@ import {
 } from '@naaradh/pipeline';
 import { addDays, addMinutes } from '@naaradh/shared';
 import type { WorkerContext } from '../context.js';
+import { runLoop } from '../loop.js';
 
 /**
  * retention worker (AGENTS §4, P2-CMP-3/4). Two jobs:
@@ -199,10 +200,13 @@ export async function runRetention(
   pollMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  ctx.log.info({ poll_ms: pollMs }, 'retention worker started');
   let lastSweep = 0;
-  while (!signal.aborted) {
-    try {
+  await runLoop({
+    name: 'retention',
+    log: ctx.log,
+    intervalMs: pollMs,
+    signal,
+    async tick() {
       const e = await runErasuresOnce(ctx);
       if (e.completed + e.failed > 0) ctx.log.info(e, 'erasure pass');
       // The retention sweep is heavy and not urgent: hourly.
@@ -210,9 +214,6 @@ export async function runRetention(
         lastSweep = Date.now();
         ctx.log.info(await runRetentionOnce(ctx), 'retention sweep');
       }
-    } catch (error) {
-      ctx.log.error({ err: error }, 'retention pass failed');
-    }
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
-  }
+    },
+  });
 }

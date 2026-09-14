@@ -64,6 +64,7 @@ export function page(
   const nav = [
     ['/', 'Overview'],
     ['/tenants', 'Tenants'],
+    ['/numbers', 'Numbers'],
     ['/complaints', 'Complaints'],
     ['/disputes', 'Disputes'],
     ['/privacy', 'Erasure & DNC'],

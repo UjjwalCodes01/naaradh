@@ -345,7 +345,10 @@ Agents should keep these current when changing behaviour:
 - `billing-dispute.md` — evidence bundle (recording, transcript, outcome, timestamps), credit note.
 - `cli-health.md` — answer-rate monitoring, rotation, retirement.
 - `shopify-api-upgrade.md` — quarterly version bump checklist.
-- `restore-drill.md` — quarterly Cloud SQL restore test.
+- `restore-drill.md` — quarterly Neon point-in-time restore test (`scripts/restore-drill.sh`).
+- `secret-rotation.md` — rotation class per secret; the re-encryption jobs.
+- `on-call.md` — rota, severities, first 15 minutes, escalation.
+- `load-test.md` — k6 scripts, thresholds, the chaos test.
 
 SLOs (SPEC §6.8): webhook ack p99 < 800 ms; intent→dial p95 < 90 s in window; results p95 < 60 s; dashboard 99.9%.
 

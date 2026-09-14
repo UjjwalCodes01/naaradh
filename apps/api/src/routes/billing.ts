@@ -32,7 +32,7 @@ export interface BillingRouteDeps {
   readonly clock: () => Date;
 }
 
-const DisputeBody = z.object({ reason: z.string().trim().min(10).max(2000) }).strict();
+export const DisputeBody = z.object({ reason: z.string().trim().min(10).max(2000) }).strict();
 
 export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDeps): void {
   app.get('/v1/billing', async (request) => {

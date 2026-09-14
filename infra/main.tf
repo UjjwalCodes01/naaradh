@@ -7,10 +7,11 @@
 #               ▲
 #   lb (global HTTPS, Certificate Manager) ── armor ── serverless NEGs
 #
-#   kms ─► gcs (recordings, CMEK) / bigquery (analytics, CMEK)
+#   kms ─► gcs (recordings, CMEK) / bigquery (analytics, CMEK) / audit-logs (locked bucket, CMEK)
 #   secrets (empty containers + per-secret IAM from the key-holder map in locals.tf)
 #   pubsub (topics, subscriptions, dead letters)   iam (runtime SAs, WIF, deployer, planner)
-#   monitoring (uptime, log-match alerts, error rates, DLQ, Redis memory)
+#   monitoring (uptime, log-match alerts, error rates, Cloud Run SLOs, backlog, DLQ, Redis memory;
+#               email + optional PagerDuty / webhook channels)
 #
 # Apply is human-only (AGENTS.md §1; docs/runbooks/deploy.md). CI runs fmt/validate and a
 # read-only plan.
@@ -111,6 +112,24 @@ module "kms" {
   }
 
   depends_on = [google_project_service.apis]
+}
+
+# Audit logs (P3-INF-5): Data Access logs for the data-holding services, every audit log type
+# exported to a locked, CMEK bucket with one-year retention (the bucket's `audit` key lives on
+# the kms module's ring). Lock is irreversible: var.audit_lock_retention, prod only.
+module "audit_logs" {
+  source = "./modules/audit-logs"
+
+  project_id          = var.project_id
+  region              = var.region
+  bucket_name         = "${var.project_id}-audit-logs"
+  key_ring_id         = module.kms.key_ring_id
+  gcs_service_agent   = data.google_storage_project_service_account.gcs.email_address
+  data_access_logging = var.audit_data_access_logging
+  lock_retention      = var.audit_lock_retention
+  labels              = { service = "audit-logs" }
+
+  depends_on = [module.kms]
 }
 
 module "iam" {
@@ -245,6 +264,7 @@ module "bigquery" {
   project_id          = var.project_id
   region              = var.region
   kms_key_id          = module.kms.key_ids["analytics"]
+  exporter_email      = module.iam.runtime_emails["workers-analytics"]
   deletion_protection = var.deletion_protection
 
   depends_on = [module.kms]
@@ -403,9 +423,20 @@ module "lb" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  project_id  = var.project_id
-  env         = var.env
-  alert_email = var.alert_email
+  project_id = var.project_id
+  env        = var.env
+
+  # Channels (P3-OPS-1): email gets everything; PagerDuty / webhook get CRITICAL only. The two
+  # keys are secrets: TF_VAR_pagerduty_service_key / TF_VAR_alert_webhook_url in the applying
+  # shell, never in envs/*.tfvars.
+  alert_email           = var.alert_email
+  pagerduty_service_key = var.pagerduty_service_key
+  alert_webhook_url     = var.alert_webhook_url
+
+  # Cloud Run SLO policies are created only for services enabled in this environment; Pub/Sub
+  # backlog is watched on every worker subscription.
+  run_services  = keys(local.enabled_services)
+  subscriptions = values(module.pubsub.subscriptions)
 
   uptime_hosts = {
     for k in ["api", "hooks", "voice", "web"] : k => var.hostnames[k]
@@ -499,6 +530,13 @@ module "monitoring" {
       summary  = "Vendor recording not copied to our bucket (E-34)"
       severity = "WARNING"
       runbook  = "stuck-attempts.md"
+    }
+    loop_unhealthy = {
+      match    = "worker loop unhealthy"
+      summary  = "A worker loop has failed 5 times in a row (database or Redis unreachable?)"
+      severity = "ERROR"
+      runbook  = "deploy.md"
+      section  = "After every deploy — check"
     }
   }
 

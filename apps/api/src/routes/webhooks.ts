@@ -4,7 +4,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema, withTenant, type Db } from '@naaradh/db';
 import { MERCHANT_EVENTS, audit } from '@naaradh/pipeline';
-import { NaaradhError, newId } from '@naaradh/shared';
+import { NaaradhError, newId, webhookUrlProblem } from '@naaradh/shared';
 import { requireScope } from '../auth.js';
 import type { SecretStore } from '../secrets.js';
 
@@ -12,11 +12,15 @@ import type { SecretStore } from '../secrets.js';
  * Merchant webhook registry (AGENTS §8): POST/GET/DELETE /v1/webhooks. The signing secret is
  * returned exactly once, at creation, and stored only as a secret reference.
  */
-const CreateWebhookBody = z.object({
+export const CreateWebhookBody = z.object({
+  /** Public https hostname only: never an IP, a private name or one of our own hosts (SSRF). */
   url: z
     .string()
-    .url()
-    .refine((u) => u.startsWith('https://'), 'must be https'),
+    .max(2048)
+    .superRefine((u, ctx) => {
+      const problem = webhookUrlProblem(u);
+      if (problem !== null) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+    }),
   events: z.array(z.enum(MERCHANT_EVENTS)).min(1),
 });
 

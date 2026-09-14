@@ -9,6 +9,12 @@ import { buildServer } from './server.js';
 const env = loadApiEnv();
 const { db, close } = createDb({ url: env.DATABASE_URL, applicationName: 'naaradh-api' });
 const redis = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 3 });
+// Reconnects are handled by ioredis; logged so an outage is visible, never fatal.
+redis.on('error', (error) => {
+  process.stderr.write(
+    `${JSON.stringify({ severity: 'WARNING', message: 'redis client error', error: error.message })}\n`,
+  );
+});
 
 const app = await buildServer({
   db,
@@ -34,6 +40,7 @@ const app = await buildServer({
   rateLimitPublicPerMinute: env.RATE_LIMIT_PUBLIC_PER_MINUTE,
   defaultDailyCap: env.DEFAULT_KEY_DAILY_CAP,
   logLevel: env.LOG_LEVEL,
+  trustProxyHops: env.TRUST_PROXY_HOPS,
 });
 
 const shutdown = async (signal: string) => {

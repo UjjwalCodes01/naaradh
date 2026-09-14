@@ -70,3 +70,15 @@ iap_members = [
 
 # Set to the on-call mailbox/group before launch (P0-INF-3 mailboxes).
 alert_email = ""
+
+# Audit logs (P3-INF-5): Data Access logs on for Secret Manager, GCS, KMS, BigQuery, IAP.
+# audit_lock_retention = true LOCKS the audit bucket's 365-day retention policy on the next apply.
+# This is IRREVERSIBLE (GCS Bucket Lock): the policy can never be shortened or removed and the
+# bucket cannot be deleted for a year after its last write. Review the plan line for
+# module.audit_logs.google_storage_bucket.audit before applying it the first time.
+audit_data_access_logging = true
+audit_lock_retention      = true
+
+# On-call channels (P3-OPS-1): set alert_email above, then pass the paging channel(s) as
+# TF_VAR_pagerduty_service_key and/or TF_VAR_alert_webhook_url in the applying shell — they are
+# secrets and must never be written into this file.

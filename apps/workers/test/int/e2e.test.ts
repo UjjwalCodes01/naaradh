@@ -610,8 +610,9 @@ describe('merchant webhook deliveries', () => {
     expect(seen[0]?.body).not.toContain('Asha');
 
     await service.query(
-      `insert into merchant_webhook_deliveries (id, tenant_id, webhook_id, event_type, event_id, payload, status, next_attempt_at) select $1, tenant_id, id, 'outcome.final', 'evt-dead', '{"id":"evt-dead"}', 'pending', now() from merchant_webhooks where tenant_id = $2 limit 1`,
-      [newId('delivery'), TENANT],
+      // Due at the TEST clock, not the wall clock: the two drift apart as earlier cases advance `current`.
+      `insert into merchant_webhook_deliveries (id, tenant_id, webhook_id, event_type, event_id, payload, status, next_attempt_at) select $1, tenant_id, id, 'outcome.final', 'evt-dead', '{"id":"evt-dead"}', 'pending', $3 from merchant_webhooks where tenant_id = $2 limit 1`,
+      [newId('delivery'), TENANT, current],
     );
     for (let i = 0; i < 5; i += 1) {
       const r = await deliverOnce(ctx, async () => ({ status: 503 }));

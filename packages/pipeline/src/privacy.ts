@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { schema, type DbOrTx } from '@naaradh/db';
 import { eraseOrders } from './inbound/orders.js';
+import { textArray } from './shopify-install.js';
 
 /**
  * Erasure and retention data operations (AGENTS §4, P2-CMP-3/4, DPDP, Shopify redact).
@@ -158,6 +159,13 @@ export async function eraseSubject(
       ),
     )
     .returning({ id: schema.callIntents.id });
+
+  // Tool arguments carry the caller's words (an address, a ticket summary) and results carry
+  // order views: nothing per subject stays behind once the contact is erased.
+  // The table is append-only for every role; migration 0011's definer function blanks exactly
+  // those two columns for the tenant in context and nothing else.
+  if (attemptIds.length > 0)
+    await tx.execute(sql`select erase_agent_actions(${textArray(attemptIds)})`);
 
   const orders = await eraseOrders(tx, tenantId, { phoneHash }, at);
 

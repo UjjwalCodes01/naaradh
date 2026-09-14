@@ -4,6 +4,8 @@ import { inboundConcurrencyKey, releaseConcurrency, repairConcurrency } from '@n
 import { audit } from '@naaradh/pipeline';
 import { addMinutes } from '@naaradh/shared';
 import type { WorkerContext } from '../context.js';
+import { runCliHealthDaily } from '../cli-health/index.js';
+import { runLoop } from '../loop.js';
 import { releaseStaleClaims } from '../dispatcher/claim.js';
 import { finalizeAttempt, type AttemptRow } from '../results/finalize.js';
 import { reconcileShopifyOrders } from './shopify-orders.js';
@@ -351,26 +353,18 @@ export async function runReconcile(
   intervalMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  ctx.log.info({ interval_ms: intervalMs }, 'reconcile started');
-  while (!signal.aborted) {
-    try {
+  await runLoop({
+    name: 'reconcile',
+    log: ctx.log,
+    intervalMs,
+    signal,
+    async tick() {
       const report = await reconcileOnce(ctx);
       if (Object.values(report).some((n) => n > 0)) ctx.log.info(report, 'reconcile pass');
       const shopify = await reconcileShopifyOrders(ctx);
       if (shopify !== null && shopify.stores > 0) ctx.log.info(shopify, 'shopify reconcile pass');
-    } catch (error) {
-      ctx.log.error({ err: error }, 'reconcile pass failed');
-    }
-    await new Promise<void>((resolve) => {
-      const t = setTimeout(resolve, intervalMs);
-      signal.addEventListener(
-        'abort',
-        () => {
-          clearTimeout(t);
-          resolve();
-        },
-        { once: true },
-      );
-    });
-  }
+      // Daily number health (E-28) rides on the reconcile role: no extra service to run.
+      await runCliHealthDaily(ctx, ctx.clock.now());
+    },
+  });
 }

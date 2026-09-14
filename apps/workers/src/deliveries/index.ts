@@ -1,7 +1,14 @@
 import { and, eq, inArray, lte, sql } from 'drizzle-orm';
 import { schema } from '@naaradh/db';
-import { signMerchantWebhook, unixSeconds } from '@naaradh/shared';
+import { lookup } from 'node:dns/promises';
+import {
+  isPrivateAddress,
+  signMerchantWebhook,
+  unixSeconds,
+  webhookUrlProblem,
+} from '@naaradh/shared';
 import type { WorkerContext } from '../context.js';
+import { runLoop } from '../loop.js';
 
 /**
  * Outbound merchant webhooks (AGENTS §8): signed `X-Naaradh-Signature: t=…,v1=…`, 5 retries
@@ -19,7 +26,28 @@ export type PostFn = (
   headers: Record<string, string>,
 ) => Promise<{ status: number }>;
 
+/** A destination that resolves to a private address: dead immediately, never retried. */
+export class UnsafeDestinationError extends Error {
+  override readonly name = 'UnsafeDestinationError';
+}
+
+/**
+ * Defence in depth for merchant-supplied URLs (the API already refuses IPs, private names and
+ * our own hosts): the name is resolved here, just before the connection, and refused when any
+ * address is private — DNS can be pointed at 169.254.169.254 or 10.x after registration.
+ */
+export async function assertPublicDestination(url: string): Promise<void> {
+  const problem = webhookUrlProblem(url);
+  if (problem !== null) throw new UnsafeDestinationError(`destination refused: ${problem}`);
+  const { hostname } = new URL(url);
+  const addresses = await lookup(hostname, { all: true, verbatim: true });
+  if (addresses.length === 0) throw new UnsafeDestinationError('destination does not resolve');
+  if (addresses.some((a) => isPrivateAddress(a.address)))
+    throw new UnsafeDestinationError('destination resolves to a private address');
+}
+
 export const nodePost: PostFn = async (url, body, headers) => {
+  await assertPublicDestination(url);
   const res = await fetch(url, {
     method: 'POST',
     body,
@@ -90,6 +118,7 @@ export async function deliverOnce(
     }
     const ok = status >= 200 && status < 300;
     const attempts = d.attempts + 1;
+    const unsafe = error !== null && error.startsWith('destination');
     if (ok) {
       await ctx.service
         .update(schema.merchantWebhookDeliveries)
@@ -109,7 +138,7 @@ export async function deliverOnce(
       counts.delivered += 1;
       continue;
     }
-    const dead = attempts >= MAX_ATTEMPTS;
+    const dead = unsafe || attempts >= MAX_ATTEMPTS;
     const backoff = BACKOFF_MINUTES[Math.min(attempts - 1, BACKOFF_MINUTES.length - 1)] ?? 720;
     await ctx.service
       .update(schema.merchantWebhookDeliveries)
@@ -146,24 +175,14 @@ export async function runDeliveries(
   intervalMs: number,
   signal: AbortSignal,
 ): Promise<void> {
-  ctx.log.info('deliveries started');
-  while (!signal.aborted) {
-    try {
+  await runLoop({
+    name: 'deliveries',
+    log: ctx.log,
+    intervalMs,
+    signal,
+    async tick() {
       const r = await deliverOnce(ctx);
       if (r.delivered + r.failed + r.dead > 0) ctx.log.info(r, 'deliveries pass');
-    } catch (error) {
-      ctx.log.error({ err: error }, 'deliveries pass failed');
-    }
-    await new Promise<void>((resolve) => {
-      const t = setTimeout(resolve, intervalMs);
-      signal.addEventListener(
-        'abort',
-        () => {
-          clearTimeout(t);
-          resolve();
-        },
-        { once: true },
-      );
-    });
-  }
+    },
+  });
 }

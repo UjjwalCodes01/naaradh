@@ -34,7 +34,7 @@ shred -u phone_enc_private.pem   # after the offline backup is made
 | `PHONE_ENC_PUBLIC_KEY` / `PHONE_ENC_PRIVATE_KEY` | Customer numbers encrypted at rest; decrypted only to dial | Private half: workers dispatcher, results, reconcile **only** |
 | `STAFF_ENC_PUBLIC_KEY` / `STAFF_ENC_PRIVATE_KEY` | Merchant staff numbers (transfer, fallback) | Private half: voice **only**; voice never holds the customer key |
 | `ENGINE_WEBHOOK_KEY` | Tags engine webhook and tool URLs per tenant | Changing it invalidates URLs of calls in flight — rotate between calls |
-| `SHOPIFY_TOKEN_KEY` | Seals Shopify access/refresh tokens in Postgres | Rotation is a re-encryption job; losing it = every store reopens the app |
+| `SHOPIFY_TOKEN_KEY` | Seals Shopify access/refresh tokens in Postgres | Rotation: set the retiring key as `SHOPIFY_TOKEN_KEY_PREVIOUS` / `SHOPIFY_TOKEN_KID_PREVIOUS`, run `rotate-shopify-token-key`, drop the previous pair (`docs/runbooks/secret-rotation.md`); losing it = every store reopens the app |
 
 ## 2. Values you get from providers
 
@@ -47,6 +47,7 @@ shred -u phone_enc_private.pem   # after the offline backup is made
 | `POSTMARK_TOKEN` | Postmark server API token | [06](06-email-and-payments.md#2-postmark-transactional-email) |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` *(optional)* | Razorpay dashboard | [06](06-email-and-payments.md#3-razorpay) |
 | `BOLNA_API_KEY`, `OMNIDIM_API_KEY`, `RETELL_API_KEY` *(optional)* | Engine dashboards | [03](03-voice-engine.md) |
+| `SIMULATOR_WEBHOOK_SECRET` *(optional, stage/dev only)* | `openssl rand -hex 32` | Signs the simulator's webhooks and tool calls; listed in `enabled_optional_secrets` |
 
 **Optional** secrets are mounted only when listed in the environment's `enabled_optional_secrets`
 (Cloud Run cannot start a revision whose secret has no version). **All other secrets must have a
@@ -88,7 +89,8 @@ sets `NODE_ENV`, region, `PUBSUB_TOPIC_PREFIX`, `RECORDINGS_BUCKET`, `WORKER`, t
 
 | Variable | Service | Value / default | Note |
 |---|---|---|---|
-| `ENGINE_DEFAULT_IN`, `ENGINE_DEFAULT_US`, `ENGINE_SECONDARY_IN` | voice, hooks, workers | `simulator` | Set to the ADR-0001 engine once its adapter exists |
+| `ENGINE_DEFAULT_IN`, `ENGINE_DEFAULT_US`, `ENGINE_SECONDARY_IN` | voice, hooks, workers | `simulator` | Set to the ADR-0001 engine once its adapter exists. **Production refuses the simulator** unless `SIMULATOR_ALLOWED=true` (stage only), and refuses the repo's development `SIMULATOR_WEBHOOK_SECRET` — stage holds a real one as an optional secret |
+| `TRUST_PROXY_HOPS` | api, hooks, voice, console | `2` behind the load balancer (Terraform sets it) | How many trailing `X-Forwarded-For` entries are ours; the client IP for rate limits and API-key allow-lists is derived from it. Verify on stage |
 | `SHOPIFY_WRITEBACK` | workers | `live` in production, `recording` elsewhere | Stage stays `recording` except for the write-back test |
 | `SHOPIFY_ADMIN_API_VERSION` | workers, shopify | `2026-07` | Equal to `api_version` in shopify.app.toml |
 | `SHOPIFY_BILLING_TEST` | shopify | `true` outside production | Test charges |
@@ -100,6 +102,7 @@ sets `NODE_ENV`, region, `PUBSUB_TOPIC_PREFIX`, `RECORDINGS_BUCKET`, `WORKER`, t
 | `MAIL_FROM` | web, workers | `Naaradh <no-reply@mail.naaradh.com>` | Must be on the verified Postmark domain |
 | `RAZORPAY_PLAN_IDS` | api, web | JSON map | [06](06-email-and-payments.md#3-razorpay) |
 | `MEDIA_STORE` | web | `gcs` in production | `dev` fakes signed URLs locally |
+| `BIGQUERY_DATASET`, `BIGQUERY_TABLE`, `BIGQUERY_LOCATION` | workers-analytics | set by Terraform from the dataset | Nightly facts export (P2-INF-2); unset locally → in-memory sink |
 | `ENGINE_DAILY_CAP_PAISE`, `GLOBAL_DAILY_CAP_PAISE`, `ENGINE_MAX_CONCURRENCY` | workers, voice | ₹50,000 / ₹2,00,000 per day; 20 channels | Platform-wide safety caps |
 | `RATE_LIMIT_*`, `DEFAULT_KEY_DAILY_CAP` | api, hooks, voice | see `.env.example` | |
 | `LOG_LEVEL` | all | `info` | |
@@ -110,3 +113,5 @@ sets `NODE_ENV`, region, `PUBSUB_TOPIC_PREFIX`, `RECORDINGS_BUCKET`, `WORKER`, t
 - [ ] Every non-optional secret has a version before its services are enabled
 - [ ] Optional secrets listed in `enabled_optional_secrets` only after a version exists
 - [ ] `ENGINE_DEFAULT_IN` left on `simulator` until an adapter is merged and tested
+- [ ] Paging channel keys passed as `TF_VAR_pagerduty_service_key` / `TF_VAR_alert_webhook_url` at apply time, never written to tfvars
+- [ ] First secret rotation done on staging (`docs/runbooks/secret-rotation.md`, P3-INF-2 table)

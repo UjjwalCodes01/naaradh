@@ -14,6 +14,8 @@ export interface CreateDbOptions {
   /** Neon's pooled endpoint tops out per plan; Cloud Run instances × this must fit (ADR-0004). */
   max?: number;
   applicationName?: string;
+  /** Receives idle-client errors from the pool (default: a structured line on stderr). */
+  onError?: (error: Error) => void;
 }
 
 /**
@@ -22,6 +24,13 @@ export interface CreateDbOptions {
  * Every tenant-scoped query MUST go through `withTenant()` (tenant.ts). A bare `db.select()`
  * against a tenant table raises `app.tenant_id is not set` from inside Postgres — by design.
  */
+function defaultPoolError(error: Error): void {
+  // Structured for Cloud Logging when no logger was given (packages/db has no pino dependency).
+  process.stderr.write(
+    `${JSON.stringify({ severity: 'WARNING', message: 'pg pool: idle client error', error: error.message })}\n`,
+  );
+}
+
 export function createDb(options: CreateDbOptions): {
   db: Db;
   pool: pg.Pool;
@@ -42,6 +51,14 @@ export function createDb(options: CreateDbOptions): {
   // docs/runbooks/neon-bootstrap.md), not by a per-connection SET: a connect-hook query races
   // the first real query under node-postgres, and PgBouncer may drop startup options anyway.
   // packages/db/test/int/rls.test.ts asserts the database setting.
+
+  // A pooled client that the server terminates while idle (failover, `pg_terminate_backend`,
+  // a Neon compute restart) emits 'error' on the pool. Unhandled, that is an uncaught exception
+  // and the process dies with a green health check (found by apps/workers/test/int/chaos.test.ts).
+  // The pool discards the client; the next checkout opens a fresh connection.
+  pool.on('error', (error) => {
+    (options.onError ?? defaultPoolError)(error);
+  });
 
   const db = drizzle(pool, { schema, casing: 'snake_case' });
   return {

@@ -19,3 +19,8 @@ variable "kms_key_id" {
 variable "deletion_protection" {
   type = bool
 }
+
+variable "exporter_email" {
+  description = "Runtime service account of workers-analytics — the only identity that writes the dataset."
+  type        = string
+}

@@ -57,7 +57,7 @@ const TrackingBody = z.object({
   estimated_delivery: z.string().max(40).nullable().default(null),
 });
 
-const OrderBody = z.object({
+export const OrderBody = z.object({
   name: z.string().trim().min(1).max(80),
   phone: z.string().min(5).max(32).nullable().default(null),
   phone_region: z.string().length(2).default('IN'),

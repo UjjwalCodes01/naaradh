@@ -221,7 +221,7 @@ Calls answered, resolution rate (no human), transfer rate, ticket rate, abandon 
 
 **WEB — Dashboard + site**
 - ✅ P2-WEB-1 `apps/web` dashboard: calls list with outcome/reason, transcript viewer, recording player (signed URL), gated-reason explanations, settings, script editor with approval, numbers page, consent/suppression views, complaint log. Plus team/roles, API keys, access log (E-74), billing + disputes. Number reveal deferred (ADR-0009).
-- ◐ P2-WEB-2 RTO analytics: baseline vs current (orders confirmed, cancelled pre-ship, RTO % by state/pincode band, ₹ saved) from BigQuery nightly export (phone hashed). Done: in-app counts (confirmed, cancelled before shipping, not called and why). Open: the BigQuery export job and baseline comparison.
+- ◐ P2-WEB-2 RTO analytics: baseline vs current (orders confirmed, cancelled pre-ship, RTO % by state/pincode band, ₹ saved) from BigQuery nightly export (phone hashed). Done: in-app counts; the nightly export (`workers-analytics`, Phase 3; facts carry no PII, state/pincode band null until the order cache stores a coarse band). Open: the baseline comparison view.
 - ✅ P2-WEB-3 Marketing site pages: home, pricing (INR), how it works, `/privacy`, `/terms`, `/dpa`, `/aup`, `/security`, `/subprocessors`, `/cookies`, `/refunds`, `/contact`, `/grievance`, `/do-not-call`. Legal pages are drafts marked pending counsel.
 - ✅ P2-WEB-4 Merchant notifications (Postmark): daily summary, gated-orders digest, complaint alert, spend-cap alert, billing events.
 
@@ -232,8 +232,8 @@ Calls answered, resolution rate (no human), transfer rate, ticket rate, abandon 
 
 **INF / OPS**
 - ✅ P2-INF-1 Cloud Armor rules for `/hooks/*` (vendor IP allow-lists where published, rate limits), WAF preconfigured rules.
-- ◐ P2-INF-2 BigQuery dataset + scheduled export; PII hashing in export. Dataset and table in Terraform; the export job is open.
-- ◐ P2-OPS-1 Runbooks: ✅ `complaint-received.md`, ✅ `erasure-request.md`, ✅ `billing-dispute.md`, ✅ `billing-postings.md`, `cli-health.md` (needs a live CLI pool); plus `merchant-access.md`, `staff-console.md`, `deploy.md`.
+- ✅ P2-INF-2 BigQuery dataset + scheduled export; PII hashing in export. Dataset and table in Terraform; nightly load job in `apps/workers/src/analytics` (Phase 3) — aggregates only, nothing to hash.
+- ✅ P2-OPS-1 Runbooks: `complaint-received.md`, `erasure-request.md`, `billing-dispute.md`, `billing-postings.md`, `cli-health.md` (job + console page, Phase 3), `merchant-access.md`, `staff-console.md`, `deploy.md`.
 - ◐ P2-OPS-2 Alerting: complaint counter increments, spend-cap hits, capped subscriptions, writeback failures, Cloud SQL CPU, cert expiry.
 
 ### Exit criteria
@@ -261,13 +261,13 @@ Time-to-first-call for a new install, billing reconciliation delta (must be 0), 
 ### Workstreams
 
 **SEC / INF**
-- P3-INF-1 Execute SPEC §14 checklist end to end; each item ticked with evidence link.
-- P3-INF-2 Secret rotation runbook + first rotation; Workload Identity everywhere; no SA keys.
-- P3-INF-3 Backup restore drill (`restore-drill.md`); PITR verified; RPO/RTO documented.
-- P3-INF-4 Load test (k6): 500 webhooks/60 s on `hooks`; 50 concurrent simulated calls; chaos: engine simulator failures, delayed/duplicate webhooks, DB failover.
-- P3-INF-5 Audit logs (Admin + Data Access) exported to locked bucket, 1-year retention.
-- P3-INF-6 `security.txt`, vulnerability disclosure page, dependency/container scanning gates enforced.
-- P3-INF-7 Evaluate VPC Service Controls perimeter for prod `[VERIFY cost/complexity]`.
+- ◐ P3-INF-1 Execute SPEC §14 checklist end to end; each item ticked with evidence link. → `docs/security/checklist.md` (27 items with evidence; `applied`/`human` items wait for the first apply, the entity and counsel).
+- ◐ P3-INF-2 Secret rotation runbook + first rotation; Workload Identity everywhere; no SA keys. → ✅ `docs/runbooks/secret-rotation.md`, previous-key window for `SHOPIFY_TOKEN_KEY`, re-encryption jobs (`apps/workers/src/maintenance`, tested); first rotation pending (needs staging).
+- ◐ P3-INF-3 Backup restore drill (`restore-drill.md`); PITR verified; RPO/RTO documented. → ✅ runbook + `scripts/restore-drill.sh` (Neon branch from timestamp) + `docs/security/restore-drills.md`; first drill pending (needs the Neon project).
+- ✅ P3-INF-4 Load test (k6): `load/` scripts + `load` workflow (staging only) + `docs/runbooks/load-test.md`; chaos: `apps/workers/test/int/chaos.test.ts` (Postgres/Redis failover under the running loops; every loop now on `runLoop` with backoff + `worker loop unhealthy` alert; pool error handler added), engine failures and duplicate/out-of-order webhooks in `e2e.test.ts`. Runs against staging pending.
+- ✅ P3-INF-5 Audit logs (Admin + Data Access) exported to locked bucket, 1-year retention. → `infra/modules/audit-logs` (validated, not applied).
+- ✅ P3-INF-6 `security.txt`, vulnerability disclosure page, dependency/container scanning gates enforced. → `/.well-known/security.txt`, Dependabot, CodeQL (+ existing trivy, gitleaks).
+- ✅ P3-INF-7 Evaluate VPC Service Controls perimeter for prod `[VERIFY cost/complexity]`. → `docs/security/vpc-service-controls.md` (recommendation: defer).
 
 **LEG**
 - P3-LEG-1 Finalise with lawyer and publish: Terms (billable outcome definition, PE liability, AUP incorporation, arbitration), AUP, Privacy Policy (DPDP grievance officer), DPA, sub-processor list, refund policy, SLA template, merchant compliance attestation clickwrap. `[LEGAL]`
@@ -277,12 +277,12 @@ Time-to-first-call for a new install, billing reconciliation delta (must be 0), 
 
 **SHOP**
 - P3-SHOP-1 App Store listing: name, tagline, screenshots, demo video, pricing text (INR + note on usage billing), support email/URL, privacy URL, categories; ensure no unsupported claims.
-- P3-SHOP-2 Pre-submission checklist (SPEC §8.6); internal review on a fresh dev store; mobile admin check.
+- ◐ P3-SHOP-2 Pre-submission checklist (SPEC §8.6); internal review on a fresh dev store; mobile admin check. → ✅ `docs/shopify/pre-submission-checklist.md`; the review itself needs the Partner app.
 - P3-SHOP-3 Submit for review; triage feedback; second-round budget (typical 1–4 weeks per round). `[VERIFY current timelines]`
 
 **OPS**
-- P3-OPS-1 On-call rota (even single-person), PagerDuty/Better Stack alerts, status page `status.naaradh.com`.
-- P3-OPS-2 Runbooks completed: `shopify-api-upgrade.md`, `restore-drill.md`, `engine-outage.md` updated with failover flag.
+- ◐ P3-OPS-1 On-call rota (even single-person), PagerDuty/Better Stack alerts, status page `status.naaradh.com`. → ✅ `docs/runbooks/on-call.md`, PagerDuty/webhook channels + SLO alert policies in `infra/modules/monitoring`; rota names and the status page are human.
+- ✅ P3-OPS-2 Runbooks completed: `shopify-api-upgrade.md`, `restore-drill.md`, `engine-outage.md` (failover via `multi_engine_ok` + `ENGINE_SECONDARY_*` already documented); also `cli-health.md`, `load-test.md`, `on-call.md`, `secret-rotation.md`.
 - P3-OPS-3 Support desk (Crisp/Intercom or shared inbox + Linear) with SLA targets per plan.
 
 ### Exit criteria
@@ -327,7 +327,7 @@ Checklist completion, SLO attainment in load tests, review turnaround.
 
 **OPS**
 - P4-OPS-1 Weekly recording QA sample (2% of calls) with a rubric; feed script improvements.
-- P4-OPS-2 CLI health dashboard; rotate/retire at answer rate < 25% (E-28).
+- ◐ P4-OPS-2 CLI health dashboard; rotate/retire at answer rate < 25% (E-28). Brought forward in Phase 3: nightly `answer_rate_7d` job, console Numbers page, `cli-health.md`; retirement stays a staff decision.
 
 ### Exit criteria
 - ≥ 10 paying merchants; ≥ 5,000 billable outcomes/month across tenants; gross margin per outcome ≥ 50%.

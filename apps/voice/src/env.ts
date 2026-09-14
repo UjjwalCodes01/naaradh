@@ -8,7 +8,7 @@ import {
   redisEnv,
   staffDecryptEnv,
 } from '@naaradh/shared';
-import { engineEnv } from '@naaradh/engines-registry';
+import { engineEnv, refineEngineEnv } from '@naaradh/engines-registry';
 
 /**
  * apps/voice keys (ADR-0006, invariant 19):
@@ -41,6 +41,7 @@ export const voiceEnvSchema = z
     RATE_LIMIT_PER_MINUTE: z.coerce.number().int().positive().default(1200),
   })
   .superRefine((env, ctx) => {
+    refineEngineEnv(env, ctx);
     // Production: a mounted customer private key is a deployment error — refuse to boot.
     // Locally one .env.local serves every service; voice simply never reads the key.
     if (

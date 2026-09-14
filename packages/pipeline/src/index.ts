@@ -156,6 +156,32 @@ export {
   type TicketStatus,
   type TransferTargetView,
 } from './admin/support.js';
+export {
+  DIRECT_USE_CASES,
+  DirectTenantInput,
+  DltLinkInput,
+  NUMBER_SERIES,
+  NUMBER_STATUSES,
+  NumberAssignInput,
+  NumberInput,
+  NumberPurposesInput,
+  NumberStatusInput,
+  PURPOSES,
+  assignNumber,
+  createDirectTenant,
+  listNumbers,
+  pendingDltLinks,
+  registerNumber,
+  setDltLink,
+  setNumberPurposes,
+  setNumberStatus,
+  type DirectTenantResult,
+  type NumberSeries,
+  type NumberStatus,
+  type NumberView,
+  type Purpose,
+  type StaffActor,
+} from './admin/staff.js';
 
 // Merchant dashboards (ADR-0009)
 export {
@@ -283,3 +309,16 @@ export {
   type ShopifySubscriptionTerms,
 } from './billing/shopify-subscribe.js';
 export { ensureDefaultSetup } from './dashboard/setup.js';
+// Key rotation jobs (docs/runbooks/secret-rotation.md)
+export {
+  CUSTOMER_PHONE_COLUMNS,
+  KEY_ROTATED_ACTION,
+  ROTATION_BATCH,
+  STAFF_PHONE_COLUMNS,
+  rotateEncryptedPhoneColumn,
+  rotateShopifySessions,
+  type EncryptedPhoneColumn,
+  type PhoneKeyRotation,
+  type RotationCounts,
+  type RotationOptions,
+} from './rotation.js';

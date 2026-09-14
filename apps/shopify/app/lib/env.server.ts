@@ -11,7 +11,10 @@ import { SHOPIFY_SCOPE_STRING } from '@naaradh/shopify-sdk';
 
 /**
  * The embedded app's configuration. The app role only (ADR-0009): no service URL, no private
- * key. SHOPIFY_TOKEN_KEY seals the shop's offline token in Postgres (ADR-0007).
+ * key. SHOPIFY_TOKEN_KEY seals the shop's offline token in Postgres (ADR-0007); the optional
+ * SHOPIFY_TOKEN_KEY_PREVIOUS / SHOPIFY_TOKEN_KID_PREVIOUS (part of shopifyTokenEnv) keep
+ * sessions sealed under the retiring key readable during a rotation
+ * (docs/runbooks/secret-rotation.md).
  */
 const schema = z
   .object({

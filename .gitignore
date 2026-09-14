@@ -42,3 +42,6 @@ transcripts/
 !.vscode/extensions.json
 *.log
 .react-router/
+
+# k6 output (load/README.md)
+load/results/

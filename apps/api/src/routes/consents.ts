@@ -10,7 +10,7 @@ import { requireScope } from '../auth.js';
  * POST /v1/consents, DELETE /v1/consents, POST /v1/suppressions (SPEC §9.1).
  * Phone numbers arrive here and leave as hashes; nothing in these routes stores a number.
  */
-const ConsentBody = z.object({
+export const ConsentBody = z.object({
   phone: z.string().min(5).max(32),
   phone_region: z.string().length(2).default('IN'),
   purpose: z.enum(['service', 'promotional', 'all']),
@@ -29,13 +29,13 @@ const ConsentBody = z.object({
   external_ref: z.string().max(200).optional(),
 });
 
-const RevokeBody = z.object({
+export const RevokeBody = z.object({
   phone: z.string().min(5).max(32),
   phone_region: z.string().length(2).default('IN'),
   purpose: z.enum(['service', 'promotional', 'all']).default('all'),
 });
 
-const SuppressionBody = z.object({
+export const SuppressionBody = z.object({
   phone: z.string().min(5).max(32),
   phone_region: z.string().length(2).default('IN'),
   purpose: z.enum(['transactional', 'service', 'promotional', 'all']).default('all'),

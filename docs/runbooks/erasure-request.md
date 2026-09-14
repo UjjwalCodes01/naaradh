@@ -39,3 +39,11 @@ where status <> 'completed' order by due_at;
 ## Verifying
 
 Pick one tenant from `report.tenants` and confirm: `select name, phone_enc, erased_at from contacts where phone_hash = '<hash>'` → nulls; the recording URI from before returns 404 from the bucket.
+
+## Agent tool calls
+
+`agent_actions` is append-only history, but its `args` hold the caller's own words (an address they read out, a ticket summary). Erasure blanks `args` and `result` to `{"erased": true}` on every action of the subject's attempts through `erase_agent_actions()` (migration 0011); the rows, tool names, statuses and timestamps stay.
+
+## Analytics export
+
+The nightly BigQuery export (`daily_call_facts`, `apps/workers/src/analytics`) holds per-tenant, per-day counts only — no phone numbers, hashes, ids or names (the row schema is strict and tested for it). Erasure therefore does not touch BigQuery; there is nothing per subject to remove.

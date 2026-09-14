@@ -1,0 +1,52 @@
+name: CodeQL
+
+# Static analysis (SAST — P3-INF-6, SPEC §14): CodeQL over the TypeScript apps and packages, and
+# over the GitHub Actions workflows themselves (expression injection, unpinned actions, secret
+# leaks). Findings appear under Security → Code scanning; on a pull request the check fails for
+# alerts at the repository's configured threshold (default: high or higher).
+#
+# Build mode is `none`: CodeQL's JavaScript/TypeScript extractor reads the sources directly, so no
+# pnpm install or build is needed. The weekly run re-analyses unchanged code with new queries.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 1' # Mondays 03:17 UTC (08:47 IST)
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+            build-mode: none
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'

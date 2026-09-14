@@ -40,14 +40,14 @@ const Phone = z.object({
   phone_region: z.string().length(2).default('IN'),
 });
 
-const DncBody = Phone.extend({ report_unwanted_call: z.boolean().default(false) }).strict();
+export const DncBody = Phone.extend({ report_unwanted_call: z.boolean().default(false) }).strict();
 
-const ComplaintBody = Phone.extend({
+export const ComplaintBody = Phone.extend({
   external_ref: z.string().max(200).optional(),
   notes: z.string().max(1000).optional(),
 }).strict();
 
-const ErasureBody = Phone.extend({ external_ref: z.string().max(200).optional() }).strict();
+export const ErasureBody = Phone.extend({ external_ref: z.string().max(200).optional() }).strict();
 
 function phoneHashOf(keys: PhoneKeys, body: z.infer<typeof Phone>): string {
   const parsed = normalizePhone(body.phone, body.phone_region.toUpperCase() as PhoneRegion);

@@ -94,6 +94,11 @@ export {
   staffEncryptEnv,
   staffDecryptEnv,
   shopifyTokenEnv,
+  shopifyTokenKeyring,
+  trustProxyOf,
+  type ShopifyTokenKeyring,
+  type ShopifyTokenKeyringEnv,
 } from './env.js';
 
 export { parseSecretKey, seal, open as openSealed, type Sealed } from './secretbox.js';
+export { isPrivateAddress, webhookUrlProblem } from './webhook-url.js';

@@ -51,18 +51,18 @@ resource "google_bigquery_table" "daily_call_facts" {
   ])
 }
 
-# The exporter identity: writes to this dataset only. No project-level BigQuery role. If the
-# export uses load or query jobs (rather than the streaming insert API), it additionally needs
-# roles/bigquery.jobUser on the project — add it when the exporter is written.
-resource "google_service_account" "exporter" {
-  project      = var.project_id
-  account_id   = "analytics-export"
-  display_name = "BigQuery analytics exporter (P2-INF-2)"
-}
-
+# The exporter identity is the workers-analytics runtime service account (modules/iam): it
+# loads one partition a night with load jobs (apps/workers/src/analytics/sink.ts), which need
+# dataEditor on the dataset and jobUser on the project — nothing else, and nobody else writes.
 resource "google_bigquery_dataset_iam_member" "exporter" {
   project    = var.project_id
   dataset_id = google_bigquery_dataset.analytics.dataset_id
   role       = "roles/bigquery.dataEditor"
-  member     = "serviceAccount:${google_service_account.exporter.email}"
+  member     = "serviceAccount:${var.exporter_email}"
+}
+
+resource "google_project_iam_member" "exporter_jobs" {
+  project = var.project_id
+  role    = "roles/bigquery.jobUser"
+  member  = "serviceAccount:${var.exporter_email}"
 }

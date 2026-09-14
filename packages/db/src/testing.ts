@@ -14,6 +14,12 @@ import { runMigrations } from './migrate.js';
 export interface TestPostgres {
   urls: { migrator: string; app: string; service: string };
   stop: () => Promise<void>;
+  /**
+   * Chaos tests: what a failover looks like from a client — every open connection is terminated
+   * by the server ("terminating connection due to administrator command"). A container restart
+   * would change the mapped port, which no real failover does.
+   */
+  disconnectAll: () => Promise<void>;
 }
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +60,17 @@ export async function startTestPostgres(): Promise<TestPostgres> {
   return {
     urls,
     stop: () => container.stop().then(() => undefined),
+    async disconnectAll() {
+      const admin = new pg.Client({ connectionString: urls.migrator });
+      await admin.connect();
+      try {
+        await admin.query(
+          `select pg_terminate_backend(pid) from pg_stat_activity where pid <> pg_backend_pid() and backend_type = 'client backend'`,
+        );
+      } finally {
+        await admin.end();
+      }
+    },
   };
 }
 
@@ -63,6 +80,8 @@ export class RoleClient {
 
   constructor(url: string) {
     this.pool = new pg.Pool({ connectionString: url, max: 2 });
+    // Chaos tests terminate connections on purpose; an idle client's error must not crash vitest.
+    this.pool.on('error', () => undefined);
   }
 
   query<R extends pg.QueryResultRow = Record<string, unknown>>(

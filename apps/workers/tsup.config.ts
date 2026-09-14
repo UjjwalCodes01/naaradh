@@ -1,7 +1,14 @@
 import { defineConfig } from 'tsup';
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  // dist/index.js is the long-running worker; the rest are one-shot maintenance entrypoints
+  // (docs/runbooks/secret-rotation.md) shipped in the same image: `node dist/rotate-….js`.
+  entry: {
+    index: 'src/index.ts',
+    'rotate-shopify-token-key': 'src/maintenance/rotate-shopify-token-key.ts',
+    'rotate-phone-enc-key': 'src/maintenance/rotate-phone-enc-key.ts',
+    'rotate-staff-enc-key': 'src/maintenance/rotate-staff-enc-key.ts',
+  },
   format: ['esm'],
   target: 'node22',
   platform: 'node',
