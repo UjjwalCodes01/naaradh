@@ -8,7 +8,9 @@ import { registerSnippetCors } from './cors.js';
 import { registerAuth } from './auth.js';
 import { errorHandler } from './errors.js';
 import { registerIdempotency } from './idempotency.js';
+import { registerAppointmentRoutes } from './routes/appointments.js';
 import { registerCallRoutes, type Signer } from './routes/calls.js';
+import { registerCartRoutes } from './routes/carts.js';
 import { registerConsentRoutes } from './routes/consents.js';
 import { registerIntentRoutes } from './routes/intents.js';
 import { registerBillingRoutes } from './routes/billing.js';
@@ -116,6 +118,9 @@ export async function buildServer(deps: ApiDeps): Promise<FastifyInstance> {
 
   registerIntentRoutes(app, { db: deps.db, redis: deps.redis, keys: deps.keys, clock: deps.clock });
   registerConsentRoutes(app, { db: deps.db, keys: deps.keys, clock: deps.clock });
+  // ADR-0011: every platform that is not Shopify feeds carts and appointments here.
+  registerCartRoutes(app, { db: deps.db, keys: deps.keys, clock: deps.clock });
+  registerAppointmentRoutes(app, { db: deps.db, keys: deps.keys, clock: deps.clock });
   registerCallRoutes(app, { db: deps.db, signer: deps.signer, clock: deps.clock });
   registerWebhookRoutes(app, { db: deps.db, secrets: deps.secrets, clock: deps.clock });
   registerBillingRoutes(app, {

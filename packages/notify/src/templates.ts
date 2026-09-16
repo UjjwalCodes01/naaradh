@@ -84,7 +84,8 @@ export type AlertKind =
   | 'billing.capped'
   | 'billing.approaching_cap'
   | 'billing.status_changed'
-  | 'erasure.completed';
+  | 'erasure.completed'
+  | 'promotional.paused';
 
 export const ALERT_KINDS: readonly AlertKind[] = [
   'complaint.received',
@@ -93,6 +94,7 @@ export const ALERT_KINDS: readonly AlertKind[] = [
   'billing.approaching_cap',
   'billing.status_changed',
   'erasure.completed',
+  'promotional.paused',
 ];
 
 /** `data` is the merchant event's PII-minimised payload; only known keys are read. */
@@ -153,6 +155,14 @@ export function alertEmail(input: {
       subject = 'A data erasure request is complete';
       paras = [
         "A customer's data erasure request has been completed: recordings, transcripts and personal details are deleted. The legal record that the request was honoured is kept.",
+      ];
+      path = '/privacy';
+      break;
+    case 'promotional.paused':
+      subject = 'Promotional calls are paused for your account';
+      paras = [
+        'A customer complained about a promotional call (abandoned cart or feedback) made for your store, so Naaradh has paused promotional calling for your account. Order confirmations and your support line are not affected.',
+        'Naaradh staff review the complaint, your script and your consent collection before promotional calls resume. Reply to this email if you have context we should see.',
       ];
       path = '/privacy';
       break;

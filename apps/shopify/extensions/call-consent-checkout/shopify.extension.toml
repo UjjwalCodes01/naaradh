@@ -1,0 +1,19 @@
+# Checkout UI extension (Shopify Plus stores): the call-consent checkbox (E-13, ADR-0010 §2).
+# Writes the checkout attribute `naaradh_call_consent = <wording version>` when ticked and
+# removes it when unticked; the intents consumer records (or revokes) the consent from the
+# checkouts/* webhook. Never pre-ticked. Deployed by a human with `shopify app deploy`.
+# [VERIFY] target and API version against the Shopify changelog before the first deploy.
+api_version = "2025-10"
+
+[[extensions]]
+name = "Naaradh call consent"
+handle = "naaradh-call-consent"
+type = "ui_extension"
+
+  [[extensions.targeting]]
+  module = "./src/Checkout.jsx"
+  target = "purchase.checkout.contact.render-after"
+
+  [extensions.capabilities]
+  api_access = false
+  network_access = false

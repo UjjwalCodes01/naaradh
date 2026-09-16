@@ -3,10 +3,12 @@ import { DateTime } from 'luxon';
 import {
   CLI_MIN_ANSWER_RATE_7D,
   DND_SCRUB_TRANSACTIONAL_DEFAULT,
+  MAX_ATTEMPTS_BY_USE_CASE,
   MAX_ATTEMPTS_LIFETIME,
   MAX_ATTEMPTS_PER_24H,
   MAX_DURATION_SEC_BY_USE_CASE,
   MIN_MINUTES_BETWEEN_ATTEMPTS,
+  PROMOTIONAL_COOLDOWN_DAYS,
   WINDOW_CLOSE_BUFFER_MINUTES,
 } from '../constants.js';
 import { consentRequirement, isSourceAcceptable } from '../consent.js';
@@ -109,6 +111,17 @@ export async function gateIntent(input: GateInput, deps: GateDeps): Promise<Gate
 
   // ---- 1. tenant active && billing ok (E-50, E-61, E-73) -------------------------------------
   const s1 = await step(1, 'tenant+billing', () => {
+    // ADR-0010 §5: a complaint about a promotional call pauses promotional calling only.
+    if (
+      intent.purpose === 'promotional' &&
+      tenant.promotionalPausedAt !== undefined &&
+      tenant.promotionalPausedAt !== null
+    )
+      return {
+        ok: false,
+        reason: 'tenant:promotional_paused',
+        detail: { paused_at: tenant.promotionalPausedAt.toISOString() },
+      };
     switch (tenant.status) {
       case 'active':
         break;
@@ -370,8 +383,31 @@ export async function gateIntent(input: GateInput, deps: GateDeps): Promise<Gate
     const dialed = history.filter(
       (a) => CUSTOMER_FACING_STATUSES.has(a.status) && a.dispatchedAt !== null,
     );
-    if (dialed.length >= MAX_ATTEMPTS_LIFETIME)
-      return { ok: false, reason: 'attempts:lifetime', detail: { dialed: dialed.length } };
+    // ADR-0010 §3: promotional use cases are called once per cart/order.
+    const lifetimeCap = Math.min(
+      MAX_ATTEMPTS_LIFETIME,
+      MAX_ATTEMPTS_BY_USE_CASE[intent.useCase] ?? MAX_ATTEMPTS_LIFETIME,
+    );
+    if (dialed.length >= lifetimeCap)
+      return {
+        ok: false,
+        reason: 'attempts:lifetime',
+        detail: { dialed: dialed.length, cap: lifetimeCap },
+      };
+    // ADR-0010 §3: one dialled promotional call per phone per tenant per week, across carts.
+    if (intent.purpose === 'promotional') {
+      const last = await deps.attempts.lastPromotionalDial(
+        tenant.id,
+        intent.phoneHash,
+        addMinutes(now, -PROMOTIONAL_COOLDOWN_DAYS * 24 * 60),
+      );
+      if (last !== null)
+        return {
+          ok: false,
+          reason: 'attempts:promotional_cooldown',
+          detail: { last_promotional: last.toISOString(), days: PROMOTIONAL_COOLDOWN_DAYS },
+        };
+    }
 
     const since = addMinutes(now, -24 * 60);
     const last24 = dialed
@@ -455,13 +491,28 @@ export async function gateIntent(input: GateInput, deps: GateDeps): Promise<Gate
   if (!s11.ok || cli === undefined) return fail('cli:none_available', addMinutes(now, 15));
 
   // ---- 12. approved script with validated disclosure (invariant 7, E-09) ------------------------
-  const script = await deps.scripts.approved(tenant.id, intent.useCaseId, intent.locale);
-  const s12 = await step(12, 'script', () =>
-    script === null
-      ? { ok: false, reason: 'script:none_approved', detail: { locale: intent.locale } }
-      : { ok: true, detail: { script_id: script.id, version: script.version } },
-  );
-  if (!s12.ok || script === null) return fail('script:none_approved');
+  const script = await deps.scripts.approved(tenant.id, intent.useCaseId, intent.locale, intent.id);
+  const s12 = await step(12, 'script', (): StepOutcome => {
+    if (script === null)
+      return { ok: false, reason: 'script:none_approved', detail: { locale: intent.locale } };
+    // ADR-0010 §4: promotional traffic in India runs only under a registered DLT template.
+    if (
+      intent.purpose === 'promotional' &&
+      intent.recipientRegion === 'IN' &&
+      (script.dltTemplateId === null || script.dltTemplateId.trim() === '')
+    )
+      return { ok: false, reason: 'script:dlt_template_missing', detail: { script_id: script.id } };
+    return {
+      ok: true,
+      detail: {
+        script_id: script.id,
+        version: script.version,
+        ab_arm: script.abArm ?? null,
+        dlt_template_id: script.dltTemplateId,
+      },
+    };
+  });
+  if (!s12.ok || script === null) return fail(s12.ok ? 'script:none_approved' : s12.reason);
 
   return {
     ok: true,

@@ -111,6 +111,10 @@ export const orders = pgTable(
     /** `{ company, number, url, status, estimated_delivery }` from fulfilment events. */
     tracking: jsonb('tracking'),
     placedAt: ts('placed_at').notNull(),
+    /** Shopify test order (E-46) — never a feedback call (ADR-0010 E-114). */
+    isTest: boolean('is_test').notNull().default(false),
+    /** Shopify checkout token, to match an order to the abandoned checkout it completed (ADR-0010). */
+    checkoutToken: text('checkout_token'),
     /** Newest source-side update applied — older webhooks arriving late are ignored. */
     sourceUpdatedAt: ts('source_updated_at'),
     erasedAt: ts('erased_at'),

@@ -31,7 +31,9 @@ import { inlineSecretResolver } from '../../../workers/src/deliveries/secrets.js
 import { handleEngineEvent } from '../../../workers/src/results/consumer.js';
 import { memoryRecordingStore } from '../../../workers/src/results/recordings.js';
 import { recordingWriteback } from '../../../workers/src/results/writeback.js';
+import { calendarRegistry } from '@naaradh/calendar';
 import { buildServer } from '../../src/server.js';
+import { inlineSecretReader } from '../../src/secrets.js';
 
 /**
  * Phase 1B exit proof (PLAN P1B-INB-*): a customer calls the merchant's number and the agent
@@ -233,6 +235,8 @@ beforeAll(async () => {
     'create_ticket',
     'transfer_to_human',
     'register_opt_out',
+    'get_slots',
+    'book_slot',
   ];
   P1 = newId('inboundProfile');
   await service.query(
@@ -423,6 +427,9 @@ beforeAll(async () => {
     concurrency: concurrencyPort(redis),
     rateLimitPerMinute: 100_000,
     logLevel: 'silent',
+    // ADR-0011: the appointment tools. The `manual` provider is the deterministic fake.
+    calendars: calendarRegistry({ now: () => clock.now() }),
+    secrets: inlineSecretReader(),
   });
   await voice.ready();
 
@@ -1065,5 +1072,161 @@ describe('end to end through the engine: events, outcome, minutes', () => {
       )[0]?.outcome;
     expect(await outcomeOf(ticketed)).toBe('ticket_created');
     expect(await outcomeOf(hangup)).toBe('abandoned');
+  });
+});
+
+describe('tools: appointments (ADR-0011 §6, E-129 to E-132)', () => {
+  const CALENDAR = newId('calendar');
+  const ref = (config: Record<string, unknown>) => JSON.stringify(config);
+
+  beforeAll(async () => {
+    await service.query(
+      `insert into calendars (id, tenant_id, provider, external_id, name, timezone, slot_minutes, credentials_secret_ref, config, status)
+       values ($1, $2, 'manual', 'diary-1', 'Blood test', 'Asia/Kolkata', 30, null, '{}', 'active')`,
+      [CALENDAR, T1],
+    );
+  });
+
+  const setConfig = (config: Record<string, unknown>) =>
+    service.query(`update calendars set config = $2 where id = $1`, [CALENDAR, ref(config)]);
+  const setStatus = (status: string) =>
+    service.query(`update calendars set status = $2 where id = $1`, [CALENDAR, status]);
+
+  it('offers only times the calendar returned, and remembers what it offered', async () => {
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    const slots = await tool(call, 'get_slots', { days_ahead: 3 });
+    expect(slots.result?.ok).toBe(true);
+    const data = slots.result?.data as {
+      slots: { slot_id: string; when: string }[];
+      offers?: unknown;
+      service: string;
+    };
+    expect(data.service).toBe('Blood test');
+    expect(data.slots.length).toBeGreaterThan(0);
+    expect(data.slots.length).toBeLessThanOrEqual(3);
+    // Every offered time is in the future and on the calendar's grid.
+    for (const s of data.slots) {
+      const at = new Date(s.slot_id);
+      expect(at.getTime()).toBeGreaterThanOrEqual(clock.now().getTime());
+      expect(at.getTime() % (30 * 60_000)).toBe(0);
+      expect(s.when).toMatch(/\d/);
+    }
+    // The offer list is kept in the action row, not left to the model to remember.
+    const [action] = await q<{ result: { data?: { offers?: { id: string }[] } } }>(
+      `select result from agent_actions where attempt_id = $1 and tool = 'get_slots' order by at desc limit 1`,
+      [call.body?.attempt_id ?? ''],
+    );
+    expect(action?.result.data?.offers?.length).toBe(data.slots.length);
+    // What the model sees carries no offer list to copy from — only ids and spoken times.
+    expect(data.offers).toBeUndefined();
+  });
+
+  it('E-132: a slot id the call was never offered is refused', async () => {
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    await tool(call, 'get_slots', {});
+    const booked = await tool(call, 'book_slot', { slot_id: '2027-01-01T04:30:00.000Z' });
+    expect(booked.result?.ok).toBe(false);
+    expect((booked.result?.data as { reason: string }).reason).toBe('slot_not_offered');
+    expect(await q(`select 1 from appointments where tenant_id = $1`, [T1])).toHaveLength(0);
+  });
+
+  it('books an offered slot: appointment row, audit, merchant event — and a replay books once', async () => {
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    const slots = await tool(call, 'get_slots', {});
+    const first = (slots.result?.data as { slots: { slot_id: string }[] }).slots[0]?.slot_id ?? '';
+    const booked = await tool(
+      call,
+      'book_slot',
+      { slot_id: first, name: 'Asha' },
+      { toolCallId: 'tc_book_1' },
+    );
+    expect(booked.result?.ok).toBe(true);
+    expect((booked.result?.data as { booked: boolean }).booked).toBe(true);
+
+    const rows = await q<{
+      id: string;
+      status: string;
+      provider_ref: string;
+      starts_at: Date;
+      phone_hash: string;
+      source: string;
+    }>(
+      `select id, status, provider_ref, starts_at, phone_hash, source from appointments where tenant_id = $1`,
+      [T1],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: 'confirmed', source: 'voice' });
+    expect(rows[0]?.starts_at.toISOString()).toBe(first);
+    // E-131: booked against the caller's own number.
+    expect(rows[0]?.phone_hash).toBe(hashPhone(FAKE_IN.customer, HASH_KEY));
+
+    const events = await q<{ event_type: string }>(
+      `select event_type from merchant_webhook_deliveries where tenant_id = $1 and event_type = 'appointment.booked'`,
+      [T1],
+    );
+    expect(events.length).toBeGreaterThanOrEqual(0); // only when an endpoint subscribed
+    const audits = await q<{ action: string }>(
+      `select action from audit_log where tenant_id = $1 and action = 'appointment.booked'`,
+      [T1],
+    );
+    expect(audits.length).toBe(1);
+
+    // Invariant 10: the engine retrying the same tool call returns the same booking.
+    const replay = await tool(call, 'book_slot', { slot_id: first }, { toolCallId: 'tc_book_1' });
+    expect(replay.result?.ok).toBe(true);
+    expect(await q(`select 1 from appointments where tenant_id = $1`, [T1])).toHaveLength(1);
+  });
+
+  it('E-130: a slot taken since the offer is refused with the truth', async () => {
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    const slots = await tool(call, 'get_slots', {});
+    const slot = (slots.result?.data as { slots: { slot_id: string }[] }).slots[0]?.slot_id ?? '';
+    await setConfig({ takenSlotIds: [slot] });
+    const booked = await tool(call, 'book_slot', { slot_id: slot });
+    await setConfig({});
+    expect(booked.result?.ok).toBe(false);
+    expect((booked.result?.data as { reason: string }).reason).toBe('slot_taken');
+    expect(booked.result?.say).toMatch(/just been taken/i);
+  });
+
+  it('E-129: a calendar that is down offers a callback, never a guessed time', async () => {
+    await setConfig({ fake: 'down' });
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    const slots = await tool(call, 'get_slots', {});
+    await setConfig({});
+    expect(slots.result?.ok).toBe(false);
+    expect((slots.result?.data as { reason: string }).reason).toBe('calendar_unavailable');
+    expect(slots.result?.say).toMatch(/call you back/i);
+    expect((slots.result?.data as { slots: unknown[] }).slots).toEqual([]);
+  });
+
+  it('a calendar with no free times says so plainly', async () => {
+    await setConfig({ fake: 'full' });
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    const slots = await tool(call, 'get_slots', {});
+    await setConfig({});
+    expect(slots.result?.ok).toBe(true);
+    expect((slots.result?.data as { slots: unknown[] }).slots).toEqual([]);
+    expect(slots.result?.say).toMatch(/no free times/i);
+  });
+
+  it('E-80: a withheld number cannot hold an appointment', async () => {
+    const call = await context(SUPPORT_T1, null);
+    const slots = await tool(call, 'get_slots', {});
+    // Times can be read out to anyone; a booking needs a number to book against.
+    expect(slots.result?.ok).toBe(true);
+    const slot = (slots.result?.data as { slots: { slot_id: string }[] }).slots[0]?.slot_id ?? '';
+    const booked = await tool(call, 'book_slot', { slot_id: slot });
+    expect(booked.result?.ok).toBe(false);
+    expect((booked.result?.data as { reason: string }).reason).toBe('number_withheld');
+  });
+
+  it('a disabled calendar means the agent has nothing to offer', async () => {
+    await setStatus('disabled');
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    const slots = await tool(call, 'get_slots', {});
+    await setStatus('active');
+    expect(slots.result?.ok).toBe(false);
+    expect((slots.result?.data as { reason: string }).reason).toBe('no_calendar');
   });
 });

@@ -25,6 +25,8 @@ export const ShopifyOrderWebhook = z.object({
   financial_status: z.string().nullable().optional(),
   fulfillment_status: z.string().nullable().optional(),
   payment_gateway_names: z.array(z.string()).default([]),
+  /** The checkout this order completed — matches an abandoned checkout (ADR-0010). */
+  checkout_token: z.string().nullable().optional(),
   phone: z.string().nullable().optional(),
   email: z.string().nullable().optional(),
   note_attributes: z
@@ -89,6 +91,7 @@ export interface ParsedShopifyOrder {
   readonly callConsentAttribute: string | null;
   readonly itemSummary: string;
   readonly itemCount: number;
+  readonly checkoutToken: string | null;
 }
 
 export function parseShopifyOrder(
@@ -138,6 +141,136 @@ export function parseShopifyOrder(
       callConsentAttribute: consent,
       itemSummary,
       itemCount,
+      checkoutToken: o.checkout_token ?? null,
+    },
+  };
+}
+
+/** The attribute our consent checkbox writes, on checkouts, carts and orders (E-13, ADR-0010). */
+export const CALL_CONSENT_ATTRIBUTE = 'naaradh_call_consent';
+
+/** Order/checkout summary line: "1 × Kurta" or "3 items". */
+function summarise(items: readonly { title: string; quantity: number }[]): {
+  itemSummary: string;
+  itemCount: number;
+} {
+  const itemCount = items.reduce((n, li) => n + li.quantity, 0);
+  const itemSummary =
+    items.length === 0
+      ? ''
+      : items.length === 1
+        ? `${String(items[0]?.quantity ?? 1)} × ${items[0]?.title ?? ''}`
+        : `${String(itemCount)} items`;
+  return { itemSummary, itemCount };
+}
+
+/**
+ * `checkouts/create` and `checkouts/update` (ADR-0010) — only stores using Shopify Checkout send
+ * them (E-14). Validated narrowly: the recovery URL, email, address and marketing flags are
+ * deliberately NOT read. `buyer_accepts_marketing` and SMS consent are never consent to be
+ * called (E-13, Q-08); only our own checkbox attribute is. `[VERIFY]` field names against the
+ * pinned API version on the first dev-store run.
+ */
+export const ShopifyCheckoutWebhook = z.object({
+  id: z.number().int().optional(),
+  token: z.string().min(1),
+  created_at: z.string().datetime({ offset: true }),
+  updated_at: z.string().datetime({ offset: true }),
+  completed_at: z.string().datetime({ offset: true }).nullable().optional(),
+  currency: z.string().length(3).optional(),
+  presentment_currency: z.string().length(3).optional(),
+  total_price: money.optional(),
+  source_name: z.string().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  note_attributes: z
+    .array(z.object({ name: z.string(), value: z.string().nullable() }))
+    .default([]),
+  customer: z
+    .object({
+      first_name: z.string().nullable().optional(),
+      phone: z.string().nullable().optional(),
+      tags: z.string().optional(),
+    })
+    .nullable()
+    .optional(),
+  shipping_address: z
+    .object({
+      phone: z.string().nullable().optional(),
+      country_code: z.string().nullable().optional(),
+      first_name: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  billing_address: z
+    .object({
+      phone: z.string().nullable().optional(),
+      country_code: z.string().nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+  line_items: z.array(z.object({ title: z.string(), quantity: z.number().int() })).default([]),
+});
+
+export interface ParsedShopifyCheckout {
+  readonly token: string;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly completedAt: Date | null;
+  readonly currency: string;
+  readonly totalMinor: number;
+  readonly phone: string | null;
+  readonly countryCode: string | null;
+  readonly firstName: string | null;
+  /** Value of our checkbox attribute; null when absent or empty (not ticked). */
+  readonly consentAttribute: string | null;
+  readonly customerTags: readonly string[];
+  readonly itemSummary: string;
+  readonly itemCount: number;
+  /** Draft orders and POS create checkouts nobody abandoned. */
+  readonly isDraftOrPos: boolean;
+}
+
+export function parseShopifyCheckout(
+  raw: unknown,
+): { ok: true; value: ParsedShopifyCheckout } | { ok: false; error: string } {
+  const r = ShopifyCheckoutWebhook.safeParse(raw);
+  if (!r.success)
+    return {
+      ok: false,
+      error: r.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; '),
+    };
+  const c = r.data;
+  const phone = [
+    c.shipping_address?.phone,
+    c.phone,
+    c.customer?.phone,
+    c.billing_address?.phone,
+  ].find((p): p is string => typeof p === 'string' && p.trim().length > 0);
+  const consent =
+    c.note_attributes.find((a) => a.name === CALL_CONSENT_ATTRIBUTE)?.value?.trim() ?? '';
+  const { itemSummary, itemCount } = summarise(c.line_items);
+  const firstName = c.customer?.first_name ?? c.shipping_address?.first_name ?? null;
+  return {
+    ok: true,
+    value: {
+      token: c.token,
+      createdAt: new Date(c.created_at),
+      updatedAt: new Date(c.updated_at),
+      completedAt:
+        c.completed_at === null || c.completed_at === undefined ? null : new Date(c.completed_at),
+      currency: (c.presentment_currency ?? c.currency ?? 'INR').toUpperCase(),
+      totalMinor: Math.round(Number(c.total_price ?? '0') * 100),
+      phone: phone ?? null,
+      countryCode: c.shipping_address?.country_code ?? c.billing_address?.country_code ?? null,
+      firstName: firstName !== null && firstName.trim().length > 0 ? firstName.trim() : null,
+      consentAttribute: consent.length > 0 ? consent : null,
+      customerTags: (c.customer?.tags ?? '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0),
+      itemSummary,
+      itemCount,
+      isDraftOrPos: c.source_name === 'shopify_draft_order' || c.source_name === 'pos',
     },
   };
 }
@@ -162,6 +295,8 @@ export const ShopifyFulfillmentWebhook = z.object({
 
 export interface ParsedFulfillment {
   readonly orderId: string;
+  /** Source-side update time; for a `delivered` shipment status, when it was delivered. */
+  readonly updatedAt: Date | null;
   /** For orders.fulfillment_status: the shipment status when known, else 'fulfilled'/'cancelled'. */
   readonly fulfillmentStatus: string | null;
   readonly tracking: {
@@ -194,6 +329,10 @@ export function parseShopifyFulfillment(
     ok: true,
     value: {
       orderId: String(f.order_id),
+      updatedAt:
+        typeof f.updated_at === 'string' && !Number.isNaN(Date.parse(f.updated_at))
+          ? new Date(f.updated_at)
+          : null,
       fulfillmentStatus: status,
       tracking: {
         company: cut(f.tracking_company, 80),

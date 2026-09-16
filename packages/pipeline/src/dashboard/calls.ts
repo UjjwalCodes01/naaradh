@@ -191,6 +191,8 @@ export interface AttemptView {
   readonly hasRecording: boolean;
   readonly hasTranscript: boolean;
   readonly mediaPurgedAt: Date | null;
+  /** ADR-0010 §4: the DLT content template a promotional call ran under. */
+  readonly dltTemplateId: string | null;
 }
 
 export interface OutcomeView {
@@ -296,6 +298,7 @@ const attemptColumns = {
   recordingUri: schema.callAttempts.recordingUri,
   transcriptUri: schema.callAttempts.transcriptUri,
   mediaPurgedAt: schema.callAttempts.mediaPurgedAt,
+  dltTemplateId: schema.callAttempts.dltTemplateId,
 };
 
 function attemptView(a: {
@@ -313,6 +316,7 @@ function attemptView(a: {
   recordingUri: string | null;
   transcriptUri: string | null;
   mediaPurgedAt: Date | null;
+  dltTemplateId: string | null;
 }): AttemptView {
   return {
     id: a.id,
@@ -329,6 +333,7 @@ function attemptView(a: {
     hasRecording: a.recordingUri !== null,
     hasTranscript: a.transcriptUri !== null,
     mediaPurgedAt: a.mediaPurgedAt,
+    dltTemplateId: a.dltTemplateId,
   };
 }
 

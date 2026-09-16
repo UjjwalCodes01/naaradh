@@ -36,7 +36,26 @@ export function dndPort(db: DbOrTx): DndPort {
   };
 }
 
-/** Ingestion side: look the number up with the provider and cache by hash for 24h. */
+/** A cached result that is still fresh, or null. */
+export async function cachedDnd(
+  db: DbOrTx,
+  phoneHash: string,
+  now: Date,
+): Promise<DndResult | null> {
+  const [row] = await db
+    .select({ result: schema.dndScrubCache.result, expiresAt: schema.dndScrubCache.expiresAt })
+    .from(schema.dndScrubCache)
+    .where(eq(schema.dndScrubCache.phoneHash, phoneHash))
+    .limit(1);
+  return row === undefined || row.expiresAt <= now ? null : row.result;
+}
+
+/**
+ * Look the number up with the provider and cache the answer by hash for 24h. Runs where the
+ * plaintext number is in hand — the dispatcher, just before the gate (ADR-0010 §6). A provider
+ * failure or an 'unknown' answer is NOT cached: the gate refuses this time (fail-closed,
+ * `dnd:unknown`, temporary) and the next attempt asks again instead of being blocked for a day.
+ */
 export async function refreshDnd(
   db: DbOrTx,
   provider: DndProvider,
@@ -49,8 +68,9 @@ export async function refreshDnd(
   try {
     result = await provider.check(e164, region);
   } catch {
-    result = 'unknown';
+    return 'unknown';
   }
+  if (result === 'unknown') return result;
   await db
     .insert(schema.dndScrubCache)
     .values({

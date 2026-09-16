@@ -29,6 +29,13 @@ export const NEVER_RETRY = new Set([
   'cancelled',
   'rescheduled',
   'booked',
+  // ADR-0010: the customer gave an answer — asking again is pestering
+  'will_complete',
+  'will_buy_later',
+  'not_interested',
+  'price_objection',
+  'qualified',
+  'feedback_given',
 ]);
 
 export function isRetryEligible(endReasonOrOutcome: string): boolean {

@@ -31,6 +31,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       billingStatus: t.billingStatus,
       billingGraceUntil: t.billingGraceUntil,
       reviewUntil: t.reviewUntil,
+      promotionalPausedAt: t.promotionalPausedAt,
     });
     return {
       name: t.name,

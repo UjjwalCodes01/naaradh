@@ -187,6 +187,8 @@ export const callAttempts = pgTable(
     numberId: text('number_id').references(() => numbers.id),
     scriptId: text('script_id').references(() => scripts.id),
     scriptVersion: integer('script_version'),
+    /** ADR-0010: the registered DLT content template the call ran under (promotional) — CDR mapping. */
+    dltTemplateId: text('dlt_template_id'),
     amdMode: amdMode('amd_mode').notNull(),
     maxDurationSec: smallint('max_duration_sec').notNull(),
     /** Sent to the vendor as its idempotency key; replay must not dial twice (invariant 10). */

@@ -15,3 +15,5 @@ export * from './calls.js';
 export * from './system.js';
 export * from './inbound.js';
 export * from './auth.js';
+export * from './promotional.js';
+export * from './appointments.js';

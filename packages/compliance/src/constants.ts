@@ -134,6 +134,38 @@ export const MIN_MINUTES_BETWEEN_ATTEMPTS: Readonly<Record<Purpose, number>> = {
 };
 export const MIN_HOURS_BETWEEN_ATTEMPTS = 2;
 
+/**
+ * ADR-0010: attempts per intent by use case, on top of the lifetime limit. A promotional call
+ * is made once; a no-answer is not a reason to call a shopper again about the same cart.
+ * DECISION, not a regulatory constant.
+ */
+export const MAX_ATTEMPTS_BY_USE_CASE: Readonly<Partial<Record<UseCaseKind, number>>> = {
+  abandoned_cart: 1,
+  feedback: 1,
+  reactivation: 1,
+};
+
+/**
+ * ADR-0010: at most one DIALLED promotional call per phone per tenant in this many days, across
+ * every promotional use case and every cart/order. DECISION — deliberately stricter than the
+ * 7-day consent validity it mirrors.
+ */
+export const PROMOTIONAL_COOLDOWN_DAYS = 7;
+
+/** ADR-0010 §1: a checkout is abandoned after this long without an update. */
+export const ABANDONED_CART_IDLE_MINUTES = 45;
+/** ADR-0010 §1: a checkout older than this is never called (the intent's hard deadline). */
+export const ABANDONED_CART_MAX_AGE_HOURS = 24;
+/** ADR-0010 §9: last-touch attribution window, default and the most a merchant may set. */
+export const ATTRIBUTION_WINDOW_HOURS_DEFAULT = 24;
+export const ATTRIBUTION_WINDOW_HOURS_MAX = 72;
+/** ADR-0010 §8: no A/B leader is named below this many answered calls per arm. */
+export const AB_MIN_ANSWERED_PER_ARM = 100;
+/** ADR-0010 §11 / P4-OPS-1: weekly QA sample of human-answered calls per tenant. */
+export const QA_SAMPLE_RATE = 0.02;
+export const QA_SAMPLE_MIN_PER_TENANT = 1;
+export const QA_SAMPLE_MAX_PER_TENANT = 20;
+
 // ---------------------------------------------------------------------------
 // Per-use-case dispatch envelope. `notBefore` gives a merchant's other apps time to act;
 // `notAfter` is the hard deadline after which the intent expires rather than being retried.
@@ -164,6 +196,13 @@ export const USE_CASE_WINDOWS = {
     notBeforeMinutes: 1,
     notAfterMinutes: 2 * 60,
     maxDurationSec: 180,
+  },
+  /** ADR-0010 §7: relative to the delivery event — the day after, and no later than 3 days. */
+  feedback: {
+    purpose: 'promotional',
+    notBeforeMinutes: 24 * 60,
+    notAfterMinutes: 72 * 60,
+    maxDurationSec: 150,
   },
   /** Relative to appointment_ts, not event_ts: -24h to -2h. Handled by the intents consumer. */
   appointment_confirm: {
@@ -248,6 +287,11 @@ export const ERASURE_COMPLETION_TARGET_DAYS = 30;
  * job — data minimisation (Shopify Level 2, DPDP).
  */
 export const ORDER_CACHE_RETENTION_DAYS = 180;
+/**
+ * ADR-0010: a checkout's phone link is only needed for the 24-hour recovery window and the
+ * attribution window after it. DECISION (data minimisation) — rows keep their counts.
+ */
+export const CHECKOUT_RETENTION_DAYS = 30;
 
 /** A self-service do-not-call submission becomes a global suppression within this long. */
 export const DNC_PAGE_PROCESSING_HOURS = 24;

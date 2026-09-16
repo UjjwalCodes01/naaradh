@@ -1,0 +1,56 @@
+{%- comment -%}
+  Call-consent checkbox for the cart page (E-13, ADR-0010 §2). Never pre-ticked. Ticking stores
+  the wording version the shopper saw in the cart attribute `naaradh_call_consent`; unticking
+  clears it (which revokes the consent on the next checkouts/update).
+  The texts below must equal CONSENT_WORDINGS['2026-09-v1-draft'] in
+  packages/pipeline/src/promotional/consent-wording.ts — packages/pipeline/test/consent-wording.test.ts
+  checks it. TODO_LEGAL (Q-08): draft wording.
+{%- endcomment -%}
+{%- assign naaradh_version = '2026-09-v1-draft' -%}
+{%- assign naaradh_ticked = false -%}
+{%- if cart.attributes.naaradh_call_consent == naaradh_version -%}
+  {%- assign naaradh_ticked = true -%}
+{%- endif -%}
+<div class="naaradh-call-consent" {{ block.shopify_attributes }}>
+  <input type="hidden" name="attributes[naaradh_call_consent]" value="" form="cart">
+  <label style="display:flex;gap:.5rem;align-items:flex-start;font-size:0.9em">
+    <input
+      type="checkbox"
+      name="attributes[naaradh_call_consent]"
+      value="{{ naaradh_version }}"
+      form="cart"
+      data-naaradh-consent
+      {% if naaradh_ticked %}checked{% endif %}
+    >
+    <span>
+      {%- if request.locale.iso_code contains 'hi' -%}
+        Haan, {{ shop.name | escape }} mujhe is order, mere cart aur offers ke baare mein call (automated call bhi) kar sakta hai aur SMS ya WhatsApp bhej sakta hai. Main kabhi bhi "stop" bolkar mana kar sakta/sakti hoon.
+      {%- else -%}
+        Yes, {{ shop.name | escape }} may call me (including automated calls), and send SMS or WhatsApp messages, about this order, my cart and offers. I can say "stop" or opt out at any time.
+      {%- endif -%}
+    </span>
+  </label>
+</div>
+<script>
+  (function () {
+    var box = document.currentScript.previousElementSibling.querySelector('[data-naaradh-consent]');
+    if (!box) return;
+    // Cart drawers and dynamic checkout buttons skip the cart form: save the choice as it changes.
+    box.addEventListener('change', function () {
+      fetch('/cart/update.js', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ attributes: { naaradh_call_consent: box.checked ? box.value : '' } }),
+      });
+    });
+  })();
+</script>
+
+{% schema %}
+{
+  "name": "Call consent (Naaradh)",
+  "target": "section",
+  "enabled_on": { "templates": ["cart"] },
+  "settings": []
+}
+{% endschema %}

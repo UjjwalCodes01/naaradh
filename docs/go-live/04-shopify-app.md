@@ -54,6 +54,16 @@ What the toml declares (don't change without the process in CLAUDE.md):
   `customers/redact`, `shop/redact`), all delivered to **hooks**, which verifies the HMAC and
   answers 401 on a bad one.
 - **Embedded** app; auth redirect URLs on the app host.
+- **Extensions** (`apps/shopify/extensions/`, ADR-0010 §2): `call-consent-checkout` (checkout UI
+  extension, Shopify Plus stores) and `call-consent-cart` (theme app block for the cart page, every
+  plan). Both show the consent wording and write the `naaradh_call_consent` attribute. They are
+  released by the same `shopify app deploy`; the CLI builds them from their own `package.json`
+  (not the pnpm workspace). Check the target and API version against the Shopify changelog first
+  (`[VERIFY]` in the toml), and do not deploy them to production until counsel approves the
+  wording (Q-08) — the text lives in `packages/pipeline/src/promotional/consent-wording.ts` and
+  a unit test fails if the extension copies drift from it. Merchants add the cart block in the
+  theme editor (Customize → Cart → Add block → *Call consent (Naaradh)*); Plus merchants add the
+  checkout extension in the checkout editor.
 
 ### Credentials → configuration
 

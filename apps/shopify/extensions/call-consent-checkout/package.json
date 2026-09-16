@@ -1,0 +1,11 @@
+{
+  "name": "naaradh-call-consent-checkout",
+  "private": true,
+  "version": "0.0.0",
+  "comment": "Built by the Shopify CLI (shopify app build / deploy), not by the pnpm workspace. [VERIFY] versions at deploy time.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@shopify/ui-extensions": "2025.10.x",
+    "preact": "^10.26.0"
+  }
+}

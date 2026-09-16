@@ -17,6 +17,7 @@ export interface ComplaintsReport {
   readonly recorded: number;
   readonly unattributed: number;
   readonly tenantsPaused: number;
+  readonly promotionalPaused: number;
   readonly globalKill: boolean;
 }
 
@@ -33,6 +34,7 @@ export async function runComplaintsOnce(ctx: WorkerContext, batch = 20): Promise
     recorded: 0,
     unattributed: 0,
     tenantsPaused: 0,
+    promotionalPaused: 0,
     globalKill: false,
   };
   for (const { id } of pending) {
@@ -59,6 +61,28 @@ export async function runComplaintsOnce(ctx: WorkerContext, batch = 20): Promise
         at: now,
         data: { complaint_id: r.complaint.id, complaints_in_window: r.complaint.tenantCount },
       });
+      if (r.complaint.promotionalPaused) {
+        // ADR-0010 §5 / E-113: a complaint about a promotional call stops promotional calling.
+        await audit(tx, {
+          tenantId: r.tenantId,
+          actorType: 'worker',
+          actorId: ctx.workerId,
+          action: 'tenant.promotional_paused',
+          targetType: 'tenant',
+          targetId: r.tenantId,
+          after: { complaint_id: r.complaint.id, use_case: r.complaint.useCase },
+        });
+        await emitMerchantEvent(tx, r.tenantId, {
+          type: 'promotional.paused',
+          eventId: `${r.complaint.id}:promotional_paused`,
+          at: now,
+          data: {
+            reason: 'complaint',
+            complaint_id: r.complaint.id,
+            attempt_id: r.attemptId,
+          },
+        });
+      }
       if (r.complaint.tenantPaused) {
         await audit(tx, {
           tenantId: r.tenantId,
@@ -82,6 +106,13 @@ export async function runComplaintsOnce(ctx: WorkerContext, batch = 20): Promise
     if (result.kind === 'unattributed') report.unattributed += 1;
     if (result.kind === 'recorded') {
       report.recorded += 1;
+      if (result.complaint.promotionalPaused) {
+        report.promotionalPaused += 1;
+        ctx.log.error(
+          { tenant_id: result.tenantId, complaint_id: result.complaint.id },
+          'promotional calling paused on a promotional complaint (ADR-0010 §5)',
+        );
+      }
       if (result.complaint.tenantPaused) {
         report.tenantsPaused += 1;
         // Structured error → Error Reporting alert policy (runbook complaint-received.md).

@@ -59,6 +59,13 @@ export const GATE_REASONS = {
     hint: 'Transactional calls continue. Promotional calls start automatically after review.',
     temporary: true,
   },
+  'tenant:promotional_paused': {
+    title: 'Promotional calls paused',
+    explanation:
+      'A complaint was received about a promotional call, so promotional calling is paused for your account while Naaradh reviews it (ADR-0010).',
+    hint: 'Order confirmations and other service calls continue. Naaradh support will contact you.',
+    temporary: false,
+  },
   'billing:not_set_up': {
     title: 'Billing not set up',
     explanation: 'No active plan is attached to this account.',
@@ -276,6 +283,13 @@ export const GATE_REASONS = {
     hint: 'Confirm this order another way.',
     temporary: false,
   },
+  'attempts:promotional_cooldown': {
+    title: 'Called recently',
+    explanation:
+      'This customer received a promotional call from you in the last 7 days; Naaradh places at most one per week (ADR-0010).',
+    hint: 'None; the limit protects the customer and your number from spam reports.',
+    temporary: false,
+  },
   'attempts:too_soon': {
     title: 'Too soon after the last call',
     explanation: 'A minimum gap is kept between calls to the same number.',
@@ -312,6 +326,13 @@ export const GATE_REASONS = {
     explanation: "There is no approved script for this use case in the customer's language.",
     hint: 'Approve a script under Settings → Scripts.',
     temporary: true,
+  },
+  'script:dlt_template_missing': {
+    title: 'DLT template missing',
+    explanation:
+      'Promotional calls in India must run under a content template registered on the DLT portal, and the approved script has no template ID.',
+    hint: 'Register the script wording on the DLT portal and add the template ID to the script.',
+    temporary: false,
   },
 } as const satisfies Record<string, GateReasonInfo>;
 

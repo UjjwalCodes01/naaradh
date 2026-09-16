@@ -8,6 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@naaradh/calendar": "workspace:*",
     "@naaradh/compliance": "workspace:*",
     "@naaradh/db": "workspace:*",
     "@naaradh/scripts": "workspace:*",

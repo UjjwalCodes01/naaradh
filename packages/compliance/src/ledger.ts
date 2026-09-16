@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { schema, type DbOrTx, type Tx } from '@naaradh/db';
 import { addDays, newId } from '@naaradh/shared';
 import type { Redis } from 'ioredis';
@@ -237,6 +237,11 @@ export interface ComplaintOutcome {
   readonly globalCount: number;
   readonly tenantPaused: boolean;
   readonly globalKill: boolean;
+  /** Purpose of the attributed call; null when no call was attributed. */
+  readonly purpose: (typeof schema.purpose.enumValues)[number] | null;
+  readonly useCase: (typeof schema.useCaseKind.enumValues)[number] | null;
+  /** ADR-0010 §5: this complaint newly paused the tenant's promotional calling. */
+  readonly promotionalPaused: boolean;
 }
 
 /**
@@ -251,12 +256,29 @@ export async function recordComplaint(
   input: RecordComplaintInput,
 ): Promise<ComplaintOutcome> {
   const id = newId('complaint');
+  // ADR-0010 §5: remember what kind of call was complained about.
+  const [call] =
+    input.attemptId === undefined
+      ? []
+      : await tx
+          .select({
+            purpose: schema.callAttempts.purpose,
+            useCase: schema.callIntents.useCase,
+          })
+          .from(schema.callAttempts)
+          .leftJoin(schema.callIntents, eq(schema.callIntents.id, schema.callAttempts.intentId))
+          .where(eq(schema.callAttempts.id, input.attemptId))
+          .limit(1);
+  const purpose = call?.purpose ?? null;
+  const useCase = call?.useCase ?? null;
   await tx.insert(schema.complaints).values({
     id,
     tenantId: input.tenantId,
     phoneHash: input.phoneHash,
     source: input.source,
     status: 'received',
+    purpose,
+    useCase,
     attemptId: input.attemptId ?? null,
     externalRef: input.externalRef ?? null,
     receivedAt: input.at,
@@ -322,5 +344,65 @@ export async function recordComplaint(
     globalKill = true;
   }
 
-  return { id, tenantCount, globalCount, tenantPaused, globalKill };
+  // ADR-0010 §5 / E-113: any complaint about a promotional call stops promotional calling for
+  // the tenant until staff lift it. Independent of the E-05 counters above.
+  let promotionalPaused = false;
+  if (purpose === 'promotional') {
+    const rows = await tx
+      .update(schema.tenants)
+      .set({
+        promotionalPausedAt: input.at,
+        promotionalPausedReason: `complaint:${id}`,
+      })
+      .where(and(eq(schema.tenants.id, input.tenantId), isNull(schema.tenants.promotionalPausedAt)))
+      .returning({ id: schema.tenants.id });
+    promotionalPaused = rows.length === 1;
+  }
+
+  return {
+    id,
+    tenantCount,
+    globalCount,
+    tenantPaused,
+    globalKill,
+    purpose,
+    useCase,
+    promotionalPaused,
+  };
+}
+
+/**
+ * Staff lift of a promotional pause (ADR-0010 §5). Service role only; like `resumeTenant`, the
+ * decision carries a written reason.
+ */
+export async function liftPromotionalPause(
+  tx: Tx,
+  input: {
+    readonly tenantId: string;
+    readonly by: string;
+    readonly reason: string;
+    readonly at: Date;
+  },
+): Promise<boolean> {
+  if (input.reason.trim().length < 10)
+    throw new TypeError('a lift reason of at least 10 characters is required');
+  const rows = await tx
+    .update(schema.tenants)
+    .set({ promotionalPausedAt: null, promotionalPausedReason: null })
+    .where(
+      and(eq(schema.tenants.id, input.tenantId), isNotNull(schema.tenants.promotionalPausedAt)),
+    )
+    .returning({ id: schema.tenants.id });
+  if (rows.length === 0) return false;
+  await tx.insert(schema.auditLog).values({
+    id: newId('audit'),
+    tenantId: input.tenantId,
+    actorType: 'user',
+    actorId: input.by,
+    action: 'tenant.promotional_resumed',
+    targetType: 'tenant',
+    targetId: input.tenantId,
+    after: { reason: input.reason.slice(0, 500) },
+  });
+  return true;
 }

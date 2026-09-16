@@ -26,6 +26,8 @@ export const ERROR_CODES = [
   'NOT_FOUND',
   /** Vendor accepted the request but the outcome is unknown: poll before retrying. */
   'DISPATCH_UNCERTAIN',
+  /** Someone else got there first — a calendar slot taken between the offer and the booking. */
+  'CONFLICT',
   /** Something we did not anticipate. Should be rare enough to alert on. */
   'INTERNAL',
 ] as const;

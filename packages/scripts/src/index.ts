@@ -35,6 +35,7 @@ export {
   AbandonedCartExtraction,
   LeadCallbackExtraction,
   AppointmentExtraction,
+  FeedbackExtraction,
   InboundSupportExtraction,
   type ExtractionName,
   type Extraction,
@@ -46,6 +47,12 @@ export {
   COD_CONFIRM_EN_IN,
   LEAD_CALLBACK_EN_IN,
   ABANDONED_CART_HI_IN,
+  ABANDONED_CART_EN_IN,
+  FEEDBACK_HI_IN,
+  FEEDBACK_EN_IN,
+  APPOINTMENT_CONFIRM_HI_IN,
+  APPOINTMENT_CONFIRM_EN_IN,
+  APPOINTMENT_BOOK_EN_IN,
 } from './templates.js';
 
 // Inbound (ADR-0006)

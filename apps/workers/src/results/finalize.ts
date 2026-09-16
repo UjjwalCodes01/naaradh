@@ -1,6 +1,7 @@
 import { and, eq } from 'drizzle-orm';
 import { schema, type Tx } from '@naaradh/db';
 import {
+  MAX_ATTEMPTS_BY_USE_CASE,
   isBillable,
   isRetryEligible,
   nextRetryAt,
@@ -79,6 +80,16 @@ const OUTCOME_BY_REASON: Readonly<Record<EndReason, (typeof schema.outcome.enumV
   carrier_temp_fail: 'failed',
   engine_error: 'failed',
 };
+
+/**
+ * Use cases whose external refs are store ORDER ids — the only ones a store write-back can
+ * target. An abandoned-cart ref is a checkout token; feedback and lead calls change nothing in
+ * the store (ADR-0010).
+ */
+export const WRITEBACK_USE_CASES: ReadonlySet<string> = new Set([
+  'cod_confirm',
+  'delivery_reschedule',
+]);
 
 /** Which outcomes carry a protective suppression (E-03, E-11, E-26, E-12). */
 export function suppressionFor(outcome: string): {
@@ -398,8 +409,12 @@ export async function finalizeAttempt(
         .where(eq(schema.contacts.id, contactId))
         .limit(1);
       const window = windowFor(intent.recipientRegion, contact?.timezone ?? null);
+      // ADR-0010 §3: a use case with its own attempt limit (promotional: 1) is exhausted here
+      // rather than scheduled for a retry the gate would refuse anyway.
+      const useCaseCap = MAX_ATTEMPTS_BY_USE_CASE[intent.useCase];
+      const capped = useCaseCap !== undefined && intent.attemptsCount >= useCaseCap;
       nextAttemptAt =
-        window === null
+        window === null || capped
           ? null
           : nextRetryAt({ now, purpose: intent.purpose, notAfter: intent.notAfter, window });
       intentStatus = nextAttemptAt === null ? 'EXHAUSTED' : 'RETRY_SCHEDULED';
@@ -458,12 +473,80 @@ export async function finalizeAttempt(
     },
   });
 
+  // --- ADR-0011 §7: an appointment call's answer is the appointment's new state ------------------
+  if (intent !== null && !superseded && intent.useCase === 'appointment_confirm') {
+    const next =
+      outcome === 'confirmed'
+        ? 'confirmed'
+        : outcome === 'cancelled'
+          ? 'cancelled'
+          : outcome === 'rescheduled'
+            ? 'rescheduled'
+            : null;
+    if (next !== null) {
+      const rows = await tx
+        .update(schema.appointments)
+        .set({ status: next })
+        .where(
+          and(
+            eq(schema.appointments.tenantId, tenantId),
+            eq(schema.appointments.intentId, intent.id),
+          ),
+        )
+        .returning({ id: schema.appointments.id, providerRef: schema.appointments.providerRef });
+      for (const r of rows)
+        await audit(tx, {
+          tenantId,
+          actorType: 'worker',
+          action: `appointment.${next}`,
+          targetType: 'appointment',
+          targetId: r.id,
+          after: { attempt_id: attempt.id, outcome, provider_ref: r.providerRef },
+        });
+      // A cancellation still has to reach the provider: reconcile does that (network call).
+    }
+  }
+
+  // --- ADR-0010 §10: the customer wants to finish the order — the merchant sends the link --------
+  if (
+    intent !== null &&
+    !superseded &&
+    intent.useCase === 'abandoned_cart' &&
+    outcome === 'will_complete'
+  ) {
+    const [checkout] = await tx
+      .select({ id: schema.checkouts.id, externalId: schema.checkouts.externalId })
+      .from(schema.checkouts)
+      .where(and(eq(schema.checkouts.tenantId, tenantId), eq(schema.checkouts.intentId, intent.id)))
+      .limit(1);
+    if (checkout !== undefined) {
+      const [contact] = await tx
+        .select({ phoneMasked: schema.contacts.phoneMasked })
+        .from(schema.contacts)
+        .where(eq(schema.contacts.id, contactId))
+        .limit(1);
+      await emitMerchantEvent(tx, tenantId, {
+        type: 'checkout.recovery_requested',
+        eventId: `${outcomeId}:recovery_requested`,
+        at: now,
+        data: {
+          intent_id: intent.id,
+          attempt_id: attempt.id,
+          checkout_id: checkout.id,
+          checkout_token: checkout.externalId,
+          outcome,
+          to: contact?.phoneMasked ?? null,
+        },
+      });
+    }
+  }
+
   // --- Shopify write-back: decided here, executed by the writebacks worker AFTER this commits ---
   // (P1-SHOP-2). A store call never runs inside this transaction: a slow or throttled Shopify
   // would otherwise hold row locks on the results path. The plan is rebuilt at execution time
   // from this row, so a merchant switching auto-cancel off in the meantime is respected.
   const [integration] =
-    intent === null || superseded
+    intent === null || superseded || !WRITEBACK_USE_CASES.has(intent.useCase)
       ? []
       : await tx
           .select({ id: schema.integrations.id })
@@ -492,7 +575,7 @@ export async function finalizeAttempt(
 export function scrubExtracted(extracted: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(extracted)) {
-    if (k === 'address_change' || k === 'notes' || k === 'summary')
+    if (k === 'address_change' || k === 'notes' || k === 'summary' || k === 'comment')
       out[k] = v === undefined || v === null ? null : '[in dashboard]';
     else out[k] = v;
   }

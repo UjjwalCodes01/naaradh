@@ -85,6 +85,20 @@
       "when": 1789300000000,
       "tag": "0011_agent_actions_erasure",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789471681860,
+      "tag": "0012_promotional_calling",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789536027851,
+      "tag": "0013_appointments",
+      "breakpoints": true
     }
   ]
 }

@@ -1,4 +1,4 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, isNotNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema, type Tx } from '@naaradh/db';
 import { NaaradhError, isValidZone } from '@naaradh/shared';
@@ -56,8 +56,30 @@ export const SettingsInput = z.object({
   /** Q-07 — off: a verbal opt-out suppresses internally and is never written to Shopify. */
   shopify_sync_optout: z.boolean(),
   notifications: NotificationSettings,
+  /** ADR-0010 ROI page: what one returned-to-origin COD parcel costs you, in paise. Optional. */
+  rto_cost_paise: z.number().int().min(0).max(1_000_000).nullable().optional(),
+  /** ADR-0010 §9: hours after a recovery call in which an order counts as recovered (1–72). */
+  attribution_hours: z.number().int().min(1).max(72).optional(),
 });
 export type SettingsInput = z.infer<typeof SettingsInput>;
+
+/** Settings stored in `tenants.settings` JSON rather than a column. */
+export function roiSettingsOf(settings: unknown): {
+  readonly rtoCostPaise: number | null;
+  readonly attributionHours: number;
+} {
+  const s =
+    settings !== null && typeof settings === 'object' ? (settings as Record<string, unknown>) : {};
+  const rto = s['rto_cost_paise'];
+  const hours = s['attribution_hours'];
+  return {
+    rtoCostPaise: typeof rto === 'number' && Number.isInteger(rto) && rto >= 0 ? rto : null,
+    attributionHours:
+      typeof hours === 'number' && Number.isInteger(hours) && hours >= 1 && hours <= 72
+        ? hours
+        : 24,
+  };
+}
 
 export interface TenantSettingsView extends SettingsInput {
   readonly id: string;
@@ -70,6 +92,9 @@ export interface TenantSettingsView extends SettingsInput {
   readonly reviewUntil: Date | null;
   readonly dltLinkedAt: Date | null;
   readonly maxConcurrency: number;
+  /** ADR-0010 §5: set by a complaint about a promotional call; only staff lift it. */
+  readonly promotionalPausedAt: Date | null;
+  readonly promotionalPausedReason: string | null;
   /** The onboarding compliance clickwrap, if accepted. */
   readonly attestation: { readonly version: string; readonly acceptedAt: string } | null;
 }
@@ -97,6 +122,8 @@ export async function getSettings(tx: Tx, tenantId: string): Promise<TenantSetti
     auto_cancel_enabled: t.autoCancelEnabled,
     shopify_sync_optout: t.shopifySyncOptout,
     notifications: notificationSettingsOf(t.settings),
+    rto_cost_paise: roiSettingsOf(t.settings).rtoCostPaise,
+    attribution_hours: roiSettingsOf(t.settings).attributionHours,
     country: t.country,
     currency: t.currency,
     status: t.status,
@@ -106,6 +133,8 @@ export async function getSettings(tx: Tx, tenantId: string): Promise<TenantSetti
     reviewUntil: t.reviewUntil,
     dltLinkedAt: t.dltLinkedAt,
     maxConcurrency: t.maxConcurrency,
+    promotionalPausedAt: t.promotionalPausedAt,
+    promotionalPausedReason: t.promotionalPausedReason,
     attestation: attestationOf(t.settings),
   };
 }
@@ -126,6 +155,11 @@ export async function updateSettings(
   const settings = {
     ...((current?.settings ?? {}) as Record<string, unknown>),
     notifications: input.notifications,
+    // Only when the form sent them: an older client leaves the stored values alone.
+    ...(input.rto_cost_paise === undefined ? {} : { rto_cost_paise: input.rto_cost_paise }),
+    ...(input.attribution_hours === undefined
+      ? {}
+      : { attribution_hours: input.attribution_hours }),
   };
   await tx
     .update(schema.tenants)
@@ -213,6 +247,26 @@ export async function setUseCaseEnabled(
         'VALIDATION_FAILED',
         'promotional calls need your DLT Principal Entity id first (Settings → Compliance)',
       );
+    // ADR-0010 §4: switching on something the gate would refuse on every call helps nobody.
+    if (t.country === 'IN') {
+      const [ready] = await tx
+        .select({ id: schema.scripts.id })
+        .from(schema.scripts)
+        .where(
+          and(
+            eq(schema.scripts.tenantId, actor.tenantId),
+            eq(schema.scripts.useCaseId, uc.id),
+            eq(schema.scripts.status, 'approved'),
+            isNotNull(schema.scripts.dltTemplateId),
+          ),
+        )
+        .limit(1);
+      if (ready === undefined)
+        throw new NaaradhError(
+          'VALIDATION_FAILED',
+          'approve a script with its DLT content template ID first (Scripts)',
+        );
+    }
   }
   if (uc.enabled !== enabled) {
     await tx.update(schema.useCases).set({ enabled }).where(eq(schema.useCases.id, uc.id));

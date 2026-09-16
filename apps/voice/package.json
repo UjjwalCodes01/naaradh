@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@fastify/rate-limit": "11.2.0",
+    "@google-cloud/secret-manager": "6.1.1",
+    "@naaradh/calendar": "workspace:*",
     "@naaradh/compliance": "workspace:*",
     "@naaradh/db": "workspace:*",
     "@naaradh/engines-core": "workspace:*",

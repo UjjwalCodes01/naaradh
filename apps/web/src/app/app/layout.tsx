@@ -11,9 +11,11 @@ export const metadata: Metadata = { title: 'Dashboard', robots: { index: false }
 
 const NAV: [string, string, Role][] = [
   ['/app', 'Overview', 'viewer'],
+  ['/app/results', 'Results', 'viewer'],
   ['/app/orders', 'Order calls', 'viewer'],
   ['/app/support-calls', 'Support calls', 'viewer'],
   ['/app/tickets', 'Tickets', 'viewer'],
+  ['/app/appointments', 'Appointments', 'viewer'],
   ['/app/knowledge', 'Knowledge base', 'operator'],
   ['/app/agent', 'Support agent', 'manager'],
   ['/app/scripts', 'Call scripts', 'manager'],
@@ -34,6 +36,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     billingStatus: t.billingStatus,
     billingGraceUntil: t.billingGraceUntil,
     reviewUntil: t.reviewUntil,
+    promotionalPausedAt: t.promotionalPausedAt,
   });
   return (
     <div className="flex min-h-screen">

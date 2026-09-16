@@ -1,5 +1,6 @@
 import type { Redis } from 'ioredis';
 import type { Db } from '@naaradh/db';
+import type { CalendarRegistry } from '@naaradh/calendar';
 import type { ConcurrencyPort, KillSwitchPort } from '@naaradh/compliance';
 import type { EngineRegistry } from '@naaradh/engines-registry';
 import type { Clock } from '@naaradh/shared';
@@ -30,5 +31,12 @@ export interface VoiceDeps {
   readonly killSwitches: KillSwitchPort;
   readonly concurrency: ConcurrencyPort;
   readonly rateLimitPerMinute: number;
+  /**
+   * Appointment calendars (ADR-0011). Absent → the appointment tools refuse and the agent
+   * offers a callback; a merchant without a connected calendar behaves the same way.
+   */
+  readonly calendars?: CalendarRegistry;
+  /** Reads `calendars.credentials_secret_ref`. Absent → no provider call is attempted. */
+  readonly secrets?: { resolve(ref: string): Promise<string> };
   readonly logLevel?: string;
 }

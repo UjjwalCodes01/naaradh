@@ -49,9 +49,13 @@ export const CodConfirmExtraction = z.object({
   confidence,
 });
 
+/**
+ * ADR-0010 §9: "I'll complete the order" is `will_complete`. Whether the cart was actually
+ * recovered is decided later by an order, never by what was said on the call.
+ */
 export const AbandonedCartExtraction = z.object({
   outcome: z.enum([
-    'recovered',
+    'will_complete',
     'will_buy_later',
     'not_interested',
     'price_objection',
@@ -64,6 +68,8 @@ export const AbandonedCartExtraction = z.object({
     'inconclusive',
   ]),
   objection: shortText.optional(),
+  /** The customer asked for the checkout link — the merchant's messaging sends it (ADR-0010 §10). */
+  wants_link: z.boolean().optional(),
   follow_up_date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -99,6 +105,8 @@ export const AppointmentExtraction = z.object({
     'booked',
     'transferred',
     'callback_requested',
+    /** Anything the agent may not handle — a clinical question above all (ADR-0011 §8). */
+    'needs_merchant_action',
     'wrong_number',
     'opt_out',
     'minor_answered',
@@ -106,9 +114,36 @@ export const AppointmentExtraction = z.object({
     'no_response',
     'inconclusive',
   ]),
+  /** The slot the agent booked through `book_slot`, when it did (ADR-0011 §6). */
+  appointment_id: z.string().max(40).optional(),
   new_slot: z.string().max(64).optional(),
   cancel_reason: shortText.optional(),
   notes: shortText.optional(),
+  confidence,
+});
+
+/** Post-delivery feedback (ADR-0010 §7). A promotional call: short, one question, easy to decline. */
+export const FeedbackExtraction = z.object({
+  outcome: z.enum([
+    'feedback_given',
+    'not_interested',
+    'callback_requested',
+    'needs_merchant_action',
+    'wrong_number',
+    'opt_out',
+    'minor_answered',
+    'recording_refused',
+    'no_response',
+    'inconclusive',
+  ]),
+  /** 0–10: "how likely are you to recommend…". */
+  nps: z.number().int().min(0).max(10).optional(),
+  /** What went wrong, when something did — a problem becomes a ticket-worthy `needs_merchant_action`. */
+  issue_category: z
+    .enum(['damaged', 'wrong_item', 'missing_item', 'late', 'quality', 'packaging', 'other'])
+    .optional(),
+  /** The customer's words, shortened. Shown in the dashboard; never sent in webhooks. */
+  comment: shortText.optional(),
   confidence,
 });
 
@@ -147,6 +182,7 @@ export const EXTRACTION_SCHEMAS = {
   abandoned_cart_v1: AbandonedCartExtraction,
   lead_callback_v1: LeadCallbackExtraction,
   appointment_v1: AppointmentExtraction,
+  feedback_v1: FeedbackExtraction,
   inbound_support_v1: InboundSupportExtraction,
 } as const;
 

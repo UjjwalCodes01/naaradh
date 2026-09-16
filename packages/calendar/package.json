@@ -1,0 +1,14 @@
+{
+  "name": "@naaradh/calendar",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "Appointment calendars behind one port (ADR-0011 §5): Cal.com over fetch, a deterministic fake for tests. No vendor SDK; product code sees only CalendarPort.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@naaradh/shared": "workspace:*",
+    "zod": "3.24.1"
+  }
+}

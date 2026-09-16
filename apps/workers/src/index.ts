@@ -17,6 +17,7 @@ import { runNotifications } from './notifications/index.js';
 import { bigQuerySink, memorySink, runAnalytics } from './analytics/index.js';
 import { memoryMailer, postmarkMailer } from '@naaradh/notify';
 import { runDeliveries } from './deliveries/index.js';
+import { calendarRegistry } from '@naaradh/calendar';
 import { inlineSecretResolver, secretManagerResolver } from './deliveries/secrets.js';
 import { runDispatcher } from './dispatcher/loop.js';
 import { loadWorkersEnv } from './env.js';
@@ -115,6 +116,9 @@ const ctx: WorkerContext = {
       ? shopifyWriteback({ secrets: secretsResolver, apiVersion: env.SHOPIFY_ADMIN_API_VERSION })
       : recordingWriteback(),
   secrets: secretsResolver,
+  // ADR-0011: appointment calendars. A cancellation decided on a call reaches the provider
+  // through the reconcile tick; without credentials the registry simply refuses.
+  calendars: calendarRegistry({ now: () => systemClock.now() }),
   mailer:
     env.POSTMARK_TOKEN === undefined
       ? memoryMailer()

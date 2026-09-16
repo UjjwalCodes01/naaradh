@@ -370,7 +370,9 @@ try {
         purpose: 'promotional',
         source: 'checkout',
         recipientRegion: 'IN',
-        wordingVersion: 'seed-v0',
+        // Must be a version in CONSENT_WORDINGS (packages/pipeline/src/promotional/
+        // consent-wording.ts); db cannot import pipeline, so it is written out here.
+        wordingVersion: '2026-09-v1-draft',
         externalRef: 'order-seed-1',
         capturedAt: new Date(),
         expiresAt: new Date(Date.now() + 7 * 86_400_000),
@@ -594,6 +596,32 @@ try {
           sourceUpdatedAt: placed,
         },
       ])
+      .onConflictDoNothing();
+
+    // ---- an abandoned checkout to sweep (ADR-0010) ----------------------------------------
+    // Idle for an hour with a live consent, so `pnpm dev` (reconcile) turns it into one
+    // abandoned-cart intent — which the gate then refuses `dnd:unknown` until a scrub provider
+    // exists (Q-02). That refusal is the point: it is what a merchant sees before go-live.
+    const abandoned = new Date(Date.now() - 60 * 60_000);
+    await tx
+      .insert(s.checkouts)
+      .values({
+        id: fixed('chk', 'A CART 1'),
+        tenantId: TENANT_A,
+        source: 'shopify',
+        externalId: 'seed-checkout-1',
+        phoneHash: customerHash,
+        contactId: fixed('cnt', 'A CUSTOMER'),
+        recipientRegion: 'IN',
+        valueMinor: 129900,
+        currency: 'INR',
+        itemSummary: '2 items',
+        itemCount: 2,
+        consentWording: '2026-09-v1-draft',
+        status: 'open',
+        sourceCreatedAt: abandoned,
+        sourceUpdatedAt: abandoned,
+      })
       .onConflictDoNothing();
 
     // ---- flags + kill switches -----------------------------------------------------------

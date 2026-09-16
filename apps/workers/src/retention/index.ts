@@ -1,9 +1,14 @@
 import { and, eq, inArray, lt, sql } from 'drizzle-orm';
 import { schema, withTenant } from '@naaradh/db';
-import { ERASURE_COMPLETION_TARGET_DAYS, ORDER_CACHE_RETENTION_DAYS } from '@naaradh/compliance';
+import {
+  CHECKOUT_RETENTION_DAYS,
+  ERASURE_COMPLETION_TARGET_DAYS,
+  ORDER_CACHE_RETENTION_DAYS,
+} from '@naaradh/compliance';
 import {
   audit,
   emitMerchantEvent,
+  eraseCheckouts,
   eraseOrdersPlacedBefore,
   eraseSubject,
   markMediaPurged,
@@ -151,6 +156,7 @@ export interface RetentionReport {
   readonly tenants: number;
   readonly mediaPurged: number;
   readonly ordersErased: number;
+  readonly checkoutsErased: number;
 }
 
 export async function runRetentionOnce(ctx: WorkerContext): Promise<RetentionReport> {
@@ -158,7 +164,7 @@ export async function runRetentionOnce(ctx: WorkerContext): Promise<RetentionRep
   const tenants = await ctx.service
     .select({ id: schema.tenants.id, retentionDays: schema.tenants.retentionDays })
     .from(schema.tenants);
-  const report = { tenants: tenants.length, mediaPurged: 0, ordersErased: 0 };
+  const report = { tenants: tenants.length, mediaPurged: 0, ordersErased: 0, checkoutsErased: 0 };
   for (const t of tenants) {
     const cutoff = addDays(now, -t.retentionDays);
     for (;;) {
@@ -190,6 +196,9 @@ export async function runRetentionOnce(ctx: WorkerContext): Promise<RetentionRep
     }
     report.ordersErased += await withTenant(ctx.app, t.id, (tx) =>
       eraseOrdersPlacedBefore(tx, t.id, addDays(now, -ORDER_CACHE_RETENTION_DAYS), now),
+    );
+    report.checkoutsErased += await withTenant(ctx.app, t.id, (tx) =>
+      eraseCheckouts(tx, t.id, { before: addDays(now, -CHECKOUT_RETENTION_DAYS) }, now),
     );
   }
   return report;

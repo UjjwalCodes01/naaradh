@@ -157,6 +157,7 @@ export function accountBanner(t: {
   readonly billingStatus: string;
   readonly billingGraceUntil: Date | null;
   readonly reviewUntil: Date | null;
+  readonly promotionalPausedAt?: Date | null;
 }): AccountBanner | null {
   if (t.status === 'suspended')
     return {
@@ -189,6 +190,12 @@ export function accountBanner(t: {
         t.billingGraceUntil === null
           ? 'Your subscription payment failed. Update it to keep calling.'
           : `Your subscription payment failed. Calling continues until ${t.billingGraceUntil.toISOString().slice(0, 10)}; update it to avoid a pause.`,
+    };
+  if (t.promotionalPausedAt !== null && t.promotionalPausedAt !== undefined)
+    return {
+      tone: 'warning',
+      title: 'Promotional calls paused',
+      body: 'A customer complained about an abandoned-cart or feedback call, so promotional calls are paused while Naaradh staff review it. Order confirmations and your support line are not affected.',
     };
   if (t.status === 'pending_review')
     return {

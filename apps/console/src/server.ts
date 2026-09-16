@@ -25,6 +25,8 @@ import {
 } from './support.js';
 import { registerNumberRoutes } from './routes/numbers.js';
 import { registerMerchantRoutes } from './routes/merchants.js';
+import { registerQaRoutes } from './routes/qa.js';
+import { registerCalendarRoutes } from './routes/calendars.js';
 
 export type { ConsoleDeps } from './support.js';
 
@@ -190,6 +192,8 @@ export async function buildConsole(deps: ConsoleDeps): Promise<FastifyInstance> 
           id: schema.complaints.id,
           source: schema.complaints.source,
           status: schema.complaints.status,
+          purpose: schema.complaints.purpose,
+          useCase: schema.complaints.useCase,
           receivedAt: schema.complaints.receivedAt,
         })
         .from(schema.complaints)
@@ -240,6 +244,19 @@ export async function buildConsole(deps: ConsoleDeps): Promise<FastifyInstance> 
           <button class="${sw(scope) ? '' : 'danger'}">${sw(scope) ? `Turn OFF ${scope} kill switch` : `Turn ON ${scope} kill switch`}</button></form>`,
         )}
       </div>
+      <h2>Appointments</h2>
+      <div class="card"><a href="/calendars?tenant=${t.id}">Calendars and next appointments →</a>
+        <p class="muted">Connecting a calendar is staff work: it needs a provider credential, stored in Secret Manager (ADR-0011). Runbook: docs/runbooks/appointments.md.</p>
+      </div>
+      <h2>Promotional calling</h2>
+      <div class="card">${
+        t.promotionalPausedAt === null
+          ? badge('not paused', 'good')
+          : h`${badge(`paused ${when(t.promotionalPausedAt)}`, 'bad')} <span class="muted">${t.promotionalPausedReason ?? ''}</span>
+        <form method="post" action="/tenants/${t.id}/promotional-resume" style="margin-top:8px"><input name="reason" size="60" required minlength="10" placeholder="Complaint reviewed, script/consent checked, …"> <button>Resume promotional calling</button></form>`
+      }
+        <p class="muted">A complaint about an abandoned-cart or feedback call pauses promotional calling only (ADR-0010 §5). Runbook: docs/runbooks/promotional-calling.md.</p>
+      </div>
       <h2>DLT principal entity (promotional calling)</h2>
       <div class="card">PE id: <code>${t.dltPeId ?? '—'}</code> · ${
         t.dltLinkedAt === null
@@ -255,7 +272,7 @@ export async function buildConsole(deps: ConsoleDeps): Promise<FastifyInstance> 
         <p class="muted">Only after seeing on the DLT portal that this PE authorised Naaradh as its telemarketer (docs/go-live/02-phone-numbers-and-dlt.md §3). <a href="/numbers?tenant=${t.id}">Numbers owned by this tenant →</a></p>
       </div>
       <h2>Complaints (${COMPLAINT_WINDOW_DAYS} days)</h2>
-      <table><tr><th>Received</th><th>Source</th><th>Status</th></tr>${complaints.map((c) => h`<tr><td>${when(c.receivedAt)}</td><td>${c.source}</td><td>${c.status}</td></tr>`)}</table>
+      <table><tr><th>Received</th><th>Source</th><th>Call</th><th>Status</th></tr>${complaints.map((c) => h`<tr><td>${when(c.receivedAt)}</td><td>${c.source}</td><td>${c.useCase ?? '—'} ${c.purpose === 'promotional' ? badge('promotional', 'warn') : ''}</td><td>${c.status}</td></tr>`)}</table>
       <h2>People</h2>
       <table><tr><th>Email</th><th>Role</th></tr>${users.map((u) => h`<tr><td>${u.email}${u.disabledAt === null ? '' : ' (removed)'}</td><td>${u.role}</td></tr>`)}</table>
       <h2>Integrations</h2>
@@ -722,6 +739,8 @@ export async function buildConsole(deps: ConsoleDeps): Promise<FastifyInstance> 
 
   registerNumberRoutes(app, deps);
   registerMerchantRoutes(app, deps);
+  registerQaRoutes(app, deps);
+  registerCalendarRoutes(app, deps);
 
   return app;
 }

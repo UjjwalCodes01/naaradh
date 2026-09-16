@@ -85,6 +85,11 @@ you get the item.
 - [ ] **Register numbers** in Naaradh, point the engine's inbound answer URL at `voice`. → [02](02-phone-numbers-and-dlt.md#5-connecting-a-number-to-naaradh)
 - [ ] **Onboard Client A (Shopify) and Client B (API)**, run the pilot. → [08](08-first-merchants.md)
 
+### When a WooCommerce or appointment merchant appears (Phase 5)
+
+- [ ] Zip and hand over the Woo plugin, or list it on WordPress.org. → [09](09-woocommerce-and-appointments.md#1-woocommerce-plugin)
+- [ ] For appointments: a Cal.com key per merchant in Secret Manager, the calendar recorded in the console, and **one test booking to verify Cal.com's payloads** (Q-25). → [09](09-woocommerce-and-appointments.md#2-appointments-calcom-or-a-manual-diary)
+
 ### Then — the public Shopify app (Phase 2 exit → Phase 3)
 
 - [ ] Dev-store test matrix passes (P2-SHOP-8). → [04](04-shopify-app.md#6-dev-store-test-matrix)
@@ -130,3 +135,4 @@ Answer these in writing before spending on numbers (details in `docs/open-questi
 6. [Email and payments](06-email-and-payments.md) — Workspace, Postmark, Razorpay (Stripe later)
 7. [Secrets and configuration](07-secrets-and-configuration.md) — every key and variable, how to make it, who holds it
 8. [First merchants](08-first-merchants.md) — onboarding Client A and Client B, the pilot, gaps you will hit
+9. [WooCommerce and appointments](09-woocommerce-and-appointments.md) — shipping the Woo plugin (and listing it), Cal.com credentials per merchant, the manual diary, one-click checkouts

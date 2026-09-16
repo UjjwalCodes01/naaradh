@@ -187,7 +187,32 @@ export const outcome = pgEnum('outcome', [
   'ticket_created',
   'abandoned',
   'spam',
+  // promotional + service (ADR-0010) — never billable (invariant 11 is unchanged)
+  'will_complete',
+  'will_buy_later',
+  'not_interested',
+  'price_objection',
+  'qualified',
+  'feedback_given',
 ]);
+
+/** ADR-0010: an abandoned checkout's life in the cache, from arrival to its one call or none. */
+export const checkoutStatus = pgEnum('checkout_status', [
+  /** Waiting: still being edited, or idle less than 45 minutes. */
+  'open',
+  /** The abandoned-cart intent exists (see intent_id). */
+  'scheduled',
+  /** Never called; `skip_reason` says why. */
+  'skipped',
+  /** Shopify marked the checkout completed. */
+  'completed',
+  /** An order from the same phone (or this checkout) arrived. */
+  'converted',
+  /** Older than 24 h without being swept. */
+  'expired',
+]);
+
+export const qaReviewStatus = pgEnum('qa_review_status', ['pending', 'done', 'skipped']);
 
 export const extractionMethod = pgEnum('extraction_method', ['engine', 'llm', 'manual']);
 
@@ -348,6 +373,18 @@ export const killSwitchScope = pgEnum('kill_switch_scope', [
 export const apiKeyKind = pgEnum('api_key_kind', ['secret', 'public']);
 
 export const scriptStatus = pgEnum('script_status', ['draft', 'approved', 'retired']);
+
+/** ADR-0011 — appointments. `manual` is a merchant with no connected calendar. */
+export const calendarProvider = pgEnum('calendar_provider', ['calcom', 'google', 'manual']);
+export const calendarStatus = pgEnum('calendar_status', ['active', 'disabled', 'error']);
+export const appointmentStatus = pgEnum('appointment_status', [
+  'scheduled',
+  'confirmed',
+  'rescheduled',
+  'cancelled',
+  'completed',
+  'no_show',
+]);
 
 export const dndResult = pgEnum('dnd_result', ['registered', 'not_registered', 'unknown']);
 

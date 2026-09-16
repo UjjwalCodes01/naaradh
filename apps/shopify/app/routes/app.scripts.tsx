@@ -12,8 +12,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   const ctx = await shopContext(request);
   const form = await request.formData();
   try {
+    const templateId = formValue(form, 'dlt_template_id').trim();
     await ctx.inTenant((tx) =>
-      approveScript(tx, ctx.actor, ctx.role, formValue(form, 'id'), new Date()),
+      approveScript(tx, ctx.actor, ctx.role, formValue(form, 'id'), new Date(), {
+        dltTemplateId: templateId === '' ? null : templateId,
+      }),
     );
     return { ok: true, message: 'Approved. New calls use this version.' };
   } catch (error) {
@@ -50,9 +53,24 @@ export default function Scripts() {
           {s.problems === null ? null : (
             <s-banner tone="critical">Cannot be approved: {s.problems}</s-banner>
           )}
+          {s.dltTemplateId === null ? null : (
+            <s-paragraph>DLT content template: {s.dltTemplateId}</s-paragraph>
+          )}
+          {s.abArm === null ? null : (
+            <s-banner tone="info">
+              A/B test running — version {s.abArm}. Manage tests in the Naaradh dashboard.
+            </s-banner>
+          )}
           {s.status === 'draft' && s.problems === null ? (
             <Form method="post">
               <input type="hidden" name="id" value={s.id} />
+              {s.promotional ? (
+                <s-text-field
+                  label="DLT content template ID (promotional calls in India)"
+                  name="dlt_template_id"
+                  details="The template ID this exact wording was registered under on the DLT portal."
+                ></s-text-field>
+              ) : null}
               <s-button type="submit" variant="primary">
                 Approve
               </s-button>

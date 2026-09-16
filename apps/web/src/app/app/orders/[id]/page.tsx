@@ -194,6 +194,9 @@ function AttemptFacts({ a, tz }: { a: AttemptView; tz: string }) {
             ? 'No record'
             : formatDateTime(a.recordingDisclosedAt, tz),
         ],
+        ...(a.dltTemplateId === null
+          ? []
+          : ([['DLT content template', a.dltTemplateId]] as [string, string][])),
       ]}
     />
   );

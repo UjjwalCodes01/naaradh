@@ -308,26 +308,30 @@ Checklist completion, SLO attainment in load tests, review turnaround.
 ### Workstreams
 
 **GTM**
-- P4-GTM-1 Case study: Client A RTO before/after, ₹ saved, answer/confirm rates; permission signed.
+- P4-GTM-1 Case study: Client A RTO before/after, ₹ saved, answer/confirm rates; permission signed. Query pack ready: `docs/gtm/case-study-data.md`.
 - P4-GTM-2 Outreach list: 100 Indian D2C brands with high COD share (fashion, beauty, home); founder-led demos; target 10 paying by week 13.
 - P4-GTM-3 Pricing validation: measure conversion at ₹8 vs ₹10 per confirmed order; adjust plan tiers; record ADR-0003 pricing.
 - P4-GTM-4 Partnerships outreach: 3PL/RTO-scoring providers and one-click-checkout providers (leads into Phase 5).
 
 **CMP / SHOP — Promotional**
-- P4-SHOP-1 Checkout UI extension consent checkbox (custom wording covering calls/SMS/WhatsApp) → order attribute `naaradh_call_consent` → consent ledger (E-13). Wording approved by lawyer. `[LEGAL]`
-- P4-SHOP-2 Abandoned checkout ingestion: Shopify `checkouts/create|update` (Shopify Checkout stores) with 45-min delay, 24-h expiry, max 1 call, DND scrub, template registration on DLT; opt-out line in script.
-- P4-SHOP-3 Abandoned-cart script v1 + extraction (`recovered`, `will_buy_later`, `not_interested`, `price_objection`), resume-checkout link via SMS/WhatsApp (requires merchant's messaging provider or Naaradh's SMS via DLT-registered template `[VERIFY]`).
-- P4-CMP-1 Promotional gate hardening: consent age (7 d), DND fail-closed, template ID on CDR mapping, complaint attribution by purpose.
-- P4-CMP-2 Post-delivery feedback/NPS use case (promotional) behind the same consent gate.
+- ◐ P4-SHOP-1 Checkout UI extension consent checkbox (custom wording covering calls/SMS/WhatsApp) → order attribute `naaradh_call_consent` → consent ledger (E-13). Wording approved by lawyer. `[LEGAL]`
+- ◐ P4-SHOP-2 Abandoned checkout ingestion: Shopify `checkouts/create|update` (Shopify Checkout stores) with 45-min delay, 24-h expiry, max 1 call, DND scrub, template registration on DLT; opt-out line in script.
+- ◐ P4-SHOP-3 Abandoned-cart script v1 + extraction (`recovered`, `will_buy_later`, `not_interested`, `price_objection`), resume-checkout link via SMS/WhatsApp (requires merchant's messaging provider or Naaradh's SMS via DLT-registered template `[VERIFY]`).
+- ✅ P4-CMP-1 Promotional gate hardening: consent age (7 d), DND fail-closed, template ID on CDR mapping, complaint attribution by purpose.
+- ✅ P4-CMP-2 Post-delivery feedback/NPS use case (promotional) behind the same consent gate.
 
 **WEB / BILL**
-- P4-WEB-1 Merchant self-serve script A/B (50/50) with metrics view.
-- P4-WEB-2 Recovered-revenue analytics for abandoned cart; ROI page per use case.
-- P4-BILL-1 Outcome definitions for promotional (`recovered` = order placed within 24 h by same phone/email, attribution window configurable) — recorded in Terms addendum. `[DECISION]`
+- ✅ P4-WEB-1 Merchant self-serve script A/B (50/50) with metrics view.
+- ✅ P4-WEB-2 Recovered-revenue analytics for abandoned cart; ROI page per use case.
+- ◐ P4-BILL-1 Outcome definitions for promotional (`recovered` = order placed within 24 h by same phone/email, attribution window configurable) — recorded in Terms addendum. `[DECISION]`
 
 **OPS**
-- P4-OPS-1 Weekly recording QA sample (2% of calls) with a rubric; feed script improvements.
+- ✅ P4-OPS-1 Weekly recording QA sample (2% of calls) with a rubric; feed script improvements.
 - ◐ P4-OPS-2 CLI health dashboard; rotate/retire at answer rate < 25% (E-28). Brought forward in Phase 3: nightly `answer_rate_7d` job, console Numbers page, `cli-health.md`; retirement stays a staff decision.
+
+Terms addendum draft for counsel: `docs/legal/promotional-terms-addendum.md`.
+
+Code status (16 Sep 2026, `docs/phase-reviews/phase-4.md`, ADR-0010): SHOP-1 extension + cart block built, wording `TODO_LEGAL` (Q-08, Q-22), deploy is a human step; SHOP-2 built — DND waits for a TSP scrub provider (Q-02) and fails closed; SHOP-3 script + extraction built, the outcome is `will_complete` and the link is sent by the merchant (Q-21); BILL-1 attribution measured, not billed (Q-24).
 
 ### Exit criteria
 - ≥ 10 paying merchants; ≥ 5,000 billable outcomes/month across tenants; gross margin per outcome ≥ 50%.
@@ -352,23 +356,32 @@ MRR, merchants, outcomes/month, GM per outcome, RTO delta per merchant, recovery
 ### Workstreams
 
 **WooCommerce**
-- P5-WOO-1 Plugin (`plugins/woocommerce`, GPL): settings (API key, use cases, script approval link), hooks `woocommerce_new_order`, `woocommerce_order_status_changed`, consent checkbox at checkout with stored wording version, abandoned-cart capture via AJAX + cart hash, order notes/meta writeback, i18n, nonces/capabilities.
-- P5-WOO-2 WordPress.org submission (GPL, privacy disclosure of calls to `api.naaradh.com`, no obfuscation); handle review notes.
-- P5-WOO-3 Test matrix: WP 6.x/PHP 8.x, COD gateway, popular Indian shipping plugins.
+- ✅ P5-WOO-1 Plugin (`plugins/woocommerce`, GPL): settings (API key, use cases, script approval link), hooks `woocommerce_new_order`, `woocommerce_order_status_changed`, consent checkbox at checkout with stored wording version, abandoned-cart capture via AJAX + cart hash, order notes/meta writeback, i18n, nonces/capabilities.
+- ◐ P5-WOO-2 WordPress.org submission (GPL, privacy disclosure of calls to `api.naaradh.com`, no obfuscation); handle review notes.
+- ◐ P5-WOO-3 Test matrix: WP 6.x/PHP 8.x, COD gateway, popular Indian shipping plugins.
 
 **One-click checkout providers (India)**
-- P5-OCC-1 Partner/API access with GoKwik, Shiprocket Checkout, Razorpay Magic, Cashfree OCC for abandoned-checkout webhooks and RTO scores. `[OPEN]`
-- P5-OCC-2 `intents-consumer` sources for each provider; consent flag mapping; gateway name normalisation updates (E-14, E-45).
+- ◐ P5-OCC-1 Partner/API access with GoKwik, Shiprocket Checkout, Razorpay Magic, Cashfree OCC for abandoned-checkout webhooks and RTO scores. `[OPEN]`
+- ◐ P5-OCC-2 `intents-consumer` sources for each provider; consent flag mapping; gateway name normalisation updates (E-14, E-45).
 
 **CRM / Calendar / Automation**
-- P5-CRM-1 Zoho CRM: new-lead → lead-callback intent; outcome → Activity/Note; consent field mapping.
-- P5-CRM-2 HubSpot: same as Zoho.
-- P5-CAL-1 Cal.com + Google Calendar tools via engine adapter (`get_slots`, `book_slot`); appointment confirm/book/reschedule scripts; transfer-to-manager path; healthcare guardrails (no clinical advice, no report values).
-- P5-AUT-1 Zapier/Make/n8n: "New outcome" trigger, "Create intent" action; docs pages.
-- P5-API-1 SDKs generated from OpenAPI (JS, Python); webhook signature verification snippets.
+- ◐ P5-CRM-1 Zoho CRM: new-lead → lead-callback intent; outcome → Activity/Note; consent field mapping.
+- ◐ P5-CRM-2 HubSpot: same as Zoho.
+- ✅ P5-CAL-1 Cal.com + Google Calendar tools via engine adapter (`get_slots`, `book_slot`); appointment confirm/book/reschedule scripts; transfer-to-manager path; healthcare guardrails (no clinical advice, no report values).
+- ✅ P5-AUT-1 Zapier/Make/n8n: "New outcome" trigger, "Create intent" action; docs pages.
+- ✅ P5-API-1 SDKs generated from OpenAPI (JS, Python); webhook signature verification snippets.
 
 **Vertical: appointments**
 - P5-GTM-1 Pilot with 3 diagnostic labs/clinics/salons; outcome pricing per booked/confirmed appointment; case study.
+
+Code status (16 Sep 2026, `docs/phase-reviews/phase-5.md`, ADR-0011): one cart-ingestion
+contract (`PUT /v1/carts/{ref}`) serves WooCommerce, one-click checkouts and bespoke stores, so
+WOO-1 is built and OCC-2 needs no per-vendor parser until partner access exists (Q-09); the Woo
+plugin is written but PHP is not linted or tested in this repo's CI (manual matrix in go-live 09);
+CAL-1 ships a calendar port with a Cal.com adapter (`[VERIFY]`, Q-25), a manual diary, and the
+`get_slots`/`book_slot` tools; Google Calendar waits for per-merchant OAuth; AUT-1 and API-1 are
+documented recipes on the existing API rather than three more OAuth apps to maintain; CRM apps
+wait for their vendor OAuth clients.
 
 ### Exit criteria
 - WooCommerce plugin listed; ≥ 3 Woo merchants live.

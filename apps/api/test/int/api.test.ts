@@ -52,8 +52,8 @@ beforeAll(async () => {
     [TENANT],
   );
   await service.query(
-    `insert into use_cases (id, tenant_id, kind, purpose, enabled, config) values ($1, $2, 'lead_callback', 'service', true, '{"defaultLocale":"en-IN"}'), ($3, $2, 'cod_confirm', 'transactional', true, '{}')`,
-    [newId('useCase'), TENANT, newId('useCase')],
+    `insert into use_cases (id, tenant_id, kind, purpose, enabled, config) values ($1, $2, 'lead_callback', 'service', true, '{"defaultLocale":"en-IN"}'), ($3, $2, 'cod_confirm', 'transactional', true, '{}'), ($4, $2, 'abandoned_cart', 'promotional', true, '{}'), ($5, $2, 'appointment_confirm', 'service', true, '{}')`,
+    [newId('useCase'), TENANT, newId('useCase'), newId('useCase'), newId('useCase')],
   );
   const insertKey = (
     k: ReturnType<typeof generateApiKey>,
@@ -94,6 +94,9 @@ beforeAll(async () => {
     'privacy:read',
     'billing:read',
     'billing:write',
+    'carts:write',
+    'appointments:read',
+    'appointments:write',
   ]);
   await insertKey(publicKey, 'public', ['intents:create']);
   await insertKey(revokedKey, 'secret', ['intents:create'], 'revoked');
@@ -1079,5 +1082,262 @@ describe('billing routes (ADR-0008)', () => {
       headers: auth(secretKey.key),
     });
     expect(list.json()).toEqual({ data: [] });
+  });
+});
+
+describe('carts and appointments for non-Shopify platforms (ADR-0011)', () => {
+  const cart = (over: Record<string, unknown> = {}) => ({
+    phone: FAKE_IN.customer,
+    name: 'Asha',
+    value_minor: 129900,
+    currency: 'INR',
+    item_summary: '2 items',
+    item_count: 2,
+    consent_wording_version: '2026-09-v1-draft',
+    created_at: new Date(NOW.getTime() - 10 * 60_000).toISOString(),
+    ...over,
+  });
+
+  it('records a cart with consent and reports the wording version it recognises', async () => {
+    const r = await app.inject({
+      method: 'PUT',
+      url: '/v1/carts/woo-cart-1',
+      payload: cart(),
+      headers: auth(secretKey.key),
+    });
+    expect(r.statusCode).toBe(200);
+    expect(r.json()).toMatchObject({
+      cart_ref: 'woo-cart-1',
+      status: 'open',
+      consent: 'granted',
+      current_consent_wording_version: '2026-09-v1-draft',
+    });
+    // One grant from this cart, with the wording version — earlier tests in this file made
+    // their own consents for the same number from other sources.
+    const consents = await service.query<{ wording_version: string; purpose: string }>(
+      `select wording_version, purpose from consents
+       where tenant_id = $1 and phone_hash = $2 and source = 'checkout' and external_ref = 'woo-cart-1'`,
+      [TENANT, hashPhone(FAKE_IN.customer, HASH_KEY)],
+    );
+    expect(consents.rows).toEqual([
+      { wording_version: '2026-09-v1-draft', purpose: 'promotional' },
+    ]);
+  });
+
+  it('E-121: a cart without the box ticked is recorded for the funnel and never called', async () => {
+    const r = await app.inject({
+      method: 'PUT',
+      url: '/v1/carts/woo-cart-2',
+      payload: cart({ phone: FAKE_IN.customerAlt, consent_wording_version: null }),
+      headers: auth(secretKey.key),
+    });
+    expect(r.json()).toMatchObject({ status: 'open', consent: 'unchanged' });
+    const stored = await service.query<{ consent_wording: string | null }>(
+      `select consent_wording from checkouts where tenant_id = $1 and external_id = 'woo-cart-2'`,
+      [TENANT],
+    );
+    expect(stored.rows[0]?.consent_wording).toBeNull();
+  });
+
+  it('E-106: a wording version Naaradh never published is not consent', async () => {
+    const r = await app.inject({
+      method: 'PUT',
+      url: '/v1/carts/woo-cart-3',
+      payload: cart({ phone: '+916000000061', consent_wording_version: 'we-wrote-our-own' }),
+      headers: auth(secretKey.key),
+    });
+    expect(r.json()).toMatchObject({ consent: 'unknown_wording' });
+    const consents = await service.query(
+      `select 1 from consents where tenant_id = $1 and phone_hash = $2`,
+      [TENANT, hashPhone('+916000000061', HASH_KEY)],
+    );
+    expect(consents.rows).toHaveLength(0);
+  });
+
+  it('refuses a cart started in the future, and a ref that is not a string', async () => {
+    const future = await app.inject({
+      method: 'PUT',
+      url: '/v1/carts/woo-cart-4',
+      payload: cart({ created_at: new Date(NOW.getTime() + 10 * 60_000).toISOString() }),
+      headers: auth(secretKey.key),
+    });
+    expect(future.statusCode).toBe(422);
+    const bad = await app.inject({
+      method: 'PUT',
+      url: '/v1/carts/woo-cart-5',
+      payload: { ...cart(), value_minor: -1 },
+      headers: auth(secretKey.key),
+    });
+    expect(bad.statusCode).toBe(422);
+  });
+
+  it('GET reports what Naaradh decided; completing cancels the recovery call (E-123)', async () => {
+    const before = await app.inject({
+      method: 'GET',
+      url: '/v1/carts/woo-cart-1',
+      headers: auth(secretKey.key),
+    });
+    expect(before.json()).toMatchObject({ status: 'open', intent_id: null, reason: null });
+
+    const done = await app.inject({
+      method: 'POST',
+      url: '/v1/carts/woo-cart-1/completed',
+      payload: { order_ref: null },
+      headers: auth(secretKey.key),
+    });
+    expect(done.statusCode).toBe(200);
+    expect(done.json()).toMatchObject({ status: 'completed' });
+    const after = await app.inject({
+      method: 'GET',
+      url: '/v1/carts/woo-cart-1',
+      headers: auth(secretKey.key),
+    });
+    expect(after.json()).toMatchObject({ status: 'converted' });
+
+    const missing = await app.inject({
+      method: 'POST',
+      url: '/v1/carts/nope/completed',
+      payload: {},
+      headers: auth(secretKey.key),
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+
+  it('a key without carts:write cannot report a cart', async () => {
+    const r = await app.inject({
+      method: 'PUT',
+      url: '/v1/carts/woo-cart-9',
+      payload: cart(),
+      headers: auth(narrowKey.key),
+    });
+    expect(r.statusCode).toBe(403);
+  });
+
+  it('records an appointment, moves it, cancels it, and lists it', async () => {
+    const starts = new Date(NOW.getTime() + 30 * 3_600_000).toISOString();
+    const created = await app.inject({
+      method: 'PUT',
+      url: '/v1/appointments/lab-77',
+      payload: {
+        phone: FAKE_IN.customer,
+        name: 'Asha',
+        service: 'Blood test',
+        starts_at: starts,
+        timezone: 'Asia/Kolkata',
+      },
+      headers: auth(secretKey.key),
+    });
+    expect(created.statusCode).toBe(201);
+    const id = created.json<{ appointment_id: string }>().appointment_id;
+    expect(id).toMatch(/^apt_/);
+
+    const moved = new Date(NOW.getTime() + 40 * 3_600_000).toISOString();
+    const update = await app.inject({
+      method: 'PUT',
+      url: '/v1/appointments/lab-77',
+      payload: {
+        phone: FAKE_IN.customer,
+        service: 'Blood test',
+        starts_at: moved,
+        timezone: 'Asia/Kolkata',
+      },
+      headers: auth(secretKey.key),
+    });
+    expect(update.statusCode).toBe(200);
+    const read = await app.inject({
+      method: 'GET',
+      url: '/v1/appointments/lab-77',
+      headers: auth(secretKey.key),
+    });
+    expect(read.json()).toMatchObject({
+      appointment_id: id,
+      starts_at: moved,
+      status: 'scheduled',
+      intent_id: null,
+    });
+
+    const list = await app.inject({
+      method: 'GET',
+      url: `/v1/appointments?from=${encodeURIComponent(NOW.toISOString())}`,
+      headers: auth(secretKey.key),
+    });
+    expect(list.json<{ appointments: unknown[] }>().appointments).toHaveLength(1);
+
+    const cancelled = await app.inject({
+      method: 'PUT',
+      url: '/v1/appointments/lab-77',
+      payload: {
+        phone: FAKE_IN.customer,
+        starts_at: moved,
+        timezone: 'Asia/Kolkata',
+        status: 'cancelled',
+      },
+      headers: auth(secretKey.key),
+    });
+    expect(cancelled.statusCode).toBe(200);
+    const afterCancel = await app.inject({
+      method: 'GET',
+      url: '/v1/appointments/lab-77',
+      headers: auth(secretKey.key),
+    });
+    expect(afterCancel.json()).toMatchObject({ status: 'cancelled' });
+  });
+
+  it('refuses a bad time zone, an end before the start, and an unknown calendar', async () => {
+    const base = {
+      phone: FAKE_IN.customer,
+      starts_at: new Date(NOW.getTime() + 3_600_000).toISOString(),
+      timezone: 'Asia/Kolkata',
+    };
+    const zone = await app.inject({
+      method: 'PUT',
+      url: '/v1/appointments/bad-1',
+      payload: { ...base, timezone: 'Mars/Olympus' },
+      headers: auth(secretKey.key),
+    });
+    expect(zone.statusCode).toBe(422);
+    const ends = await app.inject({
+      method: 'PUT',
+      url: '/v1/appointments/bad-2',
+      payload: { ...base, ends_at: NOW.toISOString() },
+      headers: auth(secretKey.key),
+    });
+    expect(ends.statusCode).toBe(422);
+    const calendar = await app.inject({
+      method: 'PUT',
+      url: '/v1/appointments/bad-3',
+      payload: { ...base, calendar_id: 'cal_01SEEDNOPE0000000000000000' },
+      headers: auth(secretKey.key),
+    });
+    expect(calendar.statusCode).toBe(404);
+  });
+
+  it('an appointment for a number we cannot dial is recorded as skipped, not rejected', async () => {
+    const r = await app.inject({
+      method: 'PUT',
+      url: '/v1/appointments/no-phone',
+      payload: {
+        phone: null,
+        starts_at: new Date(NOW.getTime() + 3_600_000).toISOString(),
+        timezone: 'Asia/Kolkata',
+      },
+      headers: auth(secretKey.key),
+    });
+    // Recorded without a contact: the support line can still answer "do I have an appointment?".
+    expect(r.statusCode).toBe(201);
+    const rows = await service.query<{ phone_hash: string | null }>(
+      `select phone_hash from appointments where tenant_id = $1 and external_id = 'no-phone'`,
+      [TENANT],
+    );
+    expect(rows.rows[0]?.phone_hash).toBeNull();
+  });
+
+  it('lists connected calendars (read-only for merchants)', async () => {
+    const r = await app.inject({
+      method: 'GET',
+      url: '/v1/calendars',
+      headers: auth(secretKey.key),
+    });
+    expect(r.json()).toEqual({ calendars: [] });
   });
 });

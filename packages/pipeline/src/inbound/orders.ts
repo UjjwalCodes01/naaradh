@@ -46,6 +46,10 @@ export interface OrderUpsert {
   /** Source-side updated_at: an older webhook arriving late never overwrites a newer one. */
   readonly sourceUpdatedAt: Date | null;
   readonly tracking?: Tracking | null;
+  /** Shopify test order (E-46). */
+  readonly isTest?: boolean;
+  /** The checkout this order completed (ADR-0010 attribution). */
+  readonly checkoutToken?: string | null;
 }
 
 export function hashPincode(hashKey: string, pincode: string): string {
@@ -96,6 +100,8 @@ export async function upsertOrder(
     itemCount: input.itemCount,
     placedAt: input.placedAt,
     sourceUpdatedAt: input.sourceUpdatedAt,
+    isTest: input.isTest ?? false,
+    checkoutToken: input.checkoutToken ?? null,
     ...(input.tracking === undefined ? {} : { tracking: input.tracking }),
   };
   const rows = await tx
@@ -117,6 +123,8 @@ export async function upsertOrder(
         currency: values.currency,
         itemSummary: values.itemSummary,
         itemCount: values.itemCount,
+        isTest: values.isTest,
+        checkoutToken: sql`coalesce(excluded.checkout_token, ${schema.orders.checkoutToken})`,
         sourceUpdatedAt: values.sourceUpdatedAt,
         ...(input.tracking === undefined ? {} : { tracking: input.tracking }),
       },

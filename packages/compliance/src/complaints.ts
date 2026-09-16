@@ -57,6 +57,7 @@ export type ProcessedReport =
       readonly reportId: string;
       readonly complaint: ComplaintOutcome;
       readonly tenantId: string;
+      readonly attemptId: string | null;
     }
   | { readonly kind: 'unattributed'; readonly reportId: string }
   | { readonly kind: 'already_processed'; readonly reportId: string };
@@ -129,7 +130,13 @@ export async function processComplaintReport(
       processedAt: at,
     })
     .where(eq(schema.complaintReports.id, report.id));
-  return { kind: 'recorded', reportId: report.id, complaint, tenantId: attribution.tenantId };
+  return {
+    kind: 'recorded',
+    reportId: report.id,
+    complaint,
+    tenantId: attribution.tenantId,
+    attemptId: attribution.attemptId,
+  };
 }
 
 /**

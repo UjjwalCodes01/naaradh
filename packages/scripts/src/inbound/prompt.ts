@@ -46,6 +46,10 @@ export const TOOL_RULES: Readonly<Record<ToolName, string>> = {
     'Transfers only happen through transfer_to_human. If it says transfer is not available, offer a callback instead.',
   register_opt_out:
     'If the caller asks not to be called again, use register_opt_out, confirm politely, and end the call if they need nothing else.',
+  get_slots:
+    'Never state or suggest an appointment time that get_slots did not return. Offer at most three of its times, in its words. No slots: say you cannot see times right now and offer a callback.',
+  book_slot:
+    'An appointment is booked only when book_slot says so. Use the slot_id from get_slots exactly. If it says the time has gone, call get_slots again and offer what is free now. Book only for the number this call is on; if the caller wants an appointment for someone else, create a ticket instead.',
 };
 
 export interface InboundPromptInput {

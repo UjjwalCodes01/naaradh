@@ -113,6 +113,8 @@ describe('order cache helpers (ADR-0006)', () => {
     });
     expect(r.ok && r.value).toEqual({
       orderId: '551001',
+      // ADR-0010 §7: the update time dates a `delivered` shipment; absent here.
+      updatedAt: null,
       fulfillmentStatus: 'in_transit',
       tracking: {
         company: 'Delhivery',

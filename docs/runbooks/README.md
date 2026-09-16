@@ -25,4 +25,8 @@ Written for whoever is on call at 2 a.m. — symptom first, then the exact comma
 | [`restore-drill.md`](restore-drill.md) | Neon point-in-time recovery, the quarterly drill (`scripts/restore-drill.sh`), fail-over | done |
 | [`secret-rotation.md`](secret-rotation.md) | Every secret's rotation class; the re-encryption jobs for `SHOPIFY_TOKEN_KEY`, `PHONE_ENC_*`, `STAFF_ENC_*`; the first-rotation checklist | done |
 | [`on-call.md`](on-call.md) | Rota, alert sources and severities, first 15 minutes, escalation, weekly review | done |
+| [`promotional-calling.md`](promotional-calling.md) | Abandoned cart and feedback: why a checkout was (not) called, consent challenges and the audit query, the promotional pause and its lift, recovered orders (ADR-0010) | done |
+| [`qa-review.md`](qa-review.md) | Weekly 2% QA sample: the rubric, incidents, extraction accuracy, when the job did not run | done |
+| [`appointments.md`](appointments.md) | Calendars, why a reminder was not placed, a booking the provider refused, clinical questions (ADR-0011) | done |
+| [`woocommerce.md`](woocommerce.md) | A Woo store that sends nothing; results not arriving as order notes; the plugin's own diagnostics | done |
 | [`load-test.md`](load-test.md) | k6 scripts against staging, thresholds (SLOs), what a failure means; the chaos test | done |

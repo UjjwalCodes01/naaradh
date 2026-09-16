@@ -9,6 +9,8 @@ request shapes here are the request shapes the server accepts. The live copy is 
 - View it: paste into any OpenAPI viewer (Swagger UI, Redocly, Stoplight) or open
   `docs.naaradh.com` once that host exists (Phase 5).
 - A route that exists but is not documented fails `apps/api/test/unit/openapi.test.ts`.
+- [`automation.md`](automation.md) — Zapier / Make / n8n and CRM recipes on this API (ADR-0011 §9).
+- [`sdks.md`](sdks.md) — generating a client from the document, and webhook signature verification in Node, Python and PHP.
 
 ## Quickstart for a website integration (Client B)
 

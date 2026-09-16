@@ -102,6 +102,25 @@ export default async function Settings() {
             />
           </div>
 
+          <h2 className="pt-4 text-sm font-semibold">Results page</h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field
+              id="rto_cost"
+              label="What one returned COD parcel costs you (₹)"
+              type="number"
+              defaultValue={paiseToRupees(t.rto_cost_paise ?? null)}
+              hint="Shipping both ways plus handling. Used only to estimate savings on the Results page; blank = no estimate."
+            />
+            <Field
+              id="attribution_hours"
+              label="Credit an order to a cart call placed within (hours, 1–72)"
+              type="number"
+              defaultValue={String(t.attribution_hours ?? 24)}
+              hint="An order from the same customer this soon after a recovery call they answered counts as recovered. Measurement only — never billed."
+              required
+            />
+          </div>
+
           <h2 className="pt-4 text-sm font-semibold">Store updates</h2>
           <Check
             name="auto_cancel_enabled"

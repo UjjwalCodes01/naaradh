@@ -2,10 +2,12 @@ import { and, desc, eq, sql } from 'drizzle-orm';
 import { schema, withTenant, type Tx } from '@naaradh/db';
 import {
   buildGateDeps,
+  cachedDnd,
   gateIntent,
   loadGateInput,
   openCircuit,
   reasonInfo,
+  refreshDnd,
   type GateFail,
   type GatePass,
 } from '@naaradh/compliance';
@@ -87,6 +89,7 @@ export async function dispatchIntent(
         return { kind: 'cancelled' };
       }
 
+      if (loaded.intent.purpose === 'promotional') await ensureDndScrub(ctx, tx, loaded, now);
       const deps = buildGateDeps(tx, ctx.redis, ctx.gate, loaded.tenantZone, now);
       const result = await gateIntent(
         { tenant: loaded.tenant, contact: loaded.contact, intent: loaded.intent, now },
@@ -209,6 +212,31 @@ interface DialPlan {
   readonly notAfter: Date;
 }
 
+/**
+ * Promotional calls need a fresh DND answer (gate step 8). The provider needs the number, which
+ * only the dispatcher can decrypt, so the scrub happens here, just before the gate reads the
+ * cache. Without a provider nothing is looked up and the gate fails closed.
+ */
+async function ensureDndScrub(
+  ctx: WorkerContext,
+  tx: Tx,
+  loaded: Awaited<ReturnType<typeof loadGateInput>>,
+  now: Date,
+): Promise<void> {
+  const provider = ctx.dnd;
+  if (provider === undefined || provider.name === 'none' || ctx.keys.privateKeyPem === null) return;
+  const phoneHash = loaded.intent.phoneHash;
+  if ((await cachedDnd(tx, phoneHash, now)) !== null) return;
+  const [contact] = await tx
+    .select({ phoneEnc: schema.contacts.phoneEnc })
+    .from(schema.contacts)
+    .where(eq(schema.contacts.id, loaded.contact.id))
+    .limit(1);
+  if (contact?.phoneEnc === null || contact?.phoneEnc === undefined) return;
+  const e164 = decryptPhone(contact.phoneEnc, ctx.keys.privateKeyPem);
+  await refreshDnd(tx, provider, phoneHash, e164, loaded.intent.recipientRegion, now);
+}
+
 async function prepareDial(
   ctx: WorkerContext,
   tx: Tx,
@@ -309,6 +337,8 @@ async function prepareDial(
     numberId: pass.cli.id,
     scriptId: pass.script.id,
     scriptVersion: pass.script.version,
+    // ADR-0010 §4: the DLT content template this call ran under (CDR mapping).
+    dltTemplateId: pass.script.dltTemplateId ?? null,
     amdMode: pass.amdMode,
     maxDurationSec: pass.maxDurationSec,
     idempotencyKey: attemptId,
@@ -341,6 +371,8 @@ async function prepareDial(
       engine: pass.engine,
       cli: pass.cli.id,
       script: pass.script.id,
+      ab_arm: pass.script.abArm ?? null,
+      dlt_template_id: pass.script.dltTemplateId ?? null,
       dial_deadline: pass.dialDeadline.toISOString(),
     },
   });

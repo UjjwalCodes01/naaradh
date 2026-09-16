@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { createDb, withTenant, type Db } from '@naaradh/db';
 import { RoleClient, startTestPostgres, type TestPostgres } from '@naaradh/db/testing';
-import { COD_CONFIRM_EN_IN } from '@naaradh/scripts';
+import { ABANDONED_CART_HI_IN, COD_CONFIRM_EN_IN } from '@naaradh/scripts';
 import { addMinutes, generatePhoneKeyPair, newId, parseSecretKey } from '@naaradh/shared';
 import { FAKE_IN } from '@naaradh/shared/test/fake-phones';
 import { createIntent } from '../../src/intents.js';
@@ -36,6 +36,12 @@ import {
   revokeSessions,
   setUseCaseEnabled,
   updateSettings,
+  abTestMetrics,
+  endAbTest,
+  isAbTestRunning,
+  recoveryReport,
+  startAbTest,
+  SettingsInput as SettingsSchema,
   type Actor,
   type SettingsInput,
 } from '../../src/index.js';
@@ -350,9 +356,10 @@ describe('Shopify sessions and install provisioning (ADR-0007/0009)', () => {
       `update integrations set status = 'uninstalled', uninstalled_at = now() where external_id = $1`,
       [shop],
     );
+    // Review ended a day before the test clock (not the database clock: they differ by days).
     await service.query(
-      `update tenants set status = 'paused', paused_reason = 'app/uninstalled', review_until = now() - interval '1 day' where id = $1`,
-      [tenantId],
+      `update tenants set status = 'paused', paused_reason = 'app/uninstalled', review_until = $2 where id = $1`,
+      [tenantId, addMinutes(NOW, -24 * 60)],
     );
     expect(await provision()).toEqual({ tenantId, created: false, reinstalled: true });
     const t = await service.query<{ status: string; paused_reason: string | null }>(
@@ -492,6 +499,163 @@ describe('settings, use cases, scripts', () => {
     ).rejects.toThrow(/validation/);
     const listed = await withTenant(app, A, (tx) => listScripts(tx, A));
     expect(listed.find((s) => s.id === bad)?.problems).toBeTruthy();
+  });
+});
+
+describe('promotional scripts, A/B tests and results settings (ADR-0010)', () => {
+  const draft = async (version: number) => {
+    const id = newId('script');
+    await service.query(
+      `insert into scripts (id, tenant_id, use_case_id, version, locale, body, status) values ($1, $2, $3, $4, 'hi-IN', $5, 'draft')`,
+      [id, A, promoUseCase, version, JSON.stringify(ABANDONED_CART_HI_IN)],
+    );
+    return id;
+  };
+  const m = actor(A, MANAGER_A);
+  let v1: string;
+  let v2: string;
+
+  it('a promotional use case cannot be switched on until an approved script carries a DLT template', async () => {
+    const s = await withTenant(app, A, (tx) => getSettings(tx, A));
+    await withTenant(app, A, (tx) =>
+      updateSettings(tx, m, 'manager', {
+        ...SettingsSchema.parse({ ...s }),
+        dlt_pe_id: '1101234567890123',
+      }),
+    );
+    await expect(
+      withTenant(app, A, (tx) => setUseCaseEnabled(tx, m, 'manager', promoUseCase, true)),
+    ).rejects.toThrow(/DLT content template/);
+  });
+
+  it('E-112: approval needs the template id, in DLT format, and freezes it with the script', async () => {
+    v1 = await draft(1);
+    await expect(
+      withTenant(app, A, (tx) => approveScript(tx, m, 'manager', v1, NOW)),
+    ).rejects.toThrow(/DLT content template/);
+    await expect(
+      withTenant(app, A, (tx) =>
+        approveScript(tx, m, 'manager', v1, NOW, { dltTemplateId: 'TEMPLATE-1' }),
+      ),
+    ).rejects.toThrow(/DLT content template/);
+    await withTenant(app, A, (tx) =>
+      approveScript(tx, m, 'manager', v1, NOW, { dltTemplateId: ' 1107160000000000201 ' }),
+    );
+    const listed = await withTenant(app, A, (tx) => listScripts(tx, A));
+    expect(listed.find((x) => x.id === v1)).toMatchObject({
+      status: 'approved',
+      dltTemplateId: '1107160000000000201',
+      promotional: true,
+    });
+    // Frozen: the approved version's template id cannot be edited afterwards.
+    await expect(
+      withTenant(app, A, (tx) =>
+        tx.execute(
+          sql`update scripts set dlt_template_id = '1107169999999999999' where id = ${v1}`,
+        ),
+      ),
+    ).rejects.toThrow();
+    const on = await withTenant(app, A, (tx) =>
+      setUseCaseEnabled(tx, m, 'manager', promoUseCase, true),
+    );
+    expect(on.enabled).toBe(true);
+  });
+
+  it('an A/B test needs its own template for the challenger and blocks other approvals while it runs (E-116)', async () => {
+    v2 = await draft(2);
+    await expect(
+      withTenant(app, A, (tx) => startAbTest(tx, m, 'manager', v2, NOW)),
+    ).rejects.toThrow(/template/);
+    await expect(
+      withTenant(app, A, (tx) =>
+        startAbTest(tx, actor(A, VIEWER_A), 'viewer', v2, NOW, {
+          dltTemplateId: '1107160000000000202',
+        }),
+      ),
+    ).rejects.toThrow(/manager role/);
+    await withTenant(app, A, (tx) =>
+      startAbTest(tx, m, 'manager', v2, NOW, { dltTemplateId: '1107160000000000202' }),
+    );
+    const arms = await service.query<{ id: string; ab_arm: string | null; status: string }>(
+      `select id, ab_arm, status from scripts where id = any($1) order by version`,
+      [[v1, v2]],
+    );
+    expect(arms.rows.map((r) => [r.ab_arm, r.status])).toEqual([
+      ['A', 'approved'],
+      ['B', 'approved'],
+    ]);
+    expect(await withTenant(app, A, (tx) => isAbTestRunning(tx, A, promoUseCase, 'hi-IN'))).toBe(
+      true,
+    );
+
+    const v3 = await draft(3);
+    await expect(
+      withTenant(app, A, (tx) =>
+        approveScript(tx, m, 'manager', v3, NOW, { dltTemplateId: '1107160000000000203' }),
+      ),
+    ).rejects.toThrow(/A\/B test is running/);
+    await expect(
+      withTenant(app, A, (tx) =>
+        startAbTest(tx, m, 'manager', v3, NOW, { dltTemplateId: '1107160000000000203' }),
+      ),
+    ).rejects.toThrow(/already running/);
+    // The database refuses a third live version for the same arm, whatever the code does.
+    await expect(
+      service.query(
+        `insert into scripts (id, tenant_id, use_case_id, version, locale, body, status, ab_arm, approved_at, disclosure_validated_at, dlt_template_id) values ($1, $2, $3, 9, 'hi-IN', $4, 'approved', 'B', now(), now(), '1107160000000000209')`,
+        [newId('script'), A, promoUseCase, JSON.stringify(ABANDONED_CART_HI_IN)],
+      ),
+    ).rejects.toThrow(/scripts_one_approved_per_arm/);
+
+    const [test] = await withTenant(app, A, (tx) => abTestMetrics(tx, A));
+    expect(test).toMatchObject({
+      useCase: 'abandoned_cart',
+      locale: 'hi-IN',
+      pValue: null,
+      leader: null,
+    });
+    expect(test?.arms.map((a) => [a.arm, a.dialled, a.answered])).toEqual([
+      ['A', 0, 0],
+      ['B', 0, 0],
+    ]);
+  });
+
+  it('ending the test keeps one version and retires the other', async () => {
+    await expect(
+      withTenant(app, A, (tx) => endAbTest(tx, m, 'manager', newId('script'), NOW)),
+    ).rejects.toThrow(/not found/);
+    const r = await withTenant(app, A, (tx) => endAbTest(tx, m, 'manager', v2, NOW));
+    expect(r.retiredId).toBe(v1);
+    const rows = await service.query<{ id: string; ab_arm: string | null; status: string }>(
+      `select id, ab_arm, status from scripts where id = any($1) order by version`,
+      [[v1, v2]],
+    );
+    expect(rows.rows.map((x) => [x.status, x.ab_arm])).toEqual([
+      ['retired', null],
+      ['approved', null],
+    ]);
+    expect(await withTenant(app, A, (tx) => isAbTestRunning(tx, A, promoUseCase, 'hi-IN'))).toBe(
+      false,
+    );
+    expect(await withTenant(app, A, (tx) => abTestMetrics(tx, A))).toEqual([]);
+  });
+
+  it('results settings are optional, bounded, and an older form leaves them alone', async () => {
+    const s = await withTenant(app, A, (tx) => getSettings(tx, A));
+    expect(s).toMatchObject({ rto_cost_paise: null, attribution_hours: 24 });
+    expect(() => SettingsSchema.parse({ ...s, attribution_hours: 0 })).toThrow();
+    expect(() => SettingsSchema.parse({ ...s, attribution_hours: 73 })).toThrow();
+    const input = SettingsSchema.parse({ ...s, rto_cost_paise: 15000, attribution_hours: 48 });
+    await withTenant(app, A, (tx) => updateSettings(tx, m, 'manager', input));
+    const { rto_cost_paise: _r, attribution_hours: _h, ...older } = input;
+    const after = await withTenant(app, A, (tx) => updateSettings(tx, m, 'manager', older));
+    expect(after).toMatchObject({ rto_cost_paise: 15000, attribution_hours: 48 });
+    const report = await withTenant(app, A, (tx) =>
+      recoveryReport(tx, A, addMinutes(NOW, -7 * 24 * 60), addMinutes(NOW, 60)),
+    );
+    expect(report.recovered).toMatchObject({ orders: 0, windowHours: 48, revenue: [] });
+    expect(report.cod).toMatchObject({ rtoCostPaise: 15000 });
+    expect(report.checkouts.total).toBe(0);
   });
 });
 

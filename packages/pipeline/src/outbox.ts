@@ -34,6 +34,12 @@ export const MERCHANT_EVENTS = [
   'billing.status_changed',
   'billing.capped',
   'billing.approaching_cap',
+  // promotional (Phase 4, ADR-0010)
+  'checkout.recovery_requested',
+  'order.recovered',
+  'promotional.paused',
+  // appointments (Phase 5, ADR-0011)
+  'appointment.booked',
 ] as const;
 export type MerchantEventType = (typeof MERCHANT_EVENTS)[number];
 
@@ -56,6 +62,7 @@ export const EMAIL_ALERT_EVENTS: ReadonlySet<MerchantEventType> = new Set([
   'billing.approaching_cap',
   'billing.status_changed',
   'erasure.completed',
+  'promotional.paused',
 ]);
 
 /**

@@ -2,17 +2,26 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { schema, withTenant } from '@naaradh/db';
 import {
   isCodOrder,
+  parseShopifyCheckout,
   parseShopifyFulfillment,
   parseShopifyOrder,
   paymentKindOf,
 } from '@naaradh/shopify-sdk';
 import {
   applyTracking,
+  attributeOrder,
   audit,
   cancelIntents,
+  convertCheckouts,
+  createFeedbackIntent,
   createIntent,
+  eraseCheckouts,
   eraseOrders,
+  isKnownConsentWording,
   markOrderCancelled,
+  recordCheckout,
+  recordOrderConsent,
+  reverseAttribution,
   upsertOrder,
 } from '@naaradh/pipeline';
 import { addDays, newId } from '@naaradh/shared';
@@ -82,17 +91,22 @@ export async function handleShopifyEvent(ctx: WorkerContext, message: EventMessa
           );
         case 'orders/cancelled': {
           const cached = await cacheOrder(ctx, tx, tenantId, event.payload, now);
-          return `${await handleOrderCancelled(tx, tenantId, event.payload, now)};${cached}`;
+          const reversed = await reverseForOrder(tx, tenantId, event.payload, now);
+          return `${await handleOrderCancelled(tx, tenantId, event.payload, now)};${cached}${reversed}`;
         }
         case 'orders/updated': {
           const cached = await cacheOrder(ctx, tx, tenantId, event.payload, now);
-          return `${await handleOrderUpdated(tx, tenantId, event.payload, now)};${cached}`;
+          const reversed = await reverseForOrder(tx, tenantId, event.payload, now);
+          return `${await handleOrderUpdated(tx, tenantId, event.payload, now)};${cached}${reversed}`;
         }
         case 'orders/fulfilled':
           return cacheOrder(ctx, tx, tenantId, event.payload, now);
         case 'fulfillments/create':
         case 'fulfillments/update':
-          return handleFulfillment(tx, tenantId, event.payload);
+          return handleFulfillment(ctx, tx, tenantId, event.payload, now);
+        case 'checkouts/create':
+        case 'checkouts/update':
+          return handleCheckout(ctx, tx, tenantId, event.payload, now);
         case 'app/uninstalled':
           return handleUninstalled(ctx, tx, tenantId, event.externalAccount, now);
         case 'customers/redact':
@@ -131,7 +145,138 @@ export async function ingestShopifyOrder(
 ): Promise<string> {
   const cached = await cacheOrder(ctx, tx, tenantId, payload, now);
   const note = await handleOrderCreate(ctx, tx, tenantId, shop, payload, now);
-  return `${note};${cached}`;
+  const recovery = await recoveryForOrder(tx, tenantId, payload, now);
+  return `${note};${cached}${recovery}`;
+}
+
+/** The cached order row for a Shopify payload, if cached and not erased. */
+async function cachedOrder(tx: Tx, tenantId: string, payload: unknown) {
+  const id = (payload as { id?: unknown } | null)?.id;
+  if (typeof id !== 'number') return null;
+  const [row] = await tx
+    .select({
+      id: schema.orders.id,
+      phoneHash: schema.orders.phoneHash,
+      checkoutToken: schema.orders.checkoutToken,
+      placedAt: schema.orders.placedAt,
+      totalMinor: schema.orders.totalMinor,
+      currency: schema.orders.currency,
+      isTest: schema.orders.isTest,
+      cancelledAt: schema.orders.cancelledAt,
+      erasedAt: schema.orders.erasedAt,
+    })
+    .from(schema.orders)
+    .where(
+      and(
+        eq(schema.orders.tenantId, tenantId),
+        eq(schema.orders.source, 'shopify'),
+        eq(schema.orders.externalId, String(id)),
+      ),
+    )
+    .limit(1);
+  return row === undefined || row.erasedAt !== null ? null : row;
+}
+
+/**
+ * ADR-0010: an order ends its checkout's recovery (E-102, E-103) and may be credited to an
+ * earlier recovery call (§9). Every order, COD or prepaid — a recovered cart is usually prepaid.
+ */
+async function recoveryForOrder(
+  tx: Tx,
+  tenantId: string,
+  payload: unknown,
+  now: Date,
+): Promise<string> {
+  const order = await cachedOrder(tx, tenantId, payload);
+  if (order === null) return '';
+  const conv = await convertCheckouts(tx, {
+    tenantId,
+    orderId: order.id,
+    phoneHash: order.phoneHash,
+    checkoutToken: order.checkoutToken,
+    placedAt: order.placedAt,
+    now,
+  });
+  // A test order converts its checkout (nobody should be called about it) but is never credited.
+  const attr =
+    order.cancelledAt !== null
+      ? { attributed: false as const, reason: 'order_cancelled' }
+      : await attributeOrder(tx, {
+          tenantId,
+          orderId: order.id,
+          phoneHash: order.phoneHash,
+          checkoutToken: order.checkoutToken,
+          placedAt: order.placedAt,
+          valueMinor: order.totalMinor,
+          currency: order.currency,
+          isTest: order.isTest,
+          now,
+        });
+  return `;checkouts:${String(conv.converted)}${attr.attributed ? ';recovered' : ''}`;
+}
+
+/** E-118: a cancelled order is no longer a recovery. */
+async function reverseForOrder(
+  tx: Tx,
+  tenantId: string,
+  payload: unknown,
+  now: Date,
+): Promise<string> {
+  const cancelledAt = (payload as { cancelled_at?: unknown } | null)?.cancelled_at;
+  if (typeof cancelledAt !== 'string') return '';
+  const order = await cachedOrder(tx, tenantId, payload);
+  if (order === null) return '';
+  const n = await reverseAttribution(tx, { tenantId, orderId: order.id, at: now });
+  return n > 0 ? ';attribution_reversed' : '';
+}
+
+/** checkouts/create|update (ADR-0010 §1–2): cache the checkout, record or revoke consent. */
+async function handleCheckout(
+  ctx: WorkerContext,
+  tx: Tx,
+  tenantId: string,
+  payload: unknown,
+  now: Date,
+): Promise<string> {
+  const parsed = parseShopifyCheckout(payload);
+  if (!parsed.ok) {
+    await audit(tx, {
+      tenantId,
+      actorType: 'shopify',
+      action: 'checkout.rejected_payload',
+      targetType: 'checkout',
+      after: { error: parsed.error.slice(0, 500) },
+    });
+    return 'checkout:bad_payload';
+  }
+  const c = parsed.value;
+  const [tenant] = await tx
+    .select({ country: schema.tenants.country })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.id, tenantId))
+    .limit(1);
+  const r = await recordCheckout(tx, ctx.keys, {
+    tenantId,
+    source: 'shopify',
+    externalId: c.token,
+    createdAt: c.createdAt,
+    updatedAt: c.updatedAt,
+    completedAt: c.completedAt,
+    rawPhone: c.phone,
+    defaultRegion: (c.countryCode ?? tenant?.country ?? 'IN') as 'IN',
+    firstName: c.firstName,
+    valueMinor: c.totalMinor,
+    currency: c.currency,
+    itemSummary: c.itemSummary,
+    itemCount: c.itemCount,
+    consentAttribute: c.consentAttribute,
+    customerTags: c.customerTags,
+    isDraftOrPos: c.isDraftOrPos,
+    now,
+  });
+  return r.kind === 'ignored'
+    ? `checkout:ignored:${r.reason}`
+    : `checkout:${r.status}:consent_${r.consent}`;
 }
 
 /**
@@ -183,11 +328,19 @@ async function cacheOrder(
     itemCount: o.itemCount,
     placedAt: new Date(o.order.created_at),
     sourceUpdatedAt: o.order.updated_at === undefined ? now : new Date(o.order.updated_at),
+    isTest: o.isTest,
+    checkoutToken: o.checkoutToken,
   });
   return r.applied ? 'cache:upserted' : 'cache:stale_ignored';
 }
 
-async function handleFulfillment(tx: Tx, tenantId: string, payload: unknown): Promise<string> {
+async function handleFulfillment(
+  ctx: WorkerContext,
+  tx: Tx,
+  tenantId: string,
+  payload: unknown,
+  now: Date,
+): Promise<string> {
   const parsed = parseShopifyFulfillment(payload);
   if (!parsed.ok) return 'cache:bad_fulfillment';
   const f = parsed.value;
@@ -199,7 +352,18 @@ async function handleFulfillment(tx: Tx, tenantId: string, payload: unknown): Pr
     fulfillmentStatus: f.fulfillmentStatus,
   });
   // The order itself may not be cached yet (installed after it was placed): nothing to attach to.
-  return applied ? 'cache:tracking' : 'cache:tracking_no_order';
+  if (!applied) return 'cache:tracking_no_order';
+  if (f.tracking.status !== 'delivered') return 'cache:tracking';
+  // ADR-0010 §7: post-delivery feedback (promotional — the gate still wants consent).
+  const fb = await createFeedbackIntent(tx, ctx.keys, {
+    tenantId,
+    source: 'shopify',
+    externalOrderId: f.orderId,
+    shipmentStatus: f.tracking.status,
+    deliveredAt: f.updatedAt ?? now,
+    now,
+  });
+  return `cache:tracking;feedback:${fb.status}${'reason' in fb ? `:${String(fb.reason)}` : ''}`;
 }
 
 async function handleOrderCreate(
@@ -233,7 +397,21 @@ async function handleOrderCreate(
       targetId: String(o.order.id),
       after: { gateways: o.order.payment_gateway_names, unknown: gateway.unknown },
     });
-    return gateway.unknown.length > 0 ? `unknown_gateway:${gateway.unknown.join('|')}` : 'not_cod';
+    // ADR-0010 §2: the consent box still counts on a prepaid order (recovered carts usually are).
+    const consent = o.isTest
+      ? ('unchanged' as const)
+      : await recordOrderConsent(tx, ctx.keys, {
+          tenantId,
+          rawPhone: o.phone,
+          defaultRegion: (o.order.shipping_address?.country_code ?? 'IN') as 'IN',
+          consentAttribute: o.callConsentAttribute,
+          externalOrderId: String(o.order.id),
+          placedAt: new Date(o.order.created_at),
+          now,
+        });
+    const base =
+      gateway.unknown.length > 0 ? `unknown_gateway:${gateway.unknown.join('|')}` : 'not_cod';
+    return consent === 'unchanged' ? base : `${base};consent_${consent}`;
   }
   const [tenant] = await tx
     .select({ name: schema.tenants.name, country: schema.tenants.country })
@@ -266,7 +444,8 @@ async function handleOrderCreate(
     isTest: o.isTest,
     tags: o.tags,
     customerTags: o.customerTags,
-    ...(o.callConsentAttribute !== null
+    // E-106: only a wording version Naaradh published is consent; anything else is ignored.
+    ...(isKnownConsentWording(o.callConsentAttribute)
       ? {
           consent: {
             purpose: 'promotional' as const,
@@ -444,6 +623,7 @@ async function handleCustomerRedact(
   if (!parsed.ok) return 'redact_bad_phone';
   const phoneHash = hashPhone(parsed.phone.e164, ctx.keys.hashKey);
   await eraseOrders(tx, tenantId, { phoneHash }, now);
+  await eraseCheckouts(tx, tenantId, { phoneHash }, now);
   await tx.insert(schema.erasureRequests).values({
     id: newId('erasure'),
     tenantId,
@@ -488,6 +668,7 @@ async function handleShopRedact(
     );
   }
   const ordersErased = await eraseOrders(tx, tenantId, { all: true }, now);
+  const checkoutsErased = await eraseCheckouts(tx, tenantId, { all: true }, now);
   if (shop !== null) {
     await tx
       .update(schema.integrations)
@@ -502,7 +683,11 @@ async function handleShopRedact(
     action: 'privacy.shop_redact',
     targetType: 'tenant',
     targetId: tenantId,
-    after: { erasure_requests: contacts.length, orders_erased: ordersErased },
+    after: {
+      erasure_requests: contacts.length,
+      orders_erased: ordersErased,
+      checkouts_erased: checkoutsErased,
+    },
   });
   return `shop_redact:${String(contacts.length)}`;
 }

@@ -265,7 +265,7 @@
           "error": {
             "properties": {
               "code": {
-                "description": "Machine-readable code. Status by code: GATED → 409, ENGINE_UNAVAILABLE → 503, IDEMPOTENT_REPLAY → 200, SIGNATURE_INVALID → 401, VALIDATION_FAILED → 422, UNAUTHENTICATED → 401, FORBIDDEN → 403, RATE_LIMITED → 429, NOT_FOUND → 404, DISPATCH_UNCERTAIN → 500, INTERNAL → 500. Fastify's own client errors (malformed JSON, unsupported media type, body over 256 KiB) use Fastify's `FST_ERR_*` codes with the same envelope.",
+                "description": "Machine-readable code. Status by code: GATED → 409, ENGINE_UNAVAILABLE → 503, IDEMPOTENT_REPLAY → 200, SIGNATURE_INVALID → 401, VALIDATION_FAILED → 422, UNAUTHENTICATED → 401, FORBIDDEN → 403, RATE_LIMITED → 429, NOT_FOUND → 404, DISPATCH_UNCERTAIN → 500, CONFLICT → 409, INTERNAL → 500. Fastify's own client errors (malformed JSON, unsupported media type, body over 256 KiB) use Fastify's `FST_ERR_*` codes with the same envelope.",
                 "enum": [
                   "GATED",
                   "ENGINE_UNAVAILABLE",
@@ -277,6 +277,7 @@
                   "RATE_LIMITED",
                   "NOT_FOUND",
                   "DISPATCH_UNCERTAIN",
+                  "CONFLICT",
                   "INTERNAL"
                 ],
                 "type": "string"
@@ -456,6 +457,7 @@
                   "engine:circuit_open",
                   "tenant:inactive",
                   "tenant:pending_review_promotional",
+                  "tenant:promotional_paused",
                   "billing:not_set_up",
                   "billing:frozen",
                   "billing:capped",
@@ -488,11 +490,13 @@
                   "dnd:unknown",
                   "attempts:daily",
                   "attempts:lifetime",
+                  "attempts:promotional_cooldown",
                   "attempts:too_soon",
                   "concurrency:tenant",
                   "concurrency:engine",
                   "cli:none_available",
-                  "script:none_approved"
+                  "script:none_approved",
+                  "script:dlt_template_missing"
                 ],
                 "type": "string"
               },
@@ -579,7 +583,13 @@
                   "resolved",
                   "ticket_created",
                   "abandoned",
-                  "spam"
+                  "spam",
+                  "will_complete",
+                  "will_buy_later",
+                  "not_interested",
+                  "price_objection",
+                  "qualified",
+                  "feedback_given"
                 ],
                 "type": "string"
               },
@@ -703,7 +713,11 @@
                 "erasure.completed",
                 "billing.status_changed",
                 "billing.capped",
-                "billing.approaching_cap"
+                "billing.approaching_cap",
+                "checkout.recovery_requested",
+                "order.recovered",
+                "promotional.paused",
+                "appointment.booked"
               ],
               "type": "string"
             },
@@ -812,7 +826,9 @@
                 "request_address_change",
                 "create_ticket",
                 "transfer_to_human",
-                "register_opt_out"
+                "register_opt_out",
+                "get_slots",
+                "book_slot"
               ],
               "type": "string"
             },
@@ -1016,7 +1032,11 @@
               "erasure.completed",
               "billing.status_changed",
               "billing.capped",
-              "billing.approaching_cap"
+              "billing.approaching_cap",
+              "checkout.recovery_requested",
+              "order.recovered",
+              "promotional.paused",
+              "appointment.booked"
             ],
             "type": "string"
           },
@@ -1091,7 +1111,7 @@
       "name": "Naaradh",
       "url": "https://naaradh.com"
     },
-    "description": "The public REST API of Naaradh, the two-way AI voice agent for commerce: outbound calls (COD confirmation, abandoned-checkout recovery, appointments, lead callbacks) and the inbound support line, on one compliance layer. Every request is checked in this order: API key → scope → schema → your tenant's row-level security context. The API never dials and never reads a phone number back; it hands intents to the same pipeline the Shopify app uses.\n\n## Authentication\n\n`Authorization: Bearer <key>`.\n\n- **Secret keys** `nrd_live_…` / `nrd_test_…` (32 base62 characters after the prefix): for your servers. Scoped per key, with an optional IP allow-list and a per-key daily intent cap (E-70). Never ship one in a browser or an app.\n- **Public site keys** `nrd_pk_…`: for the website snippet (`naaradh.js`, SPEC §9.2). Usable only for `POST /v1/intents` with `use_case: lead_callback`; the request's `Origin` must be on the key's domain list (subdomains included). CORS is answered only for that route, only for public keys, with no credentials. Secret keys never receive CORS headers.\n\nKeys are stored hashed; a lost key is replaced, not recovered.\n\n## Scopes\n\nEach operation lists the scope it needs. Scopes: `intents:create`, `intents:read`, `consents:write`, `suppressions:write`, `calls:read`, `webhooks:read`, `webhooks:write`, `billing:read`, `billing:write`, `complaints:read`, `complaints:write`, `privacy:read`, `privacy:write`, `support:read`, `support:write`, `tickets:read`, `tickets:write`, `orders:write`. Missing scope → 403 `FORBIDDEN`.\n\n## Rate limits\n\nPer secret key: 120 requests per minute (a fixed one-minute window). Per public key: 10 requests/minute per client IP. Exceeding the limit → 429 with `Retry-After` and the flat `RateLimitError` body. Intent creation additionally counts against the key's daily cap (default 5000/day, UTC) → 429 with the `Error` envelope and `Retry-After: 3600`.\n\n## Idempotency\n\nSend `Idempotency-Key` on POST requests you might retry. Keys are remembered for 24 hours per tenant; a replay with the same key and the same request returns the original response with `Idempotent-Replay: true`; the same key with a different request is a 422. Intent creation is also idempotent on (`external_ref`, `use_case`) even without the header.\n\n## Errors\n\nEvery error is JSON: `{\"error\": {\"code\", \"message\", \"details?\", \"request_id\"}}`; `code` is one of `GATED`, `ENGINE_UNAVAILABLE`, `IDEMPOTENT_REPLAY`, `SIGNATURE_INVALID`, `VALIDATION_FAILED`, `UNAUTHENTICATED`, `FORBIDDEN`, `RATE_LIMITED`, `NOT_FOUND`, `DISPATCH_UNCERTAIN`, `INTERNAL` (see the Error schema for the status each maps to). Validation failures list the offending paths in `details`. The only exception is the per-minute rate limiter, whose body is flat (`RateLimitError`).\n\n## Phone numbers and PII\n\nSend numbers in any format with `phone_region` for numbers without a country code. Naaradh normalises to E.164, keeps a keyed hash for lookups and an encrypted copy readable only by the dialler; responses and webhooks carry a masked form at most. Names are used as script variables only. Recording access is audited.\n\n## Requests\n\nJSON bodies up to 256 KiB (`Content-Type: application/json`). Timestamps are ISO 8601 with offset; money is integer minor units with an ISO 4217 currency alongside; ids are prefixed ULIDs. The `request_id` in every error (from `x-cloud-trace-context` when you send one) is what support needs.",
+    "description": "The public REST API of Naaradh, the two-way AI voice agent for commerce: outbound calls (COD confirmation, abandoned-checkout recovery, appointments, lead callbacks) and the inbound support line, on one compliance layer. Every request is checked in this order: API key → scope → schema → your tenant's row-level security context. The API never dials and never reads a phone number back; it hands intents to the same pipeline the Shopify app uses.\n\n## Authentication\n\n`Authorization: Bearer <key>`.\n\n- **Secret keys** `nrd_live_…` / `nrd_test_…` (32 base62 characters after the prefix): for your servers. Scoped per key, with an optional IP allow-list and a per-key daily intent cap (E-70). Never ship one in a browser or an app.\n- **Public site keys** `nrd_pk_…`: for the website snippet (`naaradh.js`, SPEC §9.2). Usable only for `POST /v1/intents` with `use_case: lead_callback`; the request's `Origin` must be on the key's domain list (subdomains included). CORS is answered only for that route, only for public keys, with no credentials. Secret keys never receive CORS headers.\n\nKeys are stored hashed; a lost key is replaced, not recovered.\n\n## Scopes\n\nEach operation lists the scope it needs. Scopes: `intents:create`, `intents:read`, `consents:write`, `suppressions:write`, `calls:read`, `webhooks:read`, `webhooks:write`, `billing:read`, `billing:write`, `complaints:read`, `complaints:write`, `privacy:read`, `privacy:write`, `support:read`, `support:write`, `tickets:read`, `tickets:write`, `orders:write`. Missing scope → 403 `FORBIDDEN`.\n\n## Rate limits\n\nPer secret key: 120 requests per minute (a fixed one-minute window). Per public key: 10 requests/minute per client IP. Exceeding the limit → 429 with `Retry-After` and the flat `RateLimitError` body. Intent creation additionally counts against the key's daily cap (default 5000/day, UTC) → 429 with the `Error` envelope and `Retry-After: 3600`.\n\n## Idempotency\n\nSend `Idempotency-Key` on POST requests you might retry. Keys are remembered for 24 hours per tenant; a replay with the same key and the same request returns the original response with `Idempotent-Replay: true`; the same key with a different request is a 422. Intent creation is also idempotent on (`external_ref`, `use_case`) even without the header.\n\n## Errors\n\nEvery error is JSON: `{\"error\": {\"code\", \"message\", \"details?\", \"request_id\"}}`; `code` is one of `GATED`, `ENGINE_UNAVAILABLE`, `IDEMPOTENT_REPLAY`, `SIGNATURE_INVALID`, `VALIDATION_FAILED`, `UNAUTHENTICATED`, `FORBIDDEN`, `RATE_LIMITED`, `NOT_FOUND`, `DISPATCH_UNCERTAIN`, `CONFLICT`, `INTERNAL` (see the Error schema for the status each maps to). Validation failures list the offending paths in `details`. The only exception is the per-minute rate limiter, whose body is flat (`RateLimitError`).\n\n## Phone numbers and PII\n\nSend numbers in any format with `phone_region` for numbers without a country code. Naaradh normalises to E.164, keeps a keyed hash for lookups and an encrypted copy readable only by the dialler; responses and webhooks carry a masked form at most. Names are used as script variables only. Recording access is audited.\n\n## Requests\n\nJSON bodies up to 256 KiB (`Content-Type: application/json`). Timestamps are ISO 8601 with offset; money is integer minor units with an ISO 4217 currency alongside; ids are prefixed ULIDs. The `request_id` in every error (from `x-cloud-trace-context` when you send one) is what support needs.",
     "summary": "Two-way AI voice agent for commerce — outbound call intents and the inbound support line.",
     "title": "Naaradh API",
     "version": "0.0.0"
@@ -1099,6 +1119,500 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "openapi": "3.1.0",
   "paths": {
+    "/v1/appointments": {
+      "get": {
+        "description": "Appointments starting at or after `from` (default: now), earliest first.\n\nScope: `appointments:read`.",
+        "operationId": "listAppointments",
+        "parameters": [
+          {
+            "description": "ISO 8601 instant. Defaults to now.",
+            "in": "query",
+            "name": "from",
+            "required": false,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "1–100, default 50.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "appointments": {
+                      "items": {
+                        "properties": {
+                          "appointment_id": {
+                            "description": "Naaradh appointment id (`apt_…`).",
+                            "type": "string"
+                          },
+                          "ends_at": {
+                            "format": "date-time",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "erased": {
+                            "description": "True once the customer was erased; the time is kept, the person is not.",
+                            "type": "boolean"
+                          },
+                          "intent_id": {
+                            "description": "The confirmation call, once one is queued.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "provider_ref": {
+                            "description": "The calendar provider's booking id, when a provider holds it.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "ref": {
+                            "description": "Your appointment id.",
+                            "type": "string"
+                          },
+                          "service": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "starts_at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "status": {
+                            "enum": [
+                              "scheduled",
+                              "confirmed",
+                              "rescheduled",
+                              "cancelled",
+                              "completed",
+                              "no_show"
+                            ],
+                            "type": "string"
+                          },
+                          "timezone": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "appointment_id",
+                          "ref",
+                          "service",
+                          "starts_at",
+                          "ends_at",
+                          "timezone",
+                          "status",
+                          "intent_id",
+                          "provider_ref",
+                          "erased"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "appointments"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Appointments."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "appointments:read"
+            ]
+          }
+        ],
+        "summary": "Upcoming appointments",
+        "tags": [
+          "Carts & appointments"
+        ]
+      }
+    },
+    "/v1/appointments/{ref}": {
+      "get": {
+        "description": "The appointment as Naaradh holds it, including `intent_id` once a confirmation call is queued.\n\nScope: `appointments:read`.",
+        "operationId": "getAppointment",
+        "parameters": [
+          {
+            "description": "Your appointment id.",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "appointment_id": {
+                      "description": "Naaradh appointment id (`apt_…`).",
+                      "type": "string"
+                    },
+                    "ends_at": {
+                      "format": "date-time",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "erased": {
+                      "description": "True once the customer was erased; the time is kept, the person is not.",
+                      "type": "boolean"
+                    },
+                    "intent_id": {
+                      "description": "The confirmation call, once one is queued.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "provider_ref": {
+                      "description": "The calendar provider's booking id, when a provider holds it.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "ref": {
+                      "description": "Your appointment id.",
+                      "type": "string"
+                    },
+                    "service": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "starts_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "scheduled",
+                        "confirmed",
+                        "rescheduled",
+                        "cancelled",
+                        "completed",
+                        "no_show"
+                      ],
+                      "type": "string"
+                    },
+                    "timezone": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "appointment_id",
+                    "ref",
+                    "service",
+                    "starts_at",
+                    "ends_at",
+                    "timezone",
+                    "status",
+                    "intent_id",
+                    "provider_ref",
+                    "erased"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The appointment."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "appointments:read"
+            ]
+          }
+        ],
+        "summary": "One appointment",
+        "tags": [
+          "Carts & appointments"
+        ]
+      },
+      "put": {
+        "description": "Naaradh keeps a copy of the appointment so it can place ONE confirmation call between 24 and 2 hours before it starts (in `timezone`, inside 09:00–21:00 there), and so the support line can answer \"do I have an appointment?\". Send the same appointment as often as you like: moving `starts_at` moves the call, `status: \"cancelled\"` cancels it (E-133). An appointment created less than 2 hours before it starts gets no call (E-134). There is deliberately no field for a reason, a note or anything clinical (ADR-0011 §8).\n\nScope: `appointments:write`.",
+        "operationId": "upsertAppointment",
+        "parameters": [
+          {
+            "description": "Your appointment id (1–200 characters). Stable across updates.",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "calendar_id": {
+                    "anyOf": [
+                      {
+                        "maxLength": 40,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "A calendar from `GET /v1/calendars`, when you connected one."
+                  },
+                  "ends_at": {
+                    "anyOf": [
+                      {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "maxLength": 80,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "The customer's first name, for the greeting."
+                  },
+                  "phone": {
+                    "anyOf": [
+                      {
+                        "maxLength": 32,
+                        "minLength": 5,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Any format your system has (`+91 60000 00123`, `060000 00123`, `6000000123`). Normalised to E.164 on receipt; the raw string is never stored and never returned — responses carry a masked form only."
+                  },
+                  "phone_region": {
+                    "default": "IN",
+                    "description": "ISO 3166-1 alpha-2 country used to interpret a number without a country code. Rules (calling window, consent type, disclosure language) follow the RECIPIENT's number, not this field (invariant 2).",
+                    "maxLength": 2,
+                    "minLength": 2,
+                    "type": "string"
+                  },
+                  "service": {
+                    "anyOf": [
+                      {
+                        "maxLength": 80,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "What it is for, as the agent should say it (\"blood test\", \"colour\"). No reason for the visit."
+                  },
+                  "starts_at": {
+                    "description": "When the appointment starts.",
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "status": {
+                    "default": "scheduled",
+                    "description": "Your state for it. `cancelled`, `completed` and `no_show` stop any queued call.",
+                    "enum": [
+                      "scheduled",
+                      "confirmed",
+                      "rescheduled",
+                      "cancelled",
+                      "completed",
+                      "no_show"
+                    ],
+                    "type": "string"
+                  },
+                  "timezone": {
+                    "description": "IANA zone the appointment is in — decides what the customer hears and when they may be called.",
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "starts_at",
+                  "timezone"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "appointment_id": {
+                      "description": "Naaradh appointment id (`apt_…`).",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "description": "Only on `skipped`: `no_phone` or `erased`.",
+                      "type": "string"
+                    },
+                    "ref": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "recorded",
+                        "skipped"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Updated."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "appointment_id": {
+                      "type": "string"
+                    },
+                    "ref": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "recorded",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "appointment_id",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "appointments:write"
+            ]
+          }
+        ],
+        "summary": "Create or update an appointment",
+        "tags": [
+          "Carts & appointments"
+        ]
+      }
+    },
     "/v1/billing": {
       "get": {
         "description": "What the billing page shows: the calendar-month period, plan and allowance per direction, units used and charged beyond the allowance, credits from accepted disputes, the state of usage postings at the provider, and the subscription as Naaradh last fetched it. Amounts are integers in minor units (paise/cents) with the currency alongside.\n\nScope: `billing:read`.",
@@ -1384,6 +1898,105 @@
         ]
       }
     },
+    "/v1/calendars": {
+      "get": {
+        "description": "The calendars the merchant connected in the dashboard, with the slot length the agent offers and the last provider error, if any. Read-only here: connecting a calendar needs credentials and is done in the dashboard.\n\nScope: `appointments:read`.",
+        "operationId": "listCalendars",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "calendars": {
+                      "items": {
+                        "properties": {
+                          "calendar_id": {
+                            "type": "string"
+                          },
+                          "error": {
+                            "description": "Last provider error, when the calendar is in `error`.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "name": {
+                            "description": "What the merchant calls it; spoken on calls.",
+                            "type": "string"
+                          },
+                          "provider": {
+                            "enum": [
+                              "calcom",
+                              "google",
+                              "manual"
+                            ],
+                            "type": "string"
+                          },
+                          "slot_minutes": {
+                            "type": "integer"
+                          },
+                          "status": {
+                            "enum": [
+                              "active",
+                              "disabled",
+                              "error"
+                            ],
+                            "type": "string"
+                          },
+                          "timezone": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "calendar_id",
+                          "provider",
+                          "name",
+                          "timezone",
+                          "slot_minutes",
+                          "status",
+                          "error"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "calendars"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Calendars."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "appointments:read"
+            ]
+          }
+        ],
+        "summary": "Connected calendars",
+        "tags": [
+          "Carts & appointments"
+        ]
+      }
+    },
     "/v1/calls/{id}/recording": {
       "get": {
         "description": "Returns a URL for the call recording, valid for 15 minutes. Recordings live in Naaradh's own storage (the engine's URL is never returned, E-34) and every access is written to the audit log with your key id (E-74). 404 when the attempt has no recording (not answered, recording refused, retention expired).\n\nScope: `calls:read`.",
@@ -1451,6 +2064,441 @@
         "summary": "Get a signed recording URL",
         "tags": [
           "Calls"
+        ]
+      }
+    },
+    "/v1/carts/{ref}": {
+      "get": {
+        "description": "The cart as Naaradh holds it: whether a recovery call was queued (`scheduled`), the shopper finished (`completed`/`converted`), it was too old (`expired`), or it was skipped — with the reason (`consent:missing`, `no_phone`, `recently_called`, …). Explanations for merchants are on the dashboard Results page.\n\nScope: `carts:write`.",
+        "operationId": "getCart",
+        "parameters": [
+          {
+            "description": "Your cart id.",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "cart_ref": {
+                      "type": "string"
+                    },
+                    "consent_wording_version": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "created_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "decided_at": {
+                      "description": "When Naaradh last decided about this cart.",
+                      "format": "date-time",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "intent_id": {
+                      "description": "The recovery call, once queued.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "reason": {
+                      "description": "Why it was skipped, when it was.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "status": {
+                      "enum": [
+                        "open",
+                        "scheduled",
+                        "skipped",
+                        "completed",
+                        "converted",
+                        "expired"
+                      ],
+                      "type": "string"
+                    },
+                    "updated_at": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "cart_ref",
+                    "status",
+                    "reason",
+                    "intent_id",
+                    "consent_wording_version",
+                    "created_at",
+                    "updated_at",
+                    "decided_at"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The cart."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "carts:write"
+            ]
+          }
+        ],
+        "summary": "What Naaradh decided about a cart",
+        "tags": [
+          "Carts & appointments"
+        ]
+      },
+      "put": {
+        "description": "Records the cart, or updates what you sent before. Send it when the shopper has given a phone number, and send it again on every change — each update restarts the 45-minute quiet period, while the 24-hour deadline runs from `created_at` (E-101). Naaradh decides on its own whether to call: idle 45 minutes, under 24 hours old, a phone, a live consent from `consent_wording_version`, no promotional call to that number in the last 7 days, and everything ADR-0010 requires (DND scrub, DLT template, calling window). `GET` the same path to see what it decided and why. Call `POST /v1/carts/{ref}/completed` when the shopper orders, so a queued call is cancelled.\n\nScope: `carts:write`.",
+        "operationId": "upsertCart",
+        "parameters": [
+          {
+            "description": "Your cart id (1–200 characters). Stable across updates.",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "consent_wording_version": {
+                    "anyOf": [
+                      {
+                        "maxLength": 64,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "The version string of the Naaradh consent wording the shopper ticked (`GET` this endpoint's response `current_consent_wording_version`, or the WooCommerce plugin's setting). `null` when they did not tick it — the cart is then recorded for your funnel and never called. A version Naaradh did not publish is treated as no consent (E-106)."
+                  },
+                  "created_at": {
+                    "description": "When the cart was started. The 24-hour deadline runs from here.",
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "currency": {
+                    "default": "INR",
+                    "maxLength": 3,
+                    "minLength": 3,
+                    "type": "string"
+                  },
+                  "customer_tags": {
+                    "default": [],
+                    "description": "Tags that stop a call: `staff`, `naaradh:skip`. Matched case-insensitively (E-46).",
+                    "items": {
+                      "maxLength": 40,
+                      "type": "string"
+                    },
+                    "maxItems": 20,
+                    "type": "array"
+                  },
+                  "item_count": {
+                    "default": 0,
+                    "maximum": 999,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "item_summary": {
+                    "default": "",
+                    "description": "What the agent may say the cart holds, up to 200 characters (\"2 items\", \"1 × Cotton kurta\"). Sanitised (E-72).",
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "name": {
+                    "anyOf": [
+                      {
+                        "maxLength": 80,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "The shopper's first name, for the greeting. No surname, no email, no address."
+                  },
+                  "phone": {
+                    "anyOf": [
+                      {
+                        "maxLength": 32,
+                        "minLength": 5,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "Any format your system has (`+91 60000 00123`, `060000 00123`, `6000000123`). Normalised to E.164 on receipt; the raw string is never stored and never returned — responses carry a masked form only."
+                  },
+                  "phone_region": {
+                    "default": "IN",
+                    "description": "ISO 3166-1 alpha-2 country used to interpret a number without a country code. Rules (calling window, consent type, disclosure language) follow the RECIPIENT's number, not this field (invariant 2).",
+                    "maxLength": 2,
+                    "minLength": 2,
+                    "type": "string"
+                  },
+                  "updated_at": {
+                    "description": "When it last changed. Defaults to now; restarts the quiet period.",
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "value_minor": {
+                    "default": 0,
+                    "description": "Cart total in the minor unit (paise for INR).",
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "created_at"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "cart_ref": {
+                      "type": "string"
+                    },
+                    "consent": {
+                      "enum": [
+                        "granted",
+                        "revoked",
+                        "unchanged",
+                        "unknown_wording"
+                      ],
+                      "type": "string"
+                    },
+                    "current_consent_wording_version": {
+                      "description": "The wording version Naaradh recognises today — show this text to shoppers.",
+                      "type": "string"
+                    },
+                    "reason": {
+                      "description": "Only on `status: \"ignored\"`: why nothing was recorded.",
+                      "type": "string"
+                    },
+                    "status": {
+                      "enum": [
+                        "open",
+                        "scheduled",
+                        "skipped",
+                        "completed",
+                        "converted",
+                        "expired"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Recorded, or ignored with a reason."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "carts:write"
+            ]
+          }
+        ],
+        "summary": "Report an in-progress or abandoned cart",
+        "tags": [
+          "Carts & appointments"
+        ]
+      }
+    },
+    "/v1/carts/{ref}/completed": {
+      "post": {
+        "description": "Closes the cart and cancels a recovery call that was queued or already ringing (E-123, E-103: a live call is superseded and never billed). Send this from your order-created hook. Pass `order_ref` if you also sent the order with `PUT /v1/orders/{ref}`, so the cart and the order are linked for the Results page.\n\nScope: `carts:write`.",
+        "operationId": "completeCart",
+        "parameters": [
+          {
+            "description": "Your cart id.",
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "completed_at": {
+                    "description": "When the order was placed. Defaults to now.",
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "order_ref": {
+                    "anyOf": [
+                      {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null,
+                    "description": "The order id you used with `PUT /v1/orders/{ref}`, when you sent one."
+                  }
+                },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "cancelled_calls": {
+                      "description": "Queued or live recovery calls that were cancelled.",
+                      "type": "integer"
+                    },
+                    "cart_ref": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "completed",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "cart_ref",
+                    "status",
+                    "cancelled_calls"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Closed.",
+            "headers": {
+              "Idempotent-Replay": {
+                "$ref": "#/components/headers/IdempotentReplay"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "carts:write"
+            ]
+          }
+        ],
+        "summary": "The shopper finished — close the cart",
+        "tags": [
+          "Carts & appointments"
         ]
       }
     },
@@ -2385,7 +3433,7 @@
                     "type": "array"
                   },
                   "tools_enabled": {
-                    "description": "Tools the agent may use on this line: `lookup_orders`, `verify_caller`, `search_knowledge`, `confirm_order`, `request_cancellation`, `request_address_change`, `create_ticket`, `transfer_to_human`, `register_opt_out`. Every tool is authorised server-side against caller identity and your settings regardless of what the model asks (invariant 18).",
+                    "description": "Tools the agent may use on this line: `lookup_orders`, `verify_caller`, `search_knowledge`, `confirm_order`, `request_cancellation`, `request_address_change`, `create_ticket`, `transfer_to_human`, `register_opt_out`, `get_slots`, `book_slot`. Every tool is authorised server-side against caller identity and your settings regardless of what the model asks (invariant 18).",
                     "items": {
                       "type": "string"
                     },
@@ -2647,7 +3695,7 @@
                     "type": "array"
                   },
                   "tools_enabled": {
-                    "description": "Tools the agent may use on this line: `lookup_orders`, `verify_caller`, `search_knowledge`, `confirm_order`, `request_cancellation`, `request_address_change`, `create_ticket`, `transfer_to_human`, `register_opt_out`. Every tool is authorised server-side against caller identity and your settings regardless of what the model asks (invariant 18).",
+                    "description": "Tools the agent may use on this line: `lookup_orders`, `verify_caller`, `search_knowledge`, `confirm_order`, `request_cancellation`, `request_address_change`, `create_ticket`, `transfer_to_human`, `register_opt_out`, `get_slots`, `book_slot`. Every tool is authorised server-side against caller identity and your settings regardless of what the model asks (invariant 18).",
                     "items": {
                       "type": "string"
                     },
@@ -3173,6 +4221,7 @@
                             "engine:circuit_open",
                             "tenant:inactive",
                             "tenant:pending_review_promotional",
+                            "tenant:promotional_paused",
                             "billing:not_set_up",
                             "billing:frozen",
                             "billing:capped",
@@ -3205,11 +4254,13 @@
                             "dnd:unknown",
                             "attempts:daily",
                             "attempts:lifetime",
+                            "attempts:promotional_cooldown",
                             "attempts:too_soon",
                             "concurrency:tenant",
                             "concurrency:engine",
                             "cli:none_available",
-                            "script:none_approved"
+                            "script:none_approved",
+                            "script:dlt_template_missing"
                           ],
                           "type": "string"
                         },
@@ -5239,7 +6290,11 @@
                         "erasure.completed",
                         "billing.status_changed",
                         "billing.capped",
-                        "billing.approaching_cap"
+                        "billing.approaching_cap",
+                        "checkout.recovery_requested",
+                        "order.recovered",
+                        "promotional.paused",
+                        "appointment.booked"
                       ],
                       "type": "string"
                     },
@@ -5289,7 +6344,11 @@
                           "erasure.completed",
                           "billing.status_changed",
                           "billing.capped",
-                          "billing.approaching_cap"
+                          "billing.approaching_cap",
+                          "checkout.recovery_requested",
+                          "order.recovered",
+                          "promotional.paused",
+                          "appointment.booked"
                         ],
                         "type": "string"
                       },
@@ -5507,11 +6566,135 @@
       "name": "Support line"
     },
     {
+      "description": "Abandoned-cart recovery and appointment reminders for every platform that is not Shopify (ADR-0011): WooCommerce, a one-click checkout, or your own store. Sending a cart is not an instruction to call it — Naaradh calls it only if it has been idle 45 minutes, is under 24 hours old, has a phone and carries a live consent from the wording version Naaradh published. Appointments produce at most one confirmation call, 24 to 2 hours before the appointment, inside the recipient's calling window.",
+      "name": "Carts & appointments"
+    },
+    {
       "description": "This document.",
       "name": "Reference"
     }
   ],
   "webhooks": {
+    "appointment.booked": {
+      "post": {
+        "description": "A caller (or a customer on a reminder call) chose one of the times the merchant's calendar offered, and the provider confirmed it. The appointment is in Naaradh as `apt_…` and, when a provider holds it, under `provider_ref` in that calendar. Not billed by itself — the call's outcome (`booked`) is what is billable (invariant 11).\n\nDelivered as an HTTPS POST to each endpoint registered for `appointment.booked` (POST /v1/webhooks). Verify the signature before parsing; answer any 2xx quickly (10 s timeout) and process asynchronously. Dedupe on `id`: delivery is at-least-once.",
+        "operationId": "webhook_appointment_booked",
+        "parameters": [
+          {
+            "description": "`t=<unix seconds>,v1=<hex>` where `v1 = HMAC-SHA256(secret, t + \".\" + raw_body)`. Reject when `|now - t| > 300` seconds or the HMAC (constant-time compare) does not match. Compute over the raw bytes, not a re-serialised object.",
+            "in": "header",
+            "name": "X-Naaradh-Signature",
+            "required": true,
+            "schema": {
+              "pattern": "^t=\\d+,v1=[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Same as the body `id`; use it to dedupe before reading the body.",
+            "in": "header",
+            "name": "X-Naaradh-Event-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "User-Agent",
+            "required": true,
+            "schema": {
+              "const": "Naaradh-Webhooks/1.0",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "created_at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "data": {
+                    "properties": {
+                      "appointment_id": {
+                        "description": "Naaradh appointment id (`apt_…`).",
+                        "type": "string"
+                      },
+                      "attempt_id": {
+                        "description": "The call it was booked on.",
+                        "type": "string"
+                      },
+                      "calendar_id": {
+                        "type": "string"
+                      },
+                      "provider_ref": {
+                        "description": "The provider's booking id.",
+                        "type": "string"
+                      },
+                      "service": {
+                        "description": "What the appointment is for, as the customer heard it.",
+                        "type": "string"
+                      },
+                      "starts_at": {
+                        "format": "date-time",
+                        "type": "string"
+                      },
+                      "timezone": {
+                        "description": "IANA zone the appointment is in.",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "appointment_id",
+                      "calendar_id",
+                      "provider_ref",
+                      "starts_at",
+                      "timezone",
+                      "service",
+                      "attempt_id"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "description": "Stable event id (typically `<subject id>:<event>`); the same id is re-sent on retries.",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "appointment.booked",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Delivered. The delivery is marked `delivered` and the endpoint's failure counter resets."
+          },
+          "default": {
+            "description": "Anything else (non-2xx, timeout after 10 s, connection error, redirect) counts as a failure: retried after 1, 5, 30, 120 and 720 minutes — 5 attempts in all — then marked `dead` (visible at GET /v1/webhooks/deliveries and in the dashboard). 20 consecutive failures disable the endpoint and notify you."
+          }
+        },
+        "security": [],
+        "summary": "The agent booked an appointment on a call",
+        "tags": [
+          "Merchant webhooks"
+        ]
+      }
+    },
     "billing.approaching_cap": {
       "post": {
         "description": "Sent once per day while usage is near the Shopify capped amount. Also emailed.\n\nDelivered as an HTTPS POST to each endpoint registered for `billing.approaching_cap` (POST /v1/webhooks). Verify the signature before parsing; answer any 2xx quickly (10 s timeout) and process asynchronously. Dedupe on `id`: delivery is at-least-once.",
@@ -6080,6 +7263,125 @@
         ]
       }
     },
+    "checkout.recovery_requested": {
+      "post": {
+        "description": "An abandoned-checkout call ended with the customer saying they will complete the order (`outcome: \"will_complete\"`). Naaradh sends no SMS or WhatsApp (ADR-0010 §10): send the checkout link with your own messaging — Shopify abandoned-checkout email, Flow, or your WhatsApp provider — using `checkout_token` to find the checkout. Not billed.\n\nDelivered as an HTTPS POST to each endpoint registered for `checkout.recovery_requested` (POST /v1/webhooks). Verify the signature before parsing; answer any 2xx quickly (10 s timeout) and process asynchronously. Dedupe on `id`: delivery is at-least-once.",
+        "operationId": "webhook_checkout_recovery_requested",
+        "parameters": [
+          {
+            "description": "`t=<unix seconds>,v1=<hex>` where `v1 = HMAC-SHA256(secret, t + \".\" + raw_body)`. Reject when `|now - t| > 300` seconds or the HMAC (constant-time compare) does not match. Compute over the raw bytes, not a re-serialised object.",
+            "in": "header",
+            "name": "X-Naaradh-Signature",
+            "required": true,
+            "schema": {
+              "pattern": "^t=\\d+,v1=[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Same as the body `id`; use it to dedupe before reading the body.",
+            "in": "header",
+            "name": "X-Naaradh-Event-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "User-Agent",
+            "required": true,
+            "schema": {
+              "const": "Naaradh-Webhooks/1.0",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "created_at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "data": {
+                    "properties": {
+                      "attempt_id": {
+                        "type": "string"
+                      },
+                      "checkout_id": {
+                        "description": "Naaradh checkout id.",
+                        "type": "string"
+                      },
+                      "checkout_token": {
+                        "description": "The store checkout token.",
+                        "type": "string"
+                      },
+                      "intent_id": {
+                        "type": "string"
+                      },
+                      "outcome": {
+                        "enum": [
+                          "will_complete"
+                        ],
+                        "type": "string"
+                      },
+                      "to": {
+                        "description": "Masked number, e.g. `+91 60xxx xx001`.",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "intent_id",
+                      "attempt_id",
+                      "checkout_id",
+                      "checkout_token",
+                      "outcome",
+                      "to"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "description": "Stable event id (typically `<subject id>:<event>`); the same id is re-sent on retries.",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "checkout.recovery_requested",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Delivered. The delivery is marked `delivered` and the endpoint's failure counter resets."
+          },
+          "default": {
+            "description": "Anything else (non-2xx, timeout after 10 s, connection error, redirect) counts as a failure: retried after 1, 5, 30, 120 and 720 minutes — 5 attempts in all — then marked `dead` (visible at GET /v1/webhooks/deliveries and in the dashboard). 20 consecutive failures disable the endpoint and notify you."
+          }
+        },
+        "security": [],
+        "summary": "A customer on a recovery call wants to finish their order",
+        "tags": [
+          "Merchant webhooks"
+        ]
+      }
+    },
     "complaint.received": {
       "post": {
         "description": "Also emailed to owners and managers. Three in 10 days pauses outbound calling automatically (E-05).\n\nDelivered as an HTTPS POST to each endpoint registered for `complaint.received` (POST /v1/webhooks). Verify the signature before parsing; answer any 2xx quickly (10 s timeout) and process asynchronously. Dedupe on `id`: delivery is at-least-once.",
@@ -6555,6 +7857,7 @@
                           "engine:circuit_open",
                           "tenant:inactive",
                           "tenant:pending_review_promotional",
+                          "tenant:promotional_paused",
                           "billing:not_set_up",
                           "billing:frozen",
                           "billing:capped",
@@ -6587,11 +7890,13 @@
                           "dnd:unknown",
                           "attempts:daily",
                           "attempts:lifetime",
+                          "attempts:promotional_cooldown",
                           "attempts:too_soon",
                           "concurrency:tenant",
                           "concurrency:engine",
                           "cli:none_available",
-                          "script:none_approved"
+                          "script:none_approved",
+                          "script:dlt_template_missing"
                         ],
                         "type": "string"
                       },
@@ -7108,6 +8413,131 @@
         ]
       }
     },
+    "order.recovered": {
+      "post": {
+        "description": "An order was placed within the attribution window (default 24 h) after an abandoned-checkout call that reached a person; last touch, one per order, matched by the checkout or the phone. Measurement only: `billable` is always `false` (ADR-0010 §9). Reversed silently if the order is later cancelled.\n\nDelivered as an HTTPS POST to each endpoint registered for `order.recovered` (POST /v1/webhooks). Verify the signature before parsing; answer any 2xx quickly (10 s timeout) and process asynchronously. Dedupe on `id`: delivery is at-least-once.",
+        "operationId": "webhook_order_recovered",
+        "parameters": [
+          {
+            "description": "`t=<unix seconds>,v1=<hex>` where `v1 = HMAC-SHA256(secret, t + \".\" + raw_body)`. Reject when `|now - t| > 300` seconds or the HMAC (constant-time compare) does not match. Compute over the raw bytes, not a re-serialised object.",
+            "in": "header",
+            "name": "X-Naaradh-Signature",
+            "required": true,
+            "schema": {
+              "pattern": "^t=\\d+,v1=[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Same as the body `id`; use it to dedupe before reading the body.",
+            "in": "header",
+            "name": "X-Naaradh-Event-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "User-Agent",
+            "required": true,
+            "schema": {
+              "const": "Naaradh-Webhooks/1.0",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "created_at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "data": {
+                    "properties": {
+                      "attempt_id": {
+                        "type": "string"
+                      },
+                      "attribution_id": {
+                        "type": "string"
+                      },
+                      "billable": {
+                        "const": false,
+                        "type": "boolean"
+                      },
+                      "currency": {
+                        "type": "string"
+                      },
+                      "intent_id": {
+                        "type": "string"
+                      },
+                      "matched_by": {
+                        "enum": [
+                          "checkout",
+                          "phone"
+                        ],
+                        "type": "string"
+                      },
+                      "order_id": {
+                        "description": "Naaradh order id.",
+                        "type": "string"
+                      },
+                      "value_minor": {
+                        "description": "Order total in minor units.",
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "attribution_id",
+                      "order_id",
+                      "intent_id",
+                      "attempt_id",
+                      "matched_by",
+                      "value_minor",
+                      "currency",
+                      "billable"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "description": "Stable event id (typically `<subject id>:<event>`); the same id is re-sent on retries.",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "order.recovered",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Delivered. The delivery is marked `delivered` and the endpoint's failure counter resets."
+          },
+          "default": {
+            "description": "Anything else (non-2xx, timeout after 10 s, connection error, redirect) counts as a failure: retried after 1, 5, 30, 120 and 720 minutes — 5 attempts in all — then marked `dead` (visible at GET /v1/webhooks/deliveries and in the dashboard). 20 consecutive failures disable the endpoint and notify you."
+          }
+        },
+        "security": [],
+        "summary": "An order was attributed to an abandoned-checkout call",
+        "tags": [
+          "Merchant webhooks"
+        ]
+      }
+    },
     "outcome.final": {
       "post": {
         "description": "The outcome classification, its confidence, and whether it is billable (invariant 11: outbound, human answered, outcome in the billable five, not superseded; inbound is never outcome-billed). `extracted` carries the scrubbed structured extraction for outbound calls; inbound adds `tickets` (count raised on the call).\n\nDelivered as an HTTPS POST to each endpoint registered for `outcome.final` (POST /v1/webhooks). Verify the signature before parsing; answer any 2xx quickly (10 s timeout) and process asynchronously. Dedupe on `id`: delivery is at-least-once.",
@@ -7210,7 +8640,13 @@
                           "resolved",
                           "ticket_created",
                           "abandoned",
-                          "spam"
+                          "spam",
+                          "will_complete",
+                          "will_buy_later",
+                          "not_interested",
+                          "price_objection",
+                          "qualified",
+                          "feedback_given"
                         ],
                         "type": "string"
                       },
@@ -7267,6 +8703,108 @@
         },
         "security": [],
         "summary": "The outcome of a call is final",
+        "tags": [
+          "Merchant webhooks"
+        ]
+      }
+    },
+    "promotional.paused": {
+      "post": {
+        "description": "A complaint was attributed to a promotional call (abandoned cart, feedback), so promotional calls are refused with `tenant:promotional_paused` until Naaradh staff lift the pause. Order confirmations and the support line continue. Also emailed.\n\nDelivered as an HTTPS POST to each endpoint registered for `promotional.paused` (POST /v1/webhooks). Verify the signature before parsing; answer any 2xx quickly (10 s timeout) and process asynchronously. Dedupe on `id`: delivery is at-least-once.",
+        "operationId": "webhook_promotional_paused",
+        "parameters": [
+          {
+            "description": "`t=<unix seconds>,v1=<hex>` where `v1 = HMAC-SHA256(secret, t + \".\" + raw_body)`. Reject when `|now - t| > 300` seconds or the HMAC (constant-time compare) does not match. Compute over the raw bytes, not a re-serialised object.",
+            "in": "header",
+            "name": "X-Naaradh-Signature",
+            "required": true,
+            "schema": {
+              "pattern": "^t=\\d+,v1=[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Same as the body `id`; use it to dedupe before reading the body.",
+            "in": "header",
+            "name": "X-Naaradh-Event-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "User-Agent",
+            "required": true,
+            "schema": {
+              "const": "Naaradh-Webhooks/1.0",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "created_at": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "data": {
+                    "properties": {
+                      "attempt_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "complaint_id": {
+                        "type": "string"
+                      },
+                      "reason": {
+                        "const": "complaint",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "reason",
+                      "complaint_id",
+                      "attempt_id"
+                    ],
+                    "type": "object"
+                  },
+                  "id": {
+                    "description": "Stable event id (typically `<subject id>:<event>`); the same id is re-sent on retries.",
+                    "type": "string"
+                  },
+                  "type": {
+                    "const": "promotional.paused",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "type",
+                  "created_at",
+                  "data"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "2XX": {
+            "description": "Delivered. The delivery is marked `delivered` and the endpoint's failure counter resets."
+          },
+          "default": {
+            "description": "Anything else (non-2xx, timeout after 10 s, connection error, redirect) counts as a failure: retried after 1, 5, 30, 120 and 720 minutes — 5 attempts in all — then marked `dead` (visible at GET /v1/webhooks/deliveries and in the dashboard). 20 consecutive failures disable the endpoint and notify you."
+          }
+        },
+        "security": [],
+        "summary": "Promotional calling was paused for your account",
         "tags": [
           "Merchant webhooks"
         ]

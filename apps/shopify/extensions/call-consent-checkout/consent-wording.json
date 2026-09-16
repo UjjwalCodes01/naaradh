@@ -1,0 +1,9 @@
+{
+  "comment": "Copy of CONSENT_WORDINGS[CURRENT_CONSENT_WORDING] in packages/pipeline/src/promotional/consent-wording.ts. packages/pipeline/test/consent-wording.test.ts fails if they differ.",
+  "attribute": "naaradh_call_consent",
+  "version": "2026-09-v1-draft",
+  "text": {
+    "en-IN": "Yes, {{store}} may call me (including automated calls), and send SMS or WhatsApp messages, about this order, my cart and offers. I can say \"stop\" or opt out at any time.",
+    "hi-IN": "Haan, {{store}} mujhe is order, mere cart aur offers ke baare mein call (automated call bhi) kar sakta hai aur SMS ya WhatsApp bhej sakta hai. Main kabhi bhi \"stop\" bolkar mana kar sakta/sakti hoon."
+  }
+}

@@ -56,6 +56,12 @@ export const ID_PREFIXES = {
   loginToken: 'ltk',
   webSession: 'wss',
   notification: 'ntf',
+  // promotional calling (ADR-0010)
+  checkout: 'chk',
+  attribution: 'atr',
+  qaReview: 'qar',
+  calendar: 'cal',
+  appointment: 'apt',
 } as const;
 
 export type IdKind = keyof typeof ID_PREFIXES;

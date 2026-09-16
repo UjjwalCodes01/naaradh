@@ -28,6 +28,8 @@ export async function saveSettings(_prev: ActionResult, form: FormData): Promise
         daily_summary: checkbox(form, 'daily_summary'),
         gated_digest: checkbox(form, 'gated_digest'),
       },
+      rto_cost_paise: rupeesToPaise(optionalField(form, 'rto_cost')),
+      attribution_hours: Number(field(form, 'attribution_hours') || '24'),
     });
     await inTenant(s, (tx) => updateSettings(tx, actorOf(s), s.role, input));
     revalidatePath('/app', 'layout');

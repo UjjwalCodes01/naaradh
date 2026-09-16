@@ -6,6 +6,7 @@ import type { WorkerContext } from '../context.js';
 import { runLoop } from '../loop.js';
 import { isRetryableWritebackError } from '../results/shopify-writeback.js';
 import { planWriteback, type WritebackPlan } from '../results/writeback.js';
+import { WRITEBACK_USE_CASES } from '../results/finalize.js';
 
 /**
  * writebacks worker (P1-SHOP-2, AGENTS §5.4). Executes the Shopify write-back that
@@ -95,6 +96,7 @@ async function executeWriteback(
         superseded: schema.callOutcomes.superseded,
         endedAt: schema.callAttempts.endedAt,
         externalRefs: schema.callIntents.externalRefs,
+        useCase: schema.callIntents.useCase,
         attemptsCount: schema.callIntents.attemptsCount,
         autoCancelEnabled: schema.tenants.autoCancelEnabled,
         addressWriteEnabled: schema.tenants.addressWriteEnabled,
@@ -120,13 +122,24 @@ async function executeWriteback(
       )
       .limit(1);
     // Superseded since, or the store was disconnected/uninstalled: nothing to write to.
-    if (row === undefined || row.superseded || integration === undefined) {
+    // A non-order use case (abandoned cart: the ref is a checkout token) has nothing to write.
+    if (
+      row === undefined ||
+      row.superseded ||
+      integration === undefined ||
+      !WRITEBACK_USE_CASES.has(row.useCase)
+    ) {
       await tx
         .update(schema.callOutcomes)
         .set({
           writebackStatus: 'skipped',
           writebackNextAt: null,
-          writebackError: row?.superseded === true ? 'superseded' : 'no_active_store',
+          writebackError:
+            row?.superseded === true
+              ? 'superseded'
+              : row !== undefined && !WRITEBACK_USE_CASES.has(row.useCase)
+                ? 'not_an_order_use_case'
+                : 'no_active_store',
         })
         .where(eq(schema.callOutcomes.id, outcomeId));
       return null;

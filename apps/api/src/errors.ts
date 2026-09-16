@@ -14,6 +14,7 @@ const STATUS_BY_CODE: Readonly<Record<ErrorCode, number>> = {
   RATE_LIMITED: 429,
   NOT_FOUND: 404,
   DISPATCH_UNCERTAIN: 500,
+  CONFLICT: 409,
   INTERNAL: 500,
 };
 

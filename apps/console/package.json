@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@google-cloud/storage": "8.1.0",
+    "@naaradh/calendar": "workspace:*",
     "@naaradh/compliance": "workspace:*",
     "@naaradh/db": "workspace:*",
     "@naaradh/pipeline": "workspace:*",

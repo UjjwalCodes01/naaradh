@@ -885,6 +885,52 @@ Every transition writes `audit_log`; every terminal state emits a merchant webho
 - **E-96** Refund, address change, complaint about a product → tickets with a precise summary; the agent never promises an outcome.
 - **E-97** A customer calls in while an outbound COD confirmation for their order is scheduled → if they confirm or cancel on the inbound call, the pending outbound intent is cancelled (no redundant call).
 
+### 12.7 Promotional calling (ADR-0010)
+
+- **E-100** Checkout created without a phone, phone typed later → the row is updated; swept once it has been idle 45 minutes with a phone.
+- **E-101** The shopper keeps editing the checkout → every update resets the 45-minute idle clock; the 24-hour expiry never moves (it runs from `created_at`).
+- **E-102** Checkout completed, or an order placed from the same phone or checkout token, before the call → never swept; an intent already scheduled is cancelled (`checkout_completed` / `order_placed`).
+- **E-103** Order placed while the recovery call is ringing → intent cancelled, the live attempt is superseded (E-40), not billed.
+- **E-104** Checkout webhooks out of order (update before create, an old update after a new one) → newest `updated_at` wins; a completed checkout never reopens; a late completion still completes.
+- **E-105** Consent box ticked, then unticked on the same checkout → grant recorded, then revoked; the cart is not called.
+- **E-106** Consent attribute carrying a wording version Naaradh never published → not recorded, audited `consent.unknown_wording`, cart skipped `consent:missing`.
+- **E-107** Shopify marketing consent true, our checkbox absent → no consent; marketing and SMS-consent fields are never read.
+- **E-108** Several abandoned checkouts from one phone → one promotional call per phone per tenant per 7 days; the rest skipped `recently_called`.
+- **E-109** Abandoned at 20:40 IST → due 21:25, window closed → waits for 09:00 if still inside the 24-hour deadline, else expires.
+- **E-110** Checkout already older than 24 hours when first seen (late webhook, reinstall) → never swept; `expired`.
+- **E-111** Store on a one-click checkout (GoKwik, Shiprocket, Magic — E-14) → no `checkouts/*` webhooks; nothing to sweep; the Results page shows zero checkouts.
+- **E-112** Promotional script without a registered DLT content template id → `script:dlt_template_missing`; the use case cannot even be switched on.
+- **E-113** Complaint attributed to a promotional call → that tenant's promotional calling is paused at once (`tenant:promotional_paused`); transactional and inbound continue; only staff lift it; the E-05 counters are unchanged.
+- **E-114** Delivered event for a cancelled, refunded, returned or test order → no feedback call.
+- **E-115** Duplicate delivered events → one feedback intent (idempotency on source, order and use case).
+- **E-116** A/B arm retired mid-test → the remaining arm serves every call; attempts keep the script id they ran; approving another version during a test is refused.
+- **E-117** Order after a promotional call that never reached a human (no answer, voicemail) → not attributed.
+- **E-118** Attributed order cancelled later → attribution reversed; revenue excluded from the Results page.
+- **E-119** Erasure / `shop/redact` / retention → checkout rows lose the phone hash, contact link and cart summary; counts stay.
+
+### 12.8 Non-Shopify sources and appointments (ADR-0011)
+
+- **E-120** A platform posts a cart with no phone, then adds one → same as E-100: updated, swept once idle with a phone.
+- **E-121** A platform posts a cart the shopper never consented to → recorded for the funnel, never called (`consent:missing`).
+- **E-122** A platform posts carts in a loop (bad cron, retry storm) → idempotent on (tenant, source, ref); the per-key daily cap and the 7-day promotional cooldown bound the damage.
+- **E-123** Order placed for a cart Naaradh was about to call → `POST /v1/carts/{ref}/completed` closes it; a queued intent is cancelled and a ringing call superseded (E-102, E-103).
+- **E-124** The merchant's site is offline when a result is sent → retried with backoff, dead-lettered after 5, visible in Developers → webhook health.
+- **E-125** Someone forges a result to the WooCommerce plugin's REST route → HMAC and timestamp verified before the body is parsed; a bad one is 401 and logged, never an order note.
+- **E-126** The plugin's API key is revoked or wrong → calls fail closed, an admin notice appears, orders still work.
+- **E-127** WooCommerce checkout with the phone field hidden → nothing is sent; the settings page says why.
+- **E-128** A merchant rewords the consent text in their theme → the ledger records the VERSION Naaradh published; reworded text is an AUP breach, and the evidence still says which text Naaradh stands behind.
+- **E-129** Calendar provider unreachable during a call → `get_slots` returns nothing and the agent offers a callback; it never invents a time.
+- **E-130** Two callers take the same slot → the provider is the arbiter; the loser hears "that time has just gone" and is offered the current list.
+- **E-131** Caller asks to book for someone else's number → refused; appointments are booked only against the number the call is on. Anything else is a ticket.
+- **E-132** A slot id the call was never offered (a model "remembering" a time) → refused; the agent re-reads the calendar.
+- **E-133** Appointment moved or cancelled after a reminder was queued → the queued call is cancelled (`appointment_moved` / `appointment_cancelled`) and the sweep decides again from the new time.
+- **E-134** Appointment created less than 2 hours before it starts → no reminder call; the row is marked decided so it is not reconsidered for ever.
+- **E-135** Reminder due outside the calling window → window rules win (invariant 3): it waits for 09:00 and is placed only if that is still at least 2 hours before.
+- **E-136** Caller asks a clinical question on an appointment call → never answered; a ticket or a transfer. The shipped appointment scripts forbid diagnosis, prescriptions and test results.
+- **E-137** Appointment for a number that opted out → suppression is absolute (invariant 6): no reminder call; the appointment itself is untouched.
+- **E-138** A CRM or automation tool creates a lead-callback intent with no consent → allowed as a service purpose (the customer asked to be called), refused for anything promotional.
+- **E-139** Two platforms report the same cart → one row per (tenant, source, ref); the 7-day per-phone cooldown means one call at most.
+
 ---
 
 ## 13. Legal documents to prepare `[LEGAL — drafts, then lawyer]`
@@ -897,6 +943,7 @@ Every transition writes `audit_log`; every terminal state emits a merchant webho
 | **Data Processing Agreement** | DPDP + GDPR Art. 28 terms; sub-processor list with notice of changes; security measures annex; breach notification timelines; audit rights; deletion on termination; India residency default |
 | **Consent wording templates** | Checkout checkbox text (calls/SMS/WhatsApp), website form text, verbal consent phrasing, AI + recording disclosure lines per language |
 | **Merchant compliance attestation** | Clickwrap at onboarding: TRAI obligations acknowledged; PE registration; script truthfulness; complaint cooperation |
+| **Promotional calling addendum** | Draft in `docs/legal/promotional-terms-addendum.md` (ADR-0010): what the promotional use cases do and their built-in limits; merchant warranties on the consent box, no purchased lists, its own DLT templates; Naaradh sends no SMS/WhatsApp; **a recovered cart is not billable** and attribution is measurement only; promotional-only suspension on a promotional complaint; checkout data and its 30-day phone retention |
 | **SLA (Scale/Enterprise)** | Availability 99.5–99.9%, support response times, service credits; exclusions for engine/carrier outages |
 | **Sub-processor list page** | Public, dated |
 | **Cookie notice** | Marketing site + dashboard |
@@ -1066,6 +1113,8 @@ TCCCPR (TRAI regulation on commercial communication) · DLT (Distributed Ledger 
 
 | Version | Date | Change |
 |---|---|---|
+| 1.4 | 16 Sep 2026 | **Non-Shopify sources and appointments (ADR-0011, PLAN Phase 5):** §12.8 adds edge cases E-120–E-139. One ingestion contract for carts (`PUT /v1/carts/{ref}`) instead of a parser per platform — WooCommerce, one-click checkouts and bespoke stores all use it, under the same promotional rules as ADR-0010. Appointments get a calendar port (Cal.com adapter `[VERIFY]`), two agent tools (`get_slots`, `book_slot`) that can only offer times the provider returned, and one confirmation call per appointment inside the existing −24 h/−2 h envelope. The billable set (§2.2, E-60) is unchanged: `booked` was already in it. New open questions Q-25–Q-27. |
+| 1.3 | 16 Sep 2026 | **Promotional calling (ADR-0010, PLAN Phase 4):** §12.7 adds edge cases E-100–E-119 (abandoned checkout, consent checkbox, feedback, A/B, recovery attribution, promotional pause, erasure). No change to the billable outcome set (§2.2, E-60): a recovered cart is **measured, not billed** until Q-24 is decided. New open questions Q-21–Q-24. The outcome enum gains `will_complete`, `will_buy_later`, `not_interested`, `price_objection`, `qualified`, `feedback_given` — none of them billable. |
 | 1.0 | 11 Sep 2026 | Initial specification. |
 | 1.2 | 12 Sep 2026 | **Product direction change (ADR-0006):** Naaradh becomes a two-way AI voice agent with **inbound support as the lead product**; outbound use cases unchanged. §1 rewritten; §1.2 no longer excludes inbound; §2.2 adds an inbound per-minute price book (`[DECISION — founder to confirm]`, Q-17); §4.4 adds universal rules 11–13; §6.3 adds the `voice` service; §6.5 adds inbound tables; §6.6 adds the inbound flow; §7.1 adds `voice.naaradh.com`; §10.5 inbound agent design; §11 inbound states; §12.6 edge cases E-80–E-97; §18 adds Q-15, Q-17, Q-18. Database is Neon (ADR-0004); outbound dispatch is a Postgres queue (ADR-0005). |
 | 1.1 | 11 Sep 2026 | Four internal-consistency corrections, no new decisions: (a) moved this file to `docs/` so the paths in `CLAUDE.md`, `AGENTS.md` and `PLAN.md` resolve; (b) §4.1.1 complaint thresholds corrected to tenant-pause **3** / global-kill **5**, matching E-05 and `AGENTS.md §6` (previously said kill at 4); (c) §6.5 `outcome_enum` expanded to cover every outcome named in prose (`confirmed_with_changes`, `outcome_superseded`, `callback_requested`, `minor_answered`, `recording_refused`, `no_response`, `transfer_failed`, `needs_merchant_action`, `convert_to_prepaid_requested`) and grouped by billability — the **billable set of E-60 is unchanged**; §2.2 aligned to it; (d) §6.3 and §17 corrected from NestJS to Fastify 5, and Prisma/Drizzle to Drizzle, matching `AGENTS.md §2.4`. |

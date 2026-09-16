@@ -1,0 +1,6 @@
+# Theme app extension: the same call-consent checkbox on the cart page, for stores without
+# Shopify Plus (checkout UI extensions in the contact step are Plus-only — Q-22). The merchant
+# adds the block in the theme editor; the cart attribute carries into the checkout and order.
+# Deployed by a human with `shopify app deploy`.
+name = "Naaradh call consent (cart)"
+type = "theme"

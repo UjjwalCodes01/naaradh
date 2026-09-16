@@ -2,7 +2,8 @@ import type { Redis } from 'ioredis';
 import type { Db } from '@naaradh/db';
 import type { Clock, Logger } from '@naaradh/shared';
 import type { EngineRegistry } from '@naaradh/engines-registry';
-import type { GateDepsConfig } from '@naaradh/compliance';
+import type { CalendarRegistry } from '@naaradh/calendar';
+import type { DndProvider, GateDepsConfig } from '@naaradh/compliance';
 import type { PhoneKeys } from '@naaradh/pipeline';
 import type { RecordingStore } from './results/recordings.js';
 import type { ShopifyWriteback } from './results/writeback.js';
@@ -41,4 +42,14 @@ export interface WorkerContext {
   readonly dashboardUrl: string;
   readonly workerId: string;
   readonly dispatchBatch: number;
+  /**
+   * DND/NCPR scrub provider (Q-02). Absent or `none` until a TSP contract exists — and then
+   * every promotional call is refused `dnd:unknown` (fail-closed, ADR-0010 §6).
+   */
+  readonly dnd?: DndProvider;
+  /**
+   * Appointment calendars (ADR-0011). Absent → reminders still go out, but a cancellation
+   * decided on a call is not pushed to the provider.
+   */
+  readonly calendars?: CalendarRegistry;
 }

@@ -1,9 +1,11 @@
 import { Redis } from 'ioredis';
 import { createDb } from '@naaradh/db';
+import { calendarRegistry } from '@naaradh/calendar';
 import { concurrencyPort, killSwitchPort } from '@naaradh/compliance';
 import { EngineRegistry } from '@naaradh/engines-registry';
 import { systemClock } from '@naaradh/shared';
 import { loadVoiceEnv } from './env.js';
+import { inlineSecretReader, secretManagerReader } from './secrets.js';
 import { buildServer } from './server.js';
 
 const env = loadVoiceEnv();
@@ -36,6 +38,10 @@ const app = await buildServer({
   killSwitches: killSwitchPort(redis),
   concurrency: concurrencyPort(redis),
   rateLimitPerMinute: env.RATE_LIMIT_PER_MINUTE,
+  // ADR-0011: the appointment tools. Without a connected calendar they refuse politely and
+  // the agent offers a callback — never a made-up time.
+  calendars: calendarRegistry({ now: () => systemClock.now() }),
+  secrets: env.NODE_ENV === 'production' ? secretManagerReader() : inlineSecretReader(),
   logLevel: env.LOG_LEVEL,
   trustProxyHops: env.TRUST_PROXY_HOPS,
 });

@@ -85,8 +85,38 @@ export function consentPort(tx: Tx): ConsentPort {
   };
 }
 
+/** Attempt statuses that mean the customer's phone rang (the ones that count as a call). */
+const DIALLED_STATUSES = [
+  'DIALING',
+  'RINGING',
+  'IN_CONVERSATION',
+  'TRANSFERRING',
+  'ENDED',
+  'NO_ANSWER',
+  'BUSY',
+  'AMD_HANGUP',
+  'AMD_MESSAGE_LEFT',
+] as const;
+
 export function attemptPort(tx: Tx): AttemptPort {
   return {
+    async lastPromotionalDial(tenantId, phoneHash, since) {
+      const [row] = await tx
+        .select({ at: sql<Date | null>`max(${schema.callAttempts.dispatchedAt})` })
+        .from(schema.callAttempts)
+        .where(
+          and(
+            eq(schema.callAttempts.tenantId, tenantId),
+            eq(schema.callAttempts.phoneHash, phoneHash),
+            eq(schema.callAttempts.direction, 'outbound'),
+            eq(schema.callAttempts.purpose, 'promotional'),
+            inArray(schema.callAttempts.status, [...DIALLED_STATUSES]),
+            gt(schema.callAttempts.dispatchedAt, since),
+          ),
+        );
+      const at = row?.at ?? null;
+      return at === null ? null : new Date(at);
+    },
     async history(tenantId, phoneHash, purpose, externalRef) {
       return tx
         .select({
@@ -151,15 +181,26 @@ export function numberPort(tx: Tx): NumberPort {
   };
 }
 
+/** ADR-0010 §8: stable arm for a key — FNV-1a, so the same intent always hears the same arm. */
+export function abArmFor(bucketKey: string): 'A' | 'B' {
+  let h = 2166136261;
+  for (const ch of bucketKey) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h % 2 === 0 ? 'A' : 'B';
+}
+
 export function scriptPort(tx: Tx): ScriptPort {
   return {
-    async approved(tenantId, useCaseId, locale) {
-      const [row] = await tx
+    async approved(tenantId, useCaseId, locale, bucketKey) {
+      const rows = await tx
         .select({
           id: schema.scripts.id,
           version: schema.scripts.version,
           locale: schema.scripts.locale,
           dltTemplateId: schema.scripts.dltTemplateId,
+          abArm: schema.scripts.abArm,
         })
         .from(schema.scripts)
         .where(
@@ -170,9 +211,11 @@ export function scriptPort(tx: Tx): ScriptPort {
             eq(schema.scripts.status, 'approved'),
           ),
         )
-        .orderBy(desc(schema.scripts.version))
-        .limit(1);
-      return row ?? null;
+        .orderBy(desc(schema.scripts.version));
+      const a = rows.find((r) => r.abArm === 'A');
+      const b = rows.find((r) => r.abArm === 'B');
+      if (a !== undefined && b !== undefined) return abArmFor(bucketKey) === 'A' ? a : b;
+      return rows[0] ?? null;
     },
   };
 }
@@ -251,6 +294,7 @@ export async function loadGateInput(tx: Tx, intentId: string): Promise<LoadedGat
     status: t.status,
     reviewUntil: t.reviewUntil,
     dltLinkedAt: t.dltLinkedAt,
+    promotionalPausedAt: t.promotionalPausedAt,
     billingStatus: t.billingStatus,
     billingGraceUntil: t.billingGraceUntil,
     currency: t.currency,

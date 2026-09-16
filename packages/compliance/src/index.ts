@@ -21,6 +21,7 @@ export {
   liftSuppression,
   defaultSuppressionDays,
   recordComplaint,
+  liftPromotionalPause,
   type RecordConsentInput,
   type RevokeConsentInput,
   type SuppressInput,

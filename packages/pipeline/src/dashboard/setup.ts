@@ -1,13 +1,21 @@
 import { and, eq } from 'drizzle-orm';
 import { schema, type Tx } from '@naaradh/db';
-import { COD_CONFIRM_EN_IN, COD_CONFIRM_HI_IN, ABANDONED_CART_HI_IN } from '@naaradh/scripts';
+import {
+  ABANDONED_CART_EN_IN,
+  ABANDONED_CART_HI_IN,
+  COD_CONFIRM_EN_IN,
+  COD_CONFIRM_HI_IN,
+  FEEDBACK_EN_IN,
+  FEEDBACK_HI_IN,
+} from '@naaradh/scripts';
 import { newId } from '@naaradh/shared';
 import { audit } from '../audit.js';
 import { auditActor, type Actor } from '../admin/actor.js';
 
 /**
  * A new store's starting point (SPEC §8.4 steps 4–5): the COD confirmation use case (OFF until
- * the merchant goes live), abandoned cart (OFF — promotional, needs consent capture), and draft
+ * the merchant goes live), abandoned cart and post-delivery feedback (OFF — promotional, need
+ * consent capture, a DND scrub and DLT templates, ADR-0010), and draft
  * scripts from the default templates for the merchant to review and approve. Idempotent: it only
  * adds what is missing, so reinstalling or re-running onboarding changes nothing.
  */
@@ -25,6 +33,7 @@ export async function ensureDefaultSetup(
   for (const [kind, purpose] of [
     ['cod_confirm', 'transactional'],
     ['abandoned_cart', 'promotional'],
+    ['feedback', 'promotional'],
   ] as const) {
     if (byKind.has(kind)) continue;
     const id = newId('useCase');
@@ -40,8 +49,17 @@ export async function ensureDefaultSetup(
     useCasesCreated += 1;
   }
   let scriptsCreated = 0;
-  for (const template of [COD_CONFIRM_HI_IN, COD_CONFIRM_EN_IN, ABANDONED_CART_HI_IN]) {
-    const useCaseId = byKind.get(template.use_case as 'cod_confirm' | 'abandoned_cart');
+  for (const template of [
+    COD_CONFIRM_HI_IN,
+    COD_CONFIRM_EN_IN,
+    ABANDONED_CART_HI_IN,
+    ABANDONED_CART_EN_IN,
+    FEEDBACK_HI_IN,
+    FEEDBACK_EN_IN,
+  ]) {
+    const useCaseId = byKind.get(
+      template.use_case as 'cod_confirm' | 'abandoned_cart' | 'feedback',
+    );
     if (useCaseId === undefined) continue;
     const [has] = await tx
       .select({ id: schema.scripts.id })

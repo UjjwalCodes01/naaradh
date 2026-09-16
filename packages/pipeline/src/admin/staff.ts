@@ -2,9 +2,12 @@ import { and, desc, eq, gte, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema, withTenant, type Db, type Tx } from '@naaradh/db';
 import {
+  ABANDONED_CART_EN_IN,
   ABANDONED_CART_HI_IN,
   COD_CONFIRM_EN_IN,
   COD_CONFIRM_HI_IN,
+  FEEDBACK_EN_IN,
+  FEEDBACK_HI_IN,
   LEAD_CALLBACK_EN_IN,
   type ScriptTemplate,
 } from '@naaradh/scripts';
@@ -433,7 +436,12 @@ export async function setNumberStatus(
 const GSTIN = /^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const PAN = /^[A-Z]{5}\d{4}[A-Z]$/;
 
-export const DIRECT_USE_CASES = ['cod_confirm', 'abandoned_cart', 'lead_callback'] as const;
+export const DIRECT_USE_CASES = [
+  'cod_confirm',
+  'abandoned_cart',
+  'lead_callback',
+  'feedback',
+] as const;
 
 export const DirectTenantInput = z.object({
   name: z.string().trim().min(2).max(80),
@@ -485,8 +493,12 @@ const DIRECT_USE_CASE_SETUP: Readonly<
   >
 > = {
   cod_confirm: { purpose: 'transactional', templates: [COD_CONFIRM_HI_IN, COD_CONFIRM_EN_IN] },
-  abandoned_cart: { purpose: 'promotional', templates: [ABANDONED_CART_HI_IN] },
+  abandoned_cart: {
+    purpose: 'promotional',
+    templates: [ABANDONED_CART_HI_IN, ABANDONED_CART_EN_IN],
+  },
   lead_callback: { purpose: 'service', templates: [LEAD_CALLBACK_EN_IN] },
+  feedback: { purpose: 'promotional', templates: [FEEDBACK_HI_IN, FEEDBACK_EN_IN] },
 };
 
 /**

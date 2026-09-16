@@ -21,6 +21,10 @@ export const TOOL_NAMES = [
   'create_ticket',
   'transfer_to_human',
   'register_opt_out',
+  // ADR-0011 — the appointments vertical. Slots come from the merchant's calendar, never
+  // from the model, and a booking exists only when the provider confirmed it.
+  'get_slots',
+  'book_slot',
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -68,6 +72,20 @@ export const ToolArgs = {
     .strict(),
   transfer_to_human: z.object({ reason: z.string().trim().min(2).max(200) }).strict(),
   register_opt_out: z.object({}).strict(),
+  get_slots: z
+    .object({
+      /** 1–14: how far ahead to look. The agent reads out at most a handful. */
+      days_ahead: z.number().int().min(1).max(14).optional(),
+    })
+    .strict(),
+  book_slot: z
+    .object({
+      /** Must be one of the ids the same call's get_slots returned (E-132). */
+      slot_id: z.string().trim().min(4).max(120),
+      /** The customer's first name for the merchant's calendar, if they gave one. */
+      name: z.string().trim().max(60).optional(),
+    })
+    .strict(),
 } as const satisfies Record<ToolName, z.ZodTypeAny>;
 
 export type ToolArgsOf<T extends ToolName> = z.infer<(typeof ToolArgs)[T]>;
@@ -213,10 +231,58 @@ export const TOOL_SPECS: Readonly<Record<ToolName, ToolSpec>> = {
     parameters: { type: 'object', properties: {}, additionalProperties: false },
     filler: null,
   },
+  get_slots: {
+    description:
+      "Ask the business's calendar for real appointment times. Call this before offering any time, and read out at most three of the times it returns, exactly as they are written. If it returns no slots, say you cannot see times right now and offer a callback — never invent or guess a time, and never promise a time the calendar did not offer.",
+    parameters: {
+      type: 'object',
+      properties: {
+        days_ahead: {
+          type: 'integer',
+          description: 'How many days ahead to look, 1 to 14. Default 7.',
+          minimum: 1,
+          maximum: 14,
+        },
+      },
+      additionalProperties: false,
+    },
+    filler: {
+      'hi-IN': 'Ek second, main available time dekh rahi hoon.',
+      'en-IN': 'One moment, let me look at the available times.',
+    },
+  },
+  book_slot: {
+    description:
+      'Book one of the times get_slots returned, using its slot_id exactly as given. Only after the caller clearly chose that time. The booking is real only if this tool says ok; if it says the time has gone, call get_slots again and offer the new times. Never tell the caller an appointment is booked unless this tool confirmed it.',
+    parameters: {
+      type: 'object',
+      properties: {
+        slot_id: {
+          type: 'string',
+          description: 'The slot_id from get_slots, copied exactly.',
+          maxLength: 120,
+        },
+        name: {
+          type: 'string',
+          description: "The caller's first name, if they gave one.",
+          maxLength: 60,
+        },
+      },
+      required: ['slot_id'],
+      additionalProperties: false,
+    },
+    filler: {
+      'hi-IN': 'Main yeh time book kar rahi hoon, ek second.',
+      'en-IN': 'Booking that time for you, one moment.',
+    },
+  },
 };
 
 /** Tool call timeouts we ask the engine to enforce (a little over the 700 ms p95 budget). */
 export const TOOL_TIMEOUT_MS: Readonly<Record<ToolName, number>> = {
+  // A provider round-trip: longer than a database read, short enough that the filler covers it.
+  get_slots: 4000,
+  book_slot: 5000,
   lookup_orders: 2500,
   verify_caller: 2500,
   search_knowledge: 2500,
@@ -277,4 +343,7 @@ export const OUTBOUND_TOOLS: readonly ToolName[] = [
   'create_ticket',
   'transfer_to_human',
   'register_opt_out',
+  // An appointment reminder call can move the appointment: same rules, same provider.
+  'get_slots',
+  'book_slot',
 ];

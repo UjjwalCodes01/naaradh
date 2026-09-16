@@ -71,6 +71,16 @@ export interface CreateIntentInput {
   };
   /** For appointment use cases: the envelope is relative to this instant. */
   readonly appointmentTs?: Date | null;
+  /**
+   * ADR-0010: a contact already stored (abandoned-checkout sweep, delivery feedback) — the raw
+   * number is not in hand, only its contact row. Takes precedence over `rawPhone`.
+   */
+  readonly existingContact?: {
+    readonly contactId: string;
+    readonly phoneHash: string;
+    readonly region: string;
+    readonly erased: boolean;
+  };
   readonly now: Date;
   readonly actor: { type: 'worker' | 'api_key' | 'user' | 'shopify'; id?: string };
 }
@@ -136,6 +146,15 @@ async function resolveContact(
   idempotencyKey: string,
   locale: string,
 ): Promise<ResolvedContact> {
+  if (input.existingContact !== undefined) {
+    const c = input.existingContact;
+    return {
+      contactId: c.contactId,
+      phoneHash: c.phoneHash,
+      region: c.region,
+      gatedReason: c.erased ? 'contact:erased' : null,
+    };
+  }
   if (input.rawPhone === null || input.rawPhone.trim().length === 0) {
     const p = await placeholderContact(
       tx,

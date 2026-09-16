@@ -33,6 +33,7 @@ import {
 import { sanitiseMerchantText, type ToolArgsOf, type ToolName } from '@naaradh/scripts';
 import { addDays, decryptPhone, newId } from '@naaradh/shared';
 import { hoursText, loadTransferTarget, profileHours, targetHours } from '../profiles.js';
+import { bookSlot, getSlots } from './appointments.js';
 import { callerState, fail, ok, type HandlerOutcome, type ToolCtx } from './types.js';
 
 /**
@@ -704,4 +705,6 @@ export const HANDLERS: { readonly [T in ToolName]: Handler<T> } = {
   create_ticket: createTicketTool,
   transfer_to_human: transferToHuman,
   register_opt_out: registerOptOut,
+  get_slots: getSlots,
+  book_slot: bookSlot,
 };

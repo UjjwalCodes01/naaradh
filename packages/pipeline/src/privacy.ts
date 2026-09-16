@@ -1,6 +1,8 @@
 import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { schema, type DbOrTx } from '@naaradh/db';
 import { eraseOrders } from './inbound/orders.js';
+import { eraseAppointments } from './appointments/store.js';
+import { eraseCheckouts } from './promotional/checkouts.js';
 import { textArray } from './shopify-install.js';
 
 /**
@@ -48,6 +50,8 @@ export interface ErasureCounts {
   readonly outcomes: number;
   readonly intents: number;
   readonly orders: number;
+  readonly checkouts: number;
+  readonly appointments: number;
   readonly tickets: number;
   readonly mediaObjects: number;
 }
@@ -61,6 +65,10 @@ const OUTCOME_KEYS_KEPT = [
   'pincode_confirmed',
   'reschedule_date',
   'quantity_change',
+  // ADR-0010: scores and categories, never the customer's words (`comment`, `objection`).
+  'nps',
+  'issue_category',
+  'wants_link',
 ];
 
 /**
@@ -168,6 +176,8 @@ export async function eraseSubject(
     await tx.execute(sql`select erase_agent_actions(${textArray(attemptIds)})`);
 
   const orders = await eraseOrders(tx, tenantId, { phoneHash }, at);
+  const checkouts = await eraseCheckouts(tx, tenantId, { phoneHash }, at);
+  const appointments = await eraseAppointments(tx, tenantId, { phoneHash }, at);
 
   const tickets =
     contactIds.length === 0
@@ -190,6 +200,8 @@ export async function eraseSubject(
     outcomes: outcomes.length,
     intents: intents.length,
     orders,
+    checkouts,
+    appointments,
     tickets: tickets.length,
     mediaObjects: input.mediaObjectsDeleted,
   };

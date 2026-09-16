@@ -49,7 +49,7 @@ phone and name, so every COD order would be refused with `no_phone`. So:
 
 Console → **Tenants** → *+ New merchant*: brand and legal name, country/time zone/currency,
 GSTIN/PAN (validated), the owner's email, the use cases to set up (`cod_confirm`,
-`abandoned_cart`, `lead_callback` — all OFF, with draft scripts from the default templates for
+`abandoned_cart`, `lead_callback`, `feedback` — all OFF, with draft scripts from the default templates for
 the owner to approve), the default script language, and a note saying why the merchant is
 created by hand. The tenant starts in **pending review** for 7 days (E-73). No email is sent:
 the owner requests a sign-in link at `app.naaradh.com/login` (the console shows the exact URL).
@@ -59,6 +59,22 @@ Shopify stores are never created here — they provision themselves on install.
 authorised Naaradh as its telemarketer, open the tenant in the console → *DLT principal entity*
 card → PE id + what you checked → **Mark PE linked**. Promotional use cases stay blocked until
 then; the link can be removed the same way.
+
+**Before switching on abandoned cart or feedback (promotional, ADR-0010)** — the gate refuses
+every call until all of these hold, and the dashboard says which one is missing:
+
+1. DLT PE linked (above) and the tenant out of the 7-day review.
+2. A **DND scrub provider** wired into the workers (`dnd` in the worker context, Q-02). Without
+   one every promotional call is refused `dnd:unknown` — by design.
+3. Counsel-approved consent wording (Q-08) and the extension/cart block deployed and added to
+   the store (`04-shopify-app.md`).
+4. Each promotional script approved **with the DLT content template id** it was registered
+   under (Q-23). The dashboard asks for it on approval.
+5. The merchant knows Naaradh sends no SMS/WhatsApp: a customer who wants the cart link produces
+   `checkout.recovery_requested`, and the merchant sends it (Q-21).
+
+Runbook: `docs/runbooks/promotional-calling.md` (includes the audit query for "zero
+non-consented promotional calls").
 
 ## 4. Running the pilot
 
@@ -70,7 +86,8 @@ Watch daily:
 - **Alerts** (email from Cloud Monitoring): auto-pause on complaints, write-back give-up, billing
   reconciliation delta, dead letters.
 - The first days: listen to a sample of recordings and read transcripts (both are audited);
-  score extraction accuracy by hand.
+  score extraction accuracy by hand. From the first Monday on, the console's **QA review** queue
+  does this systematically (2% a week, `docs/runbooks/qa-review.md`).
 
 Evidence for the Phase 1 exit (phase-1 review), from the production database:
 

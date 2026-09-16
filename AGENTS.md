@@ -59,6 +59,8 @@ Selection at runtime: `tenants.engine_override` → else by recipient region (`+
 
 ### 2.5 Third-party integrations roadmap
 
+Built (ADR-0011): WooCommerce plugin, one cart-ingestion contract for every non-Shopify platform, Cal.com calendars + appointment tools, Zapier/Make/n8n as documented recipes. Waiting on vendors: one-click-checkout parsers (Q-09), CRM marketplace apps, Google Calendar (per-merchant OAuth).
+
 Shopify (v1) → REST API + JS snippet (v1) → WooCommerce plugin (v2, GPL, `plugins/woocommerce`) → Zoho CRM, HubSpot (v2) → Cal.com, Google Calendar (v2) → Zapier/Make/n8n (v2) → Indian one-click checkout providers GoKwik/Shiprocket/Razorpay Magic/Cashfree abandoned-cart webhooks (v1.5, `[OPEN]` partner access).
 
 ---
@@ -92,6 +94,7 @@ packages/scripts     outbound script templates, inbound agent profiles → promp
 packages/pipeline    domain operations used by api, voice and workers: contacts, intents, cancellation, order cache, identity, knowledge search, tickets, agent actions, audit, merchant-webhook outbox.
 packages/shopify-sdk typed GraphQL documents, webhook payload parsers, tag/note/metafield writers, billing, scopes, expiring-token refresh, hourly order listing.
 packages/notify      Postmark mailer + email templates (no customer data in any email).
+packages/calendar    appointment calendars behind one port (ADR-0011): Cal.com adapter, deterministic fake, registry. No calendar SDK outside this package.
 packages/payments    Razorpay Subscriptions client + webhook signature verification.
 infra/               terraform: network, cloudrun, cloudsql, redis, pubsub, gcs, kms, armor, dns, iam, monitoring.
 docs/                SPEC, ADRs, runbooks, legal drafts, open-questions.md, shopify/pcd-justification.md.
@@ -349,6 +352,10 @@ Agents should keep these current when changing behaviour:
 - `secret-rotation.md` — rotation class per secret; the re-encryption jobs.
 - `on-call.md` — rota, severities, first 15 minutes, escalation.
 - `load-test.md` — k6 scripts, thresholds, the chaos test.
+- `promotional-calling.md` — why a checkout was (not) called, consent challenges, the promotional pause (ADR-0010).
+- `qa-review.md` — the weekly 2% QA sample, the rubric, extraction accuracy.
+- `appointments.md` — calendars, why a reminder was not placed, a booking the provider refused (ADR-0011).
+- `woocommerce.md` — a Woo store that sends nothing, results not arriving as order notes.
 
 SLOs (SPEC §6.8): webhook ack p99 < 800 ms; intent→dial p95 < 90 s in window; results p95 < 60 s; dashboard 99.9%.
 
@@ -427,6 +434,19 @@ SLOs (SPEC §6.8): webhook ack p99 < 800 ms; intent→dial p95 < 90 s in window;
 | E-95 opt-out on inbound | outbound suppression | `tools.opt_out_suppresses_outbound` |
 | E-96 refund / address request | ticket only | `tools.money_and_address_are_tickets` |
 | E-97 inbound during outbound retry | same phone, outbound intent live | `inbound.caller_with_live_intent_cancels_redial` |
+| E-101 idle clock resets | `sweepAbandonedCheckouts` on `source_updated_at` | `promotional.update_resets_idle_clock` |
+| E-105/E-106/E-107 consent from our box only | `recordCheckout` + `isKnownConsentWording` | `promotional.consent_from_our_checkbox_only` |
+| E-108 one promotional call a week | gate step 9 `lastPromotionalDial` | `gate.promotional_cooldown` |
+| E-112 DLT template required | gate step 12 + `requireDltTemplate` | `gate.dlt_template_missing` |
+| E-113 promotional complaint | `recordComplaint` → `tenants.promotional_paused_at` | `promotional.complaint_pauses_promotional_only` |
+| E-117/E-118 attribution | `attributeOrder` / `reverseAttribution` | `promotional.attributed_and_reversed` |
+| E-119 checkout erasure | `eraseCheckouts` | `promotional.erasure_strips_phone` |
+| E-121 cart without consent | `recordCheckout` via `PUT /v1/carts/{ref}` | `carts.no_consent_recorded_never_called` |
+| E-125 forged result to the plugin | `Naaradh_Webhook::verify` (HMAC + window) | manual (PHP, no runner in CI) |
+| E-129 calendar down | `get_slots` → callback, never a guessed time | `appointments.calendar_down_offers_callback` |
+| E-130/E-132 slot taken, slot not offered | `book_slot` checks the action row's offers | `appointments.slot_taken`, `appointments.slot_not_offered` |
+| E-131 booking for someone else | `book_slot` uses the attempt's phone hash | `appointments.withheld_number_cannot_book` |
+| E-133/E-134 moved, or too soon | `sweepAppointmentReminders` | `appointments.move_cancels_call`, `appointments.too_late` |
 
 ---
 
@@ -439,7 +459,14 @@ SLOs (SPEC §6.8): webhook ack p99 < 800 ms; intent→dial p95 < 90 s in window;
 5. Telemarketer-of-record with vendor numbers — affects complaint attribution logic.
 6. Shopify policy on app-driven `smsMarketingConsent` updates from verbal opt-out — flag `shopify.sync_optout=false`.
 7. Shopify checkout-extension consent wording for calls — `[LEGAL]`.
-8. One-click checkout providers' webhook access — partner programs.
+8. One-click checkout providers' webhook access — partner programs. Until then there are no
+   vendor-specific parsers: non-Shopify carts arrive through the public API (ADR-0011).
+8c. Cal.com request/response shapes (Q-25) — the adapter's parsers are strict and `[VERIFY]`;
+   a changed shape fails loudly rather than inventing an appointment time.
+8d. The email a provider booking is made under (Q-26) — `calendars.config.attendeeEmail`;
+   Naaradh asks customers for no email.
+8b. Who sends the recovery link (Q-21) — Naaradh sends no SMS/WhatsApp; the merchant does, on
+   `checkout.recovery_requested`. Pricing a recovery (Q-24) — measured, never billed.
 9. DPDP final rules timelines — retention/erasure constants in `packages/compliance/constants.ts` are placeholders marked `TODO_LEGAL`.
 
 If a task depends on any of these, implement behind a flag with the conservative default and note the dependency in the PR.

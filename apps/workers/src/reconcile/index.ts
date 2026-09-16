@@ -1,10 +1,12 @@
 import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { schema, withTenant } from '@naaradh/db';
 import { inboundConcurrencyKey, releaseConcurrency, repairConcurrency } from '@naaradh/compliance';
-import { audit } from '@naaradh/pipeline';
+import { audit, sweepAbandonedCheckouts, sweepAppointmentReminders } from '@naaradh/pipeline';
 import { addMinutes } from '@naaradh/shared';
 import type { WorkerContext } from '../context.js';
 import { runCliHealthDaily } from '../cli-health/index.js';
+import { runQaWeekly } from '../qa/index.js';
+import { syncAppointmentsOnce } from '../appointments/index.js';
 import { runLoop } from '../loop.js';
 import { releaseStaleClaims } from '../dispatcher/claim.js';
 import { finalizeAttempt, type AttemptRow } from '../results/finalize.js';
@@ -19,6 +21,9 @@ import { reconcileShopifyOrders } from './shopify-orders.js';
  *   expiry              waiting intents past not_after → EXPIRED
  *   concurrency repair  counters rebuilt from the live-attempt query
  *   payload retention   webhook_events.payload nulled after 30 days
+ *   abandoned checkouts idle 45 min + consent → one abandoned-cart intent (ADR-0010 §1)
+ *   appointments        starting within 24 h → one confirmation call (ADR-0011 §7); a
+ *                       cancellation decided on a call is pushed to the calendar provider
  *
  *   shopify orders      hourly: orders the webhooks missed (E-53, reconcile/shopify-orders.ts)
  */
@@ -363,8 +368,24 @@ export async function runReconcile(
       if (Object.values(report).some((n) => n > 0)) ctx.log.info(report, 'reconcile pass');
       const shopify = await reconcileShopifyOrders(ctx);
       if (shopify !== null && shopify.stores > 0) ctx.log.info(shopify, 'shopify reconcile pass');
+      // ADR-0010 §1: every minute, so a checkout is called within ~46 minutes of going quiet.
+      const sweep = await sweepAbandonedCheckouts(ctx.service, ctx.app, ctx.keys, ctx.clock.now());
+      if (sweep.considered > 0) ctx.log.info(sweep, 'abandoned checkout sweep');
+      // ADR-0011 §7: reminders for appointments starting inside the next 24 hours.
+      const reminders = await sweepAppointmentReminders(
+        ctx.service,
+        ctx.app,
+        ctx.keys,
+        ctx.clock.now(),
+      );
+      if (reminders.considered > 0) ctx.log.info(reminders, 'appointment reminder sweep');
+      const calendarSync = await syncAppointmentsOnce(ctx);
+      if (calendarSync.cancelled + calendarSync.failed > 0)
+        ctx.log.info(calendarSync, 'appointment calendar sync');
       // Daily number health (E-28) rides on the reconcile role: no extra service to run.
       await runCliHealthDaily(ctx, ctx.clock.now());
+      const qa = await runQaWeekly(ctx, ctx.clock.now());
+      if (qa !== null) ctx.log.info(qa, 'weekly QA sample');
     },
   });
 }

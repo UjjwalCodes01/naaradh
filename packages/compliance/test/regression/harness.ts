@@ -1,6 +1,7 @@
 import { addMinutes, money, paise } from '@naaradh/shared';
 import { FAKE_IN } from '@naaradh/shared/test/fake-phones';
 import { createHash } from 'node:crypto';
+import { abArmFor } from '../../src/adapters/db.js';
 import type {
   AttemptSummary,
   ConsentHit,
@@ -134,6 +135,8 @@ export interface FakeState {
   dnd: 'registered' | 'not_registered' | 'unknown';
   dndCalls: number;
   attempts: AttemptSummary[];
+  /** Last dialled promotional call to this phone (any cart) — ADR-0010 cooldown. */
+  lastPromotionalDial: Date | null;
   concurrency: { tenantInUse: number; engineInUse: number; engineMax: number };
   released: number;
   numbers: NumberCandidate[];
@@ -159,7 +162,9 @@ export function approvedScript(overrides: Partial<ScriptRef> = {}): ScriptRef {
     id: 'scr_01TESTSCRIPTAAAAAAAAAAAAAA',
     version: 1,
     locale: 'hi-IN',
-    dltTemplateId: null,
+    // A registered template, so promotional scripts pass step 12 unless a test removes it (ADR-0010 §4).
+    dltTemplateId: '1107160000000000001',
+    abArm: null,
     ...overrides,
   };
 }
@@ -180,6 +185,7 @@ export function fakeState(overrides: Partial<FakeState> = {}): FakeState {
     dnd: 'not_registered',
     dndCalls: 0,
     attempts: [],
+    lastPromotionalDial: null,
     concurrency: { tenantInUse: 0, engineInUse: 0, engineMax: 20 },
     released: 0,
     numbers: [poolNumber()],
@@ -232,7 +238,13 @@ export function fakeDeps(state: FakeState): GateDeps {
         return state.dnd;
       },
     },
-    attempts: { history: async () => state.attempts },
+    attempts: {
+      history: async () => state.attempts,
+      lastPromotionalDial: async (_tenantId, _hash, since) =>
+        state.lastPromotionalDial !== null && state.lastPromotionalDial > since
+          ? state.lastPromotionalDial
+          : null,
+    },
     concurrency: {
       tryAcquire: async (_tenantId, tenantMax, _engine, engineMax) => {
         if (state.concurrency.tenantInUse >= tenantMax) return { ok: false, which: 'tenant' };
@@ -255,8 +267,12 @@ export function fakeDeps(state: FakeState): GateDeps {
     },
     numbers: { candidates: async () => state.numbers },
     scripts: {
-      approved: async (_tenantId, useCaseId, locale) =>
-        state.scripts.get(`${useCaseId}:${locale}`) ?? null,
+      approved: async (_tenantId, useCaseId, locale, bucketKey) => {
+        const a = state.scripts.get(`${useCaseId}:${locale}:A`);
+        const b = state.scripts.get(`${useCaseId}:${locale}:B`);
+        if (a !== undefined && b !== undefined) return abArmFor(bucketKey) === 'A' ? a : b;
+        return state.scripts.get(`${useCaseId}:${locale}`) ?? null;
+      },
     },
   };
 }

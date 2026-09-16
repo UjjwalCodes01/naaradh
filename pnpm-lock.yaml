@@ -105,6 +105,9 @@ importers:
       '@google-cloud/storage':
         specifier: 8.1.0
         version: 8.1.0
+      '@naaradh/calendar':
+        specifier: workspace:*
+        version: link:../../packages/calendar
       '@naaradh/compliance':
         specifier: workspace:*
         version: link:../../packages/compliance
@@ -285,6 +288,12 @@ importers:
       '@fastify/rate-limit':
         specifier: 11.2.0
         version: 11.2.0
+      '@google-cloud/secret-manager':
+        specifier: 6.1.1
+        version: 6.1.1
+      '@naaradh/calendar':
+        specifier: workspace:*
+        version: link:../../packages/calendar
       '@naaradh/compliance':
         specifier: workspace:*
         version: link:../../packages/compliance
@@ -407,6 +416,9 @@ importers:
       '@google-cloud/storage':
         specifier: 8.1.0
         version: 8.1.0
+      '@naaradh/calendar':
+        specifier: workspace:*
+        version: link:../../packages/calendar
       '@naaradh/compliance':
         specifier: workspace:*
         version: link:../../packages/compliance
@@ -465,6 +477,15 @@ importers:
       tsx:
         specifier: 4.19.2
         version: 4.19.2
+
+  packages/calendar:
+    dependencies:
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
 
   packages/compliance:
     dependencies:
@@ -575,6 +596,9 @@ importers:
 
   packages/pipeline:
     dependencies:
+      '@naaradh/calendar':
+        specifier: workspace:*
+        version: link:../calendar
       '@naaradh/compliance':
         specifier: workspace:*
         version: link:../compliance

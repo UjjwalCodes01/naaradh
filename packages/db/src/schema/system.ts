@@ -24,6 +24,8 @@ import {
   complaintStatus,
   deliveryStatus,
   killSwitchScope,
+  purpose,
+  useCaseKind,
   webhookEventStatus,
   webhookSource,
 } from './enums.js';
@@ -44,6 +46,9 @@ export const complaints = pgTable(
     source: complaintSource('source').notNull(),
     status: complaintStatus('status').notNull().default('received'),
     attemptId: text('attempt_id'),
+    /** ADR-0010: purpose and use case of the attributed call — a promotional complaint pauses promotional calling. */
+    purpose: purpose('purpose'),
+    useCase: useCaseKind('use_case'),
     /** TRAI complaint reference, vendor ticket id, etc. */
     externalRef: text('external_ref'),
     receivedAt: ts('received_at').notNull().defaultNow(),

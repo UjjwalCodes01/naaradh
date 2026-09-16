@@ -26,6 +26,10 @@ export const API_SCOPES = [
   'tickets:read',
   'tickets:write',
   'orders:write',
+  // ADR-0011: non-Shopify carts and the appointments vertical.
+  'carts:write',
+  'appointments:read',
+  'appointments:write',
   'complaints:read',
   'complaints:write',
   'privacy:read',

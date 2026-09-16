@@ -199,6 +199,7 @@ export {
 } from './web-auth.js';
 export {
   explainAgentAction,
+  explainCheckout,
   explainGate,
   explainIdentity,
   explainIntentStatus,
@@ -252,12 +253,87 @@ export {
   getSettings,
   listUseCases,
   notificationSettingsOf,
+  roiSettingsOf,
   setUseCaseEnabled,
   updateSettings,
   type TenantSettingsView,
   type UseCaseView,
 } from './dashboard/settings.js';
 export { approveScript, listScripts, type ScriptView } from './dashboard/scripts.js';
+export { DLT_TEMPLATE_ID, requireDltTemplate } from './dashboard/dlt-template.js';
+export {
+  abTestMetrics,
+  endAbTest,
+  isAbTestRunning,
+  startAbTest,
+  twoProportionPValue,
+  type AbTestView,
+  type ArmMetrics,
+} from './dashboard/ab.js';
+export { recoveryReport, type MoneyByCurrency, type RecoveryReport } from './dashboard/recovery.js';
+
+// Promotional calling (ADR-0010)
+export {
+  CONSENT_WORDINGS,
+  CURRENT_CONSENT_WORDING,
+  isKnownConsentWording,
+  type ConsentWording,
+} from './promotional/consent-wording.js';
+export {
+  CHECKOUT_OPEN_STATUSES,
+  convertCheckouts,
+  intentSourceFor,
+  eraseCheckouts,
+  recordCheckout,
+  recordOrderConsent,
+  sweepAbandonedCheckouts,
+  type CheckoutInput,
+  type CheckoutSource,
+  type RecordCheckoutResult,
+  type SweepReport,
+} from './promotional/checkouts.js';
+export {
+  attributeOrder,
+  attributionWindowHours,
+  reverseAttribution,
+  type AttributeOrderInput,
+  type AttributionResult,
+} from './promotional/attribution.js';
+export { createFeedbackIntent, type FeedbackResult } from './promotional/feedback.js';
+
+// Appointments (ADR-0011)
+export {
+  CalendarInput,
+  createCalendar,
+  listCalendars,
+  setCalendarStatus,
+  upcomingAppointments,
+  type CalendarView,
+  type UpcomingAppointment,
+} from './admin/calendars.js';
+export {
+  eraseAppointments,
+  sweepAppointmentReminders,
+  upsertAppointment,
+  type AppointmentInput,
+  type AppointmentResult,
+  type AppointmentStatus,
+  type ReminderReport,
+} from './appointments/store.js';
+export {
+  QA_RUBRIC,
+  QaReviewInput,
+  isoWeekOf,
+  listQaQueue,
+  qaAccuracy,
+  qaSampleKey,
+  qaSampleSize,
+  sampleWeeklyQa,
+  submitQaReview,
+  type QaAccuracyRow,
+  type QaQueueRow,
+  type QaSampleReport,
+} from './admin/qa.js';
 export {
   addSuppression,
   checkNumber,

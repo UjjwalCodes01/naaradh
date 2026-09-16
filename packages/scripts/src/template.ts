@@ -55,6 +55,7 @@ export const VARIABLES_ALLOWED: Readonly<Record<UseCase, readonly string[]>> = {
     'location',
     'support_phone',
   ],
+  // ADR-0011 §8: no variable may carry a reason for the visit or any clinical detail.
   appointment_book: ['customer_name', 'brand', 'service', 'location', 'support_phone'],
   lead_callback: ['customer_name', 'brand', 'topic', 'form_name', 'support_phone'],
   delivery_reschedule: ['customer_name', 'brand', 'order_ref', 'attempted_date', 'support_phone'],

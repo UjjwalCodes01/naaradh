@@ -70,6 +70,13 @@ export const tenants = pgTable(
     // DLT (SPEC §3.3). Promotional purposes require a linked PE.
     dltPeId: text('dlt_pe_id'),
     dltLinkedAt: ts('dlt_linked_at'),
+    /**
+     * ADR-0010 §5: set when a complaint is attributed to a promotional call; promotional calling
+     * stops, everything else continues. Service-role column (not in the app role's UPDATE grant):
+     * only staff lift it.
+     */
+    promotionalPausedAt: ts('promotional_paused_at'),
+    promotionalPausedReason: text('promotional_paused_reason'),
 
     // Spend caps (E-32). Null = no cap of that kind.
     spendCapDailyPaise: minorUnits('spend_cap_daily_paise'),

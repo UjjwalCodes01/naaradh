@@ -67,6 +67,8 @@ export function page(
     ['/numbers', 'Numbers'],
     ['/complaints', 'Complaints'],
     ['/disputes', 'Disputes'],
+    ['/qa', 'QA review'],
+    ['/calendars', 'Calendars'],
     ['/privacy', 'Erasure & DNC'],
     ['/kill-switches', 'Kill switches'],
   ];

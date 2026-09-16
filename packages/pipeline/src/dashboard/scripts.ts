@@ -1,3 +1,4 @@
+import { PROMOTIONAL_USE_CASES } from '@naaradh/compliance';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import { schema, type Tx } from '@naaradh/db';
 import { validateScript } from '@naaradh/scripts';
@@ -6,6 +7,8 @@ import { audit } from '../audit.js';
 import { auditActor, type Actor } from '../admin/actor.js';
 import { describeErrors } from '../admin/support.js';
 import { requireRole, type Role } from './team.js';
+import { isAbTestRunning } from './ab.js';
+import { requireDltTemplate } from './dlt-template.js';
 
 /**
  * Script review and approval (AGENTS §9, P2-SHOP-2 "script review + approval"). The dispatcher
@@ -26,6 +29,9 @@ export interface ScriptView {
   readonly approvedAt: Date | null;
   readonly createdAt: Date;
   readonly problems: string | null;
+  readonly abArm: string | null;
+  readonly dltTemplateId: string | null;
+  readonly promotional: boolean;
 }
 
 function field(body: unknown, key: string): string {
@@ -45,6 +51,8 @@ export async function listScripts(tx: Tx, tenantId: string): Promise<ScriptView[
       body: schema.scripts.body,
       approvedAt: schema.scripts.approvedAt,
       createdAt: schema.scripts.createdAt,
+      abArm: schema.scripts.abArm,
+      dltTemplateId: schema.scripts.dltTemplateId,
     })
     .from(schema.scripts)
     .innerJoin(schema.useCases, eq(schema.useCases.id, schema.scripts.useCaseId))
@@ -64,6 +72,9 @@ export async function listScripts(tx: Tx, tenantId: string): Promise<ScriptView[
       approvedAt: r.approvedAt,
       createdAt: r.createdAt,
       problems: v.ok ? null : v.errors.map((e) => e.message).join('; '),
+      abArm: r.abArm,
+      dltTemplateId: r.dltTemplateId,
+      promotional: (PROMOTIONAL_USE_CASES as readonly string[]).includes(r.useCase),
     };
   });
 }
@@ -74,6 +85,7 @@ export async function approveScript(
   actorRole: Role,
   scriptId: string,
   now: Date,
+  options: { readonly dltTemplateId?: string | null } = {},
 ): Promise<void> {
   requireRole(actorRole, 'manager');
   const [s] = await tx
@@ -90,6 +102,18 @@ export async function approveScript(
     throw new NaaradhError('VALIDATION_FAILED', 'script fails validation', {
       context: { errors: describeErrors(v.errors) },
     });
+  // E-116: a running A/B test owns this use case and language until it is ended.
+  if (await isAbTestRunning(tx, actor.tenantId, s.useCaseId, s.locale))
+    throw new NaaradhError(
+      'VALIDATION_FAILED',
+      'an A/B test is running for this script and language; end it before approving another version',
+    );
+  const templateId = await requireDltTemplate(
+    tx,
+    actor.tenantId,
+    s.useCaseId,
+    options.dltTemplateId?.trim() || s.dltTemplateId,
+  );
   const retired = await tx
     .update(schema.scripts)
     .set({ status: 'retired', retiredAt: now })
@@ -109,6 +133,7 @@ export async function approveScript(
       disclosureValidatedAt: now,
       approvedByUserId: actor.id,
       approvedAt: now,
+      dltTemplateId: templateId,
     })
     .where(eq(schema.scripts.id, s.id));
   await audit(tx, {

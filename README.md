@@ -16,6 +16,9 @@ appointment confirmation, lead callback — through the same gate, the same tool
 | [docs/go-live/](docs/go-live/README.md) | **Everything needed from outside the code to go live** — company, numbers and DLT, voice engine, Shopify Partner app, cloud, email, payments, secrets, first merchants |
 | [docs/api/](docs/api/README.md) | The generated OpenAPI reference (`openapi.json`, also served at `/v1/openapi.json`) and the Client B quickstart |
 | [docs/security/](docs/security/checklist.md) | SPEC §14 checklist with evidence, the 14 Sep 2026 implementation audit, VPC-SC evaluation, restore-drill log |
+| [docs/decisions/](docs/decisions/) | ADRs — engine choice, billing unit, gate semantics, data residency, promotional calling (ADR-0010) |
+| [docs/runbooks/](docs/runbooks/README.md) | What to do at 2 a.m., symptom first |
+| [docs/phase-reviews/](docs/phase-reviews/) | What each phase actually delivered, what is blocked and why |
 
 ## Quick start
 
@@ -65,7 +68,7 @@ Naaradh-specific lint rules, each enforcing an invariant mechanically:
 A deliberate out-of-range test number takes `// naaradh-pii-allow: <reason>` on its line; both
 linters honour it.
 
-## What exists (Phases 1 and 2)
+## What exists (Phases 1–5)
 
 | Area | State |
 |---|---|
@@ -79,6 +82,8 @@ linters honour it.
 | `packages/shopify-sdk` — gateway normalisation (E-45), order + fulfilment webhook parsing tolerant of Level-2 nulls, Admin GraphQL client (429 / THROTTLED / 5xx retried, auth and schema errors loud, shop-domain allow-list) and idempotent order write-backs (`tagsAdd`, note, `metafieldsSet`, `orderCancel` guarded by `cancelledAt`) | done, tested against a fake Admin endpoint; live dev-store smoke test pending |
 | `apps/hooks` — verify → dedupe → publish → 200; Shopify + engine routes; rejected bodies never stored; publish-failure retry path | done, 12 integration tests |
 | `apps/workers` — intents-consumer, SKIP LOCKED dispatcher (attempt row committed before the dial), results-consumer (E-23 re-fetch, out-of-order, disclosure guard, E-34 recording persistence, billing ledger, suppressions, retries), reconcile (stale claims, stuck attempts, uncertain dispatch, expiry, concurrency repair), signed merchant deliveries with dead-lettering | done, 15-test end-to-end on Postgres + Redis + simulator |
+| `plugins/woocommerce` — the WooCommerce connector (GPL-2.0-or-later): settings with its own diagnostics, consent checkbox, COD → intent, order cache, cart reporting, signed result webhook → order notes; never cancels or edits an order | done (ADR-0011 §3); listing on WordPress.org is human (Q-27) |
+| `packages/calendar` — appointment calendars behind one port; no vendor SDK in product code | done, 12 tests |
 | `apps/api` — API-key auth (secret + public site keys), scopes, per-key daily cap, `Idempotency-Key` replay, rate limits, `/v1/intents`, `/v1/consents`, `/v1/suppressions`, `/v1/calls/:id/recording`, `/v1/webhooks`; support line: `/v1/inbound-profiles`, `/v1/knowledge`, `/v1/transfer-targets` (staff key, attestation), `/v1/tickets`, `/v1/orders` | done, 24 integration tests |
 | **Inbound (ADR-0006)** — `apps/voice`: `POST /inbound/:vendor` (tenant only from the called number; `admitInbound()` with forward/closed fallbacks, never dead air; idempotent on the vendor call id) and `POST /tools/:vendor/:tenantTag/:tool` (9 tools: lookup, verify, knowledge, confirm, two-step cancel, address change, ticket, transfer, opt-out — identity from the attempt row, Zod args, append-only `agent_actions`, retry replay). Order cache from Shopify webhooks; Hindi/Hinglish knowledge search; minute metering; inbound finalize; actions worker for approved cancellations; tools attached to outbound agents | done, 25-test end-to-end through voice + hooks + results on Postgres + Redis + simulator |
 | Shopify write-back (P1-SHOP-2) | `writebacks` worker executes the plan after commit, backoff + give-up rules; `SHOPIFY_WRITEBACK=live` in production only; addresses never written (Q-19) |
@@ -89,6 +94,9 @@ linters honour it.
 | `apps/console` — staff console behind IAP: complaints, tenant resume/suspend, disputes, kill switches, global erasure/DNC | done, 9 integration tests |
 | Workers additions — notifications (alerts + daily summary via Postmark), hourly Shopify order reconcile (E-53), expiring offline-token refresh | done |
 | `infra/` Terraform — 13 modules, key-holder guard, Armor, monitoring, BigQuery dataset; Dockerfiles for all seven services; CI images + deploy workflows | `terraform validate` passes; nothing applied (a human applies) |
+| **Promotional calling (Phase 4, ADR-0010)** — abandoned checkouts cached and swept (45-min idle, 24-h deadline, one call, 7-day cooldown per phone), consent only from Naaradh's own checkout/cart checkbox with the wording version in the ledger, DLT content template required on every Indian promotional script and copied onto each call, post-delivery feedback, script A/B with per-arm metrics, recovery attribution (measured, never billed), promotional-only pause on a promotional complaint, weekly 2% QA sample | done, `apps/workers/test/int/promotional.test.ts` (24 cases) + 192 gate regressions; **no promotional call can be placed** until a DND scrub provider (Q-02), counsel-approved wording (Q-08) and DLT templates (Q-23) exist |
+| **Non-Shopify sources (Phase 5, ADR-0011)** — one cart-ingestion contract (`PUT /v1/carts/{ref}`, `POST /v1/carts/{ref}/completed`) that WooCommerce, one-click checkouts and bespoke stores all use, under the same promotional rules as ADR-0010; `plugins/woocommerce` (GPL) reports orders and carts server-side, adds the consent checkbox on the classic and block checkouts, and writes results back as order notes through a signature-verified REST route | done; PHP has no runner in CI, so its matrix is manual (`docs/go-live/09-woocommerce-and-appointments.md`) |
+| **Appointments (Phase 5, ADR-0011)** — `packages/calendar` (port + Cal.com adapter `[VERIFY]` + deterministic fake), `get_slots`/`book_slot` agent tools that can only offer times the provider returned and only book against the caller's own number, one reminder call per appointment inside the −24 h/−2 h envelope, provider cancellations pushed from the reconcile tick, merchant Appointments page and staff Calendars page | done, 12 calendar unit tests + 8 tool cases in `apps/voice/test/int/voice.test.ts` + reminder/erasure cases in `apps/workers/test/int/promotional.test.ts` |
 | Vendor adapters (Bolna / OmniDimension / Retell) | none, deliberately — the India engine is decided by the Phase 0 bake-off (ADR-0001) |
 
 ### Running the pipeline locally

@@ -28,6 +28,8 @@ export interface TenantSnapshot {
   readonly status: TenantStatus;
   readonly reviewUntil: Date | null;
   readonly dltLinkedAt: Date | null;
+  /** ADR-0010 §5: promotional calling paused after a complaint on a promotional call. */
+  readonly promotionalPausedAt?: Date | null;
   readonly billingStatus: BillingStatus;
   readonly billingGraceUntil: Date | null;
   readonly currency: string;
@@ -157,6 +159,11 @@ export interface AttemptPort {
     purpose: Purpose,
     externalRef: string,
   ): Promise<readonly AttemptSummary[]>;
+  /**
+   * ADR-0010: when this tenant last DIALLED this phone for any promotional purpose (any order,
+   * any cart), on or after `since`. Null when never.
+   */
+  lastPromotionalDial(tenantId: string, phoneHash: string, since: Date): Promise<Date | null>;
 }
 
 export interface ConcurrencyLease {
@@ -195,10 +202,22 @@ export interface ScriptRef {
   readonly version: number;
   readonly locale: string;
   readonly dltTemplateId: string | null;
+  /** ADR-0010 §8: `A` or `B` while an A/B test runs, else null. */
+  readonly abArm?: string | null;
 }
 
 export interface ScriptPort {
-  approved(tenantId: string, useCaseId: string, locale: string): Promise<ScriptRef | null>;
+  /**
+   * The approved script for (use case, locale). While an A/B test runs (two approved arms),
+   * the arm is chosen by a stable hash of `bucketKey` (the intent id), so every attempt of one
+   * intent hears the same script.
+   */
+  approved(
+    tenantId: string,
+    useCaseId: string,
+    locale: string,
+    bucketKey: string,
+  ): Promise<ScriptRef | null>;
 }
 
 export interface GateDeps {

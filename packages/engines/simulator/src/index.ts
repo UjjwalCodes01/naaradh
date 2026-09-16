@@ -139,6 +139,21 @@ interface CallState {
   startedAt: Date | null;
   endedAt: Date | null;
   cancelled: boolean;
+  /** What a customer who says "yes" produces for this call's use case. */
+  happy: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * The positive answer per use case, told apart by the variables the script receives: a cart
+ * call carries `cart_summary`, a promotional call with an `order_ref` is post-delivery feedback
+ * (ADR-0010); everything else is an order confirmation.
+ */
+function happyExtraction(req: PlaceCallRequest): Readonly<Record<string, unknown>> {
+  if (req.variables['cart_summary'] !== undefined)
+    return { outcome: 'will_complete', wants_link: true, confidence: 0.92 };
+  if (req.metadata.purpose === 'promotional' && req.variables['order_ref'] !== undefined)
+    return { outcome: 'feedback_given', nps: 9, comment: 'Arrived on time', confidence: 0.94 };
+  return { outcome: 'confirmed', pincode_confirmed: true, confidence: 0.96 };
 }
 
 export class SimulatorAdapter implements VoiceEngineAdapter {
@@ -214,6 +229,7 @@ export class SimulatorAdapter implements VoiceEngineAdapter {
       startedAt: null,
       endedAt: null,
       cancelled: false,
+      happy: happyExtraction(req),
     };
     this.calls.set(ref.callId, state);
     this.byIdempotencyKey.set(req.idempotencyKey, ref.callId);
@@ -409,6 +425,7 @@ export class SimulatorAdapter implements VoiceEngineAdapter {
       startedAt: t0,
       endedAt: null,
       cancelled: false,
+      happy: { outcome: 'resolved', confidence: 0.9 },
     };
     this.calls.set(callId, state);
     await this.emit(state, { type: 'call.answered', answeredBy: 'human' });
@@ -571,7 +588,7 @@ export class SimulatorAdapter implements VoiceEngineAdapter {
         await answer('human');
         await end('completed', 45, {
           transcript: [...confirmedTranscript],
-          extracted: { outcome: 'confirmed', pincode_confirmed: true, confidence: 0.96 },
+          extracted: { ...state.happy },
         });
         return;
       case 'answered-human-cancelled':

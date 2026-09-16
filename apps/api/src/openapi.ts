@@ -29,6 +29,8 @@ import { DisputeBody } from './routes/billing.js';
 import { ConsentBody, RevokeBody, SuppressionBody } from './routes/consents.js';
 import { CreateIntentBody } from './routes/intents.js';
 import { ComplaintBody, DncBody, ErasureBody } from './routes/privacy.js';
+import { AppointmentBody } from './routes/appointments.js';
+import { CartBody, CompletedBody } from './routes/carts.js';
 import { OrderBody } from './routes/support.js';
 import { CreateWebhookBody } from './routes/webhooks.js';
 
@@ -207,6 +209,7 @@ const STATUS_BY_CODE: Readonly<Record<ErrorCode, number>> = {
   RATE_LIMITED: 429,
   NOT_FOUND: 404,
   DISPATCH_UNCERTAIN: 500,
+  CONFLICT: 409,
   INTERNAL: 500,
 };
 
@@ -543,6 +546,7 @@ type Tag =
   | 'Billing'
   | 'Privacy'
   | 'Support line'
+  | 'Carts & appointments'
   | 'Reference';
 
 const TAGS: readonly { name: Tag; description: string }[] = [
@@ -580,6 +584,11 @@ const TAGS: readonly { name: Tag; description: string }[] = [
     name: 'Support line',
     description:
       'Configuration and data of the inbound AI support line (ADR-0006): inbound profiles (who answers, how, with which tools), the knowledge base the agent may quote, verified transfer targets (invariant 19), the tickets the agent raised, and the order cache the agent answers from for non-Shopify merchants.',
+  },
+  {
+    name: 'Carts & appointments',
+    description:
+      "Abandoned-cart recovery and appointment reminders for every platform that is not Shopify (ADR-0011): WooCommerce, a one-click checkout, or your own store. Sending a cart is not an instruction to call it — Naaradh calls it only if it has been idle 45 minutes, is under 24 hours old, has a phone and carries a live consent from the wording version Naaradh published. Appointments produce at most one confirmation call, 24 to 2 hours before the appointment, inside the recipient's calling window.",
   },
   {
     name: 'Reference',
@@ -1235,6 +1244,226 @@ const profileBody = documentProperties(fromZod(ProfileInput), {
     'Lets the agent cancel an unshipped COD order after the two-step confirmation (E-84). Off by default; a ticket is raised instead.',
 });
 
+const appointmentSchema = obj({
+  appointment_id: str('Naaradh appointment id (`apt_…`).'),
+  ref: str('Your appointment id.'),
+  service: nullable(str()),
+  starts_at: dateTime(),
+  ends_at: nullable(dateTime()),
+  timezone: str(),
+  status: enumOf(db.appointmentStatus.enumValues),
+  intent_id: nullable(str('The confirmation call, once one is queued.')),
+  provider_ref: nullable(str("The calendar provider's booking id, when a provider holds it.")),
+  erased: bool('True once the customer was erased; the time is kept, the person is not.'),
+});
+
+const cartOps: Record<string, PathItemObject> = {
+  '/v1/carts/{ref}': {
+    put: operation('put', {
+      id: 'upsertCart',
+      tag: 'Carts & appointments',
+      summary: 'Report an in-progress or abandoned cart',
+      description:
+        'Records the cart, or updates what you sent before. Send it when the shopper has given a phone number, and send it again on every change — each update restarts the 45-minute quiet period, while the 24-hour deadline runs from `created_at` (E-101). Naaradh decides on its own whether to call: idle 45 minutes, under 24 hours old, a phone, a live consent from `consent_wording_version`, no promotional call to that number in the last 7 days, and everything ADR-0010 requires (DND scrub, DLT template, calling window). `GET` the same path to see what it decided and why. Call `POST /v1/carts/{ref}/completed` when the shopper orders, so a queued call is cancelled.',
+      scope: 'carts:write',
+      params: [pathParam('ref', 'Your cart id (1–200 characters). Stable across updates.')],
+      body: documentProperties(fromZod(CartBody), {
+        phone: PHONE_DOCS['phone'] ?? '',
+        phone_region: PHONE_DOCS['phone_region'] ?? '',
+        name: "The shopper's first name, for the greeting. No surname, no email, no address.",
+        value_minor: 'Cart total in the minor unit (paise for INR).',
+        item_summary:
+          'What the agent may say the cart holds, up to 200 characters ("2 items", "1 × Cotton kurta"). Sanitised (E-72).',
+        consent_wording_version:
+          "The version string of the Naaradh consent wording the shopper ticked (`GET` this endpoint's response `current_consent_wording_version`, or the WooCommerce plugin's setting). `null` when they did not tick it — the cart is then recorded for your funnel and never called. A version Naaradh did not publish is treated as no consent (E-106).",
+        created_at: 'When the cart was started. The 24-hour deadline runs from here.',
+        updated_at: 'When it last changed. Defaults to now; restarts the quiet period.',
+        customer_tags:
+          'Tags that stop a call: `staff`, `naaradh:skip`. Matched case-insensitively (E-46).',
+      }),
+      responses: {
+        '200': jsonResponse(
+          'Recorded, or ignored with a reason.',
+          obj(
+            {
+              cart_ref: str(),
+              status: enumOf(db.checkoutStatus.enumValues),
+              consent: enumOf(['granted', 'revoked', 'unchanged', 'unknown_wording']),
+              current_consent_wording_version: str(
+                'The wording version Naaradh recognises today — show this text to shoppers.',
+              ),
+              reason: str('Only on `status: "ignored"`: why nothing was recorded.'),
+            },
+            undefined,
+            { optional: ['cart_ref', 'consent', 'current_consent_wording_version', 'reason'] },
+          ),
+        ),
+      },
+    }),
+    get: operation('get', {
+      id: 'getCart',
+      tag: 'Carts & appointments',
+      summary: 'What Naaradh decided about a cart',
+      description:
+        'The cart as Naaradh holds it: whether a recovery call was queued (`scheduled`), the shopper finished (`completed`/`converted`), it was too old (`expired`), or it was skipped — with the reason (`consent:missing`, `no_phone`, `recently_called`, …). Explanations for merchants are on the dashboard Results page.',
+      scope: 'carts:write',
+      params: [pathParam('ref', 'Your cart id.')],
+      responses: {
+        '200': jsonResponse(
+          'The cart.',
+          obj({
+            cart_ref: str(),
+            status: enumOf(db.checkoutStatus.enumValues),
+            reason: nullable(str('Why it was skipped, when it was.')),
+            intent_id: nullable(str('The recovery call, once queued.')),
+            consent_wording_version: nullable(str()),
+            created_at: dateTime(),
+            updated_at: dateTime(),
+            decided_at: nullable(dateTime('When Naaradh last decided about this cart.')),
+          }),
+        ),
+      },
+      errors: ['NotFound'],
+    }),
+  },
+  '/v1/carts/{ref}/completed': {
+    post: operation('post', {
+      id: 'completeCart',
+      tag: 'Carts & appointments',
+      summary: 'The shopper finished — close the cart',
+      description:
+        'Closes the cart and cancels a recovery call that was queued or already ringing (E-123, E-103: a live call is superseded and never billed). Send this from your order-created hook. Pass `order_ref` if you also sent the order with `PUT /v1/orders/{ref}`, so the cart and the order are linked for the Results page.',
+      scope: 'carts:write',
+      params: [pathParam('ref', 'Your cart id.')],
+      body: documentProperties(fromZod(CompletedBody), {
+        order_ref: 'The order id you used with `PUT /v1/orders/{ref}`, when you sent one.',
+        completed_at: 'When the order was placed. Defaults to now.',
+      }),
+      responses: {
+        '200': jsonResponse(
+          'Closed.',
+          obj({
+            cart_ref: str(),
+            status: constOf('completed'),
+            cancelled_calls: int('Queued or live recovery calls that were cancelled.'),
+          }),
+        ),
+      },
+      errors: ['NotFound'],
+    }),
+  },
+  '/v1/appointments/{ref}': {
+    put: operation('put', {
+      id: 'upsertAppointment',
+      tag: 'Carts & appointments',
+      summary: 'Create or update an appointment',
+      description:
+        'Naaradh keeps a copy of the appointment so it can place ONE confirmation call between 24 and 2 hours before it starts (in `timezone`, inside 09:00–21:00 there), and so the support line can answer "do I have an appointment?". Send the same appointment as often as you like: moving `starts_at` moves the call, `status: "cancelled"` cancels it (E-133). An appointment created less than 2 hours before it starts gets no call (E-134). There is deliberately no field for a reason, a note or anything clinical (ADR-0011 §8).',
+      scope: 'appointments:write',
+      params: [pathParam('ref', 'Your appointment id (1–200 characters). Stable across updates.')],
+      body: documentProperties(fromZod(AppointmentBody), {
+        phone: PHONE_DOCS['phone'] ?? '',
+        phone_region: PHONE_DOCS['phone_region'] ?? '',
+        name: "The customer's first name, for the greeting.",
+        service:
+          'What it is for, as the agent should say it ("blood test", "colour"). No reason for the visit.',
+        starts_at: 'When the appointment starts.',
+        timezone:
+          'IANA zone the appointment is in — decides what the customer hears and when they may be called.',
+        status: 'Your state for it. `cancelled`, `completed` and `no_show` stop any queued call.',
+        calendar_id: 'A calendar from `GET /v1/calendars`, when you connected one.',
+      }),
+      responses: {
+        '200': jsonResponse(
+          'Updated.',
+          obj(
+            {
+              ref: str(),
+              appointment_id: str('Naaradh appointment id (`apt_…`).'),
+              status: enumOf(['recorded', 'skipped']),
+              reason: str('Only on `skipped`: `no_phone` or `erased`.'),
+            },
+            undefined,
+            { optional: ['appointment_id', 'reason'] },
+          ),
+        ),
+        '201': jsonResponse(
+          'Created.',
+          obj({ ref: str(), appointment_id: str(), status: constOf('recorded') }),
+        ),
+      },
+      errors: ['NotFound'],
+    }),
+    get: operation('get', {
+      id: 'getAppointment',
+      tag: 'Carts & appointments',
+      summary: 'One appointment',
+      description:
+        'The appointment as Naaradh holds it, including `intent_id` once a confirmation call is queued.',
+      scope: 'appointments:read',
+      params: [pathParam('ref', 'Your appointment id.')],
+      responses: { '200': jsonResponse('The appointment.', appointmentSchema) },
+      errors: ['NotFound'],
+    }),
+  },
+  '/v1/appointments': {
+    get: operation('get', {
+      id: 'listAppointments',
+      tag: 'Carts & appointments',
+      summary: 'Upcoming appointments',
+      description: 'Appointments starting at or after `from` (default: now), earliest first.',
+      scope: 'appointments:read',
+      params: [
+        {
+          name: 'from',
+          in: 'query',
+          required: false,
+          description: 'ISO 8601 instant. Defaults to now.',
+          schema: { type: 'string', format: 'date-time' },
+        },
+        {
+          name: 'limit',
+          in: 'query',
+          required: false,
+          description: '1–100, default 50.',
+          schema: { type: 'integer', minimum: 1, maximum: 100 },
+        },
+      ],
+      responses: {
+        '200': jsonResponse('Appointments.', obj({ appointments: arr(appointmentSchema) })),
+      },
+    }),
+  },
+  '/v1/calendars': {
+    get: operation('get', {
+      id: 'listCalendars',
+      tag: 'Carts & appointments',
+      summary: 'Connected calendars',
+      description:
+        'The calendars the merchant connected in the dashboard, with the slot length the agent offers and the last provider error, if any. Read-only here: connecting a calendar needs credentials and is done in the dashboard.',
+      scope: 'appointments:read',
+      responses: {
+        '200': jsonResponse(
+          'Calendars.',
+          obj({
+            calendars: arr(
+              obj({
+                calendar_id: str(),
+                provider: enumOf(db.calendarProvider.enumValues),
+                name: str('What the merchant calls it; spoken on calls.'),
+                timezone: str(),
+                slot_minutes: int(),
+                status: enumOf(db.calendarStatus.enumValues),
+                error: nullable(str('Last provider error, when the calendar is in `error`.')),
+              }),
+            ),
+          }),
+        ),
+      },
+    }),
+  },
+};
+
 const supportOps: Record<string, PathItemObject> = {
   '/v1/inbound-profiles': {
     get: operation('get', {
@@ -1795,6 +2024,54 @@ const WEBHOOK_DOCS: Readonly<
     description: 'Sent once per day while usage is near the Shopify capped amount. Also emailed.',
     data: obj({ subscription: str('Shopify subscription GID.') }),
   },
+  'checkout.recovery_requested': {
+    summary: 'A customer on a recovery call wants to finish their order',
+    description:
+      'An abandoned-checkout call ended with the customer saying they will complete the order (`outcome: "will_complete"`). Naaradh sends no SMS or WhatsApp (ADR-0010 §10): send the checkout link with your own messaging — Shopify abandoned-checkout email, Flow, or your WhatsApp provider — using `checkout_token` to find the checkout. Not billed.',
+    data: obj({
+      intent_id: str(),
+      attempt_id: str(),
+      checkout_id: str('Naaradh checkout id.'),
+      checkout_token: str('The store checkout token.'),
+      outcome: enumOf(['will_complete']),
+      to: nullable(str('Masked number, e.g. `+91 60xxx xx001`.')),
+    }),
+  },
+  'order.recovered': {
+    summary: 'An order was attributed to an abandoned-checkout call',
+    description:
+      'An order was placed within the attribution window (default 24 h) after an abandoned-checkout call that reached a person; last touch, one per order, matched by the checkout or the phone. Measurement only: `billable` is always `false` (ADR-0010 §9). Reversed silently if the order is later cancelled.',
+    data: obj({
+      attribution_id: str(),
+      order_id: str('Naaradh order id.'),
+      intent_id: str(),
+      attempt_id: str(),
+      matched_by: enumOf(['checkout', 'phone']),
+      value_minor: int('Order total in minor units.'),
+      currency: str(),
+      billable: constOf(false),
+    }),
+  },
+  'appointment.booked': {
+    summary: 'The agent booked an appointment on a call',
+    description:
+      "A caller (or a customer on a reminder call) chose one of the times the merchant's calendar offered, and the provider confirmed it. The appointment is in Naaradh as `apt_…` and, when a provider holds it, under `provider_ref` in that calendar. Not billed by itself — the call's outcome (`booked`) is what is billable (invariant 11).",
+    data: obj({
+      appointment_id: str('Naaradh appointment id (`apt_…`).'),
+      calendar_id: str(),
+      provider_ref: str("The provider's booking id."),
+      starts_at: dateTime(),
+      timezone: str('IANA zone the appointment is in.'),
+      service: str('What the appointment is for, as the customer heard it.'),
+      attempt_id: str('The call it was booked on.'),
+    }),
+  },
+  'promotional.paused': {
+    summary: 'Promotional calling was paused for your account',
+    description:
+      'A complaint was attributed to a promotional call (abandoned cart, feedback), so promotional calls are refused with `tenant:promotional_paused` until Naaradh staff lift the pause. Order confirmations and the support line continue. Also emailed.',
+    data: obj({ reason: constOf('complaint'), complaint_id: str(), attempt_id: nullable(str()) }),
+  },
 };
 
 function webhookItem(type: MerchantEventType): PathItemObject {
@@ -1934,6 +2211,7 @@ export function buildOpenApiDocument(): OpenAPIObject {
       ...billingOps,
       ...privacyOps,
       ...supportOps,
+      ...cartOps,
       ...referenceOps,
     },
     webhooks,
