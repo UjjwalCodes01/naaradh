@@ -23,7 +23,7 @@
     "@naaradh/shared": "workspace:*",
     "drizzle-orm": "0.44.7",
     "fastify": "5.2.1",
-    "ioredis": "5.6.1",
+    "ioredis": "6.0.0",
     "zod": "3.24.1"
   },
   "devDependencies": {
