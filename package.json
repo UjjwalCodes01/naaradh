@@ -36,7 +36,7 @@
     "services:reset": "docker compose down -v && docker compose up -d --wait"
   },
   "devDependencies": {
-    "@eslint/js": "9.17.0",
+    "@eslint/js": "9.39.5",
     "@types/node": "22.10.2",
     "eslint": "9.17.0",
     "eslint-config-prettier": "9.1.0",
