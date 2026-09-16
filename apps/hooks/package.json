@@ -17,13 +17,13 @@
     "@naaradh/engines-registry": "workspace:*",
     "@naaradh/payments": "workspace:*",
     "@naaradh/shared": "workspace:*",
-    "drizzle-orm": "0.44.7",
-    "fastify": "5.2.1",
+    "drizzle-orm": "0.45.2",
+    "fastify": "5.12.4",
     "zod": "3.24.1"
   },
   "devDependencies": {
     "@naaradh/engine-simulator": "workspace:*",
-    "tsup": "8.3.5",
-    "tsx": "4.19.2"
+    "tsup": "8.5.1",
+    "tsx": "4.23.13"
   }
 }
