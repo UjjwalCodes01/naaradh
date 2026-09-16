@@ -399,6 +399,13 @@ Installs by channel, share of intents by source, appointment confirm/booking rat
 
 **Entry criteria:** Phase 4 exit (stable core); legal budget for US/EU; Retell account.
 
+Core audit before starting: `docs/phase-reviews/pre-phase-6-audit.md` (16 Sep 2026) — the
+calling core already decides by recipient region (windows, consent, CLI pool, engine, disclosure
+locale) and every gate is green; six defects were found and fixed. What Phase 6 must build, in
+order of size: regional data isolation (one database and one recordings bucket today — needs an
+ADR first), the Retell adapter, script templates for US/EU locales, a USD payment path, a US DNC
+scrub provider. Decide the `*_paise` → `*_minor` renaming before any non-INR tenant exists.
+
 ### Workstreams
 
 **INF**

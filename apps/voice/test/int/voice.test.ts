@@ -1171,6 +1171,21 @@ describe('tools: appointments (ADR-0011 §6, E-129 to E-132)', () => {
     );
     expect(audits.length).toBe(1);
 
+    // The customer asked for it out loud on a recorded call: that is the consent for the
+    // reminder, with the attempt as its evidence (ADR-0011 §7).
+    const grants = await q<{ source: string; purpose: string; evidence_uri: string }>(
+      `select source, purpose, evidence_uri from consents
+       where tenant_id = $1 and phone_hash = $2 and purpose = 'service' and action = 'grant'`,
+      [T1, hashPhone(FAKE_IN.customer, HASH_KEY)],
+    );
+    expect(grants).toEqual([
+      {
+        source: 'verbal',
+        purpose: 'service',
+        evidence_uri: `naaradh:attempt/${call.body?.attempt_id ?? ''}`,
+      },
+    ]);
+
     // Invariant 10: the engine retrying the same tool call returns the same booking.
     const replay = await tool(call, 'book_slot', { slot_id: first }, { toolCallId: 'tc_book_1' });
     expect(replay.result?.ok).toBe(true);

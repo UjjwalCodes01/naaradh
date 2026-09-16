@@ -1224,12 +1224,24 @@ describe('carts and appointments for non-Shopify platforms (ADR-0011)', () => {
         service: 'Blood test',
         starts_at: starts,
         timezone: 'Asia/Kolkata',
+        // A reminder is a service call: this is how the customer asked for the appointment.
+        consent: { source: 'form', evidence_uri: 'https://lab.example/bookings/77' },
       },
       headers: auth(secretKey.key),
     });
     expect(created.statusCode).toBe(201);
     const id = created.json<{ appointment_id: string }>().appointment_id;
     expect(id).toMatch(/^apt_/);
+
+    // The consent that makes the reminder lawful is in the ledger, once, with its evidence.
+    const grants = await service.query<{ source: string; purpose: string; evidence_uri: string }>(
+      `select source, purpose, evidence_uri from consents
+       where tenant_id = $1 and external_ref = 'lab-77' and action = 'grant'`,
+      [TENANT],
+    );
+    expect(grants.rows).toEqual([
+      { source: 'form', purpose: 'service', evidence_uri: 'https://lab.example/bookings/77' },
+    ]);
 
     const moved = new Date(NOW.getTime() + 40 * 3_600_000).toISOString();
     const update = await app.inject({

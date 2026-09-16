@@ -79,6 +79,8 @@ const P = {
   feedbackCancelled: '+916000000059',
   appointment: '+916000000062',
   appointmentOptedOut: '+916000000063',
+  // 002 → the simulator's answered-human-cancelled scenario.
+  appointmentCancels: '+916000000002',
 } as const;
 
 /** 12:00 IST on Monday 2026-09-14. */
@@ -813,6 +815,8 @@ describe('appointment reminders and the calendar (ADR-0011 §7, E-133 to E-137)'
         service: 'Blood test',
         startsAt: addMinutes(clock.now(), startsIn),
         timezone: 'Asia/Kolkata',
+        // A reminder is a service call: India wants a record of how the customer asked.
+        consent: { source: 'form' },
         now: clock.now(),
         ...over,
       }),
@@ -1038,5 +1042,144 @@ describe('appointment reminders and the calendar (ADR-0011 §7, E-133 to E-137)'
     );
     expect(rows.every((r) => r.phone_hash === null)).toBe(true);
     expect(rows.every((r) => r.starts_at instanceof Date)).toBe(true);
+  });
+});
+
+describe('an appointment reminder call, end to end', () => {
+  it('a customer who confirms leaves the appointment confirmed and the call unbilled-as-usual', async () => {
+    const [row] = await q<{ id: string; intent_id: string }>(
+      `select id, intent_id from appointments where tenant_id = $1 and external_id = 'apt-1'`,
+      [TENANT],
+    );
+    // apt-1 lost its call when it was cancelled earlier; give the tenant a fresh one.
+    await withTenant(appDb, TENANT, (tx) =>
+      upsertAppointment(tx, ctx.keys, {
+        tenantId: TENANT,
+        source: 'api',
+        externalId: 'apt-confirm',
+        rawPhone: P.appointment,
+        defaultRegion: 'IN',
+        customerName: 'Asha',
+        service: 'Blood test',
+        startsAt: addMinutes(clock.now(), 20 * 60),
+        timezone: 'Asia/Kolkata',
+        consent: { source: 'form' },
+        now: clock.now(),
+      }),
+    );
+    expect(row).toBeDefined();
+    expect((await sweepReminders()).scheduled).toBe(1);
+    // The reminder is due 24 h before the appointment, which is already past: dial now.
+    expect(await dispatchOnce(ctx)).toEqual([expect.objectContaining({ kind: 'dialing' })]);
+    await drain();
+    const [after] = await q<{ status: string; provider_cancelled_at: Date | null }>(
+      `select status, provider_cancelled_at from appointments where tenant_id = $1 and external_id = 'apt-confirm'`,
+      [TENANT],
+    );
+    expect(after?.status).toBe('confirmed');
+    // Nothing to tell the provider about a confirmation.
+    expect(after?.provider_cancelled_at).toBeNull();
+  });
+
+  it('a customer who cancels releases the slot: status cancelled, and the provider is told', async () => {
+    const calendarId = newId('calendar');
+    await service.query(
+      `insert into calendars (id, tenant_id, provider, external_id, name, timezone, slot_minutes, config, status)
+       values ($1, $2, 'manual', 'diary-2', 'Blood test', 'Asia/Kolkata', 30, '{}', 'active')`,
+      [calendarId, TENANT],
+    );
+    const port = ctx.calendars?.get('manual');
+    const ref = {
+      id: calendarId,
+      provider: 'manual' as const,
+      externalId: 'diary-2',
+      timezone: 'Asia/Kolkata',
+      slotMinutes: 30,
+      config: {},
+      credential: null,
+    };
+    const [slot] =
+      (await port?.listSlots({
+        calendar: ref,
+        from: clock.now(),
+        to: addMinutes(clock.now(), 240),
+      })) ?? [];
+    const booking = await port?.book({
+      calendar: ref,
+      slotId: slot?.id ?? '',
+      startsAt: slot?.startsAt ?? clock.now(),
+      name: 'Asha',
+      idempotencyKey: 'apt-reminder-cancel',
+    });
+    await withTenant(appDb, TENANT, (tx) =>
+      upsertAppointment(tx, ctx.keys, {
+        tenantId: TENANT,
+        source: 'api',
+        externalId: 'apt-cancels',
+        calendarId,
+        rawPhone: P.appointmentCancels,
+        defaultRegion: 'IN',
+        customerName: 'Asha',
+        service: 'Blood test',
+        startsAt: addMinutes(clock.now(), 20 * 60),
+        timezone: 'Asia/Kolkata',
+        providerRef: booking?.providerRef ?? null,
+        consent: { source: 'form' },
+        now: clock.now(),
+      }),
+    );
+    expect((await sweepReminders()).scheduled).toBe(1);
+    expect(await dispatchOnce(ctx)).toEqual([expect.objectContaining({ kind: 'dialing' })]);
+    await drain();
+    const [after] = await q<{ status: string; provider_cancelled_at: Date | null }>(
+      `select status, provider_cancelled_at from appointments where tenant_id = $1 and external_id = 'apt-cancels'`,
+      [TENANT],
+    );
+    expect(after).toMatchObject({ status: 'cancelled' });
+    // Recorded at once; the provider is told on the next reconcile tick, not inside the call.
+    expect(after?.provider_cancelled_at).toBeNull();
+    const sync = await syncAppointmentsOnce(ctx);
+    expect(sync.cancelled).toBe(1);
+    const [synced] = await q<{ provider_cancelled_at: Date | null; provider_error: string | null }>(
+      `select provider_cancelled_at, provider_error from appointments where tenant_id = $1 and external_id = 'apt-cancels'`,
+      [TENANT],
+    );
+    expect(synced?.provider_cancelled_at).not.toBeNull();
+    expect(synced?.provider_error).toBeNull();
+    const audits = await q<{ action: string }>(
+      `select action from audit_log where tenant_id = $1 and action = 'appointment.provider_cancelled'`,
+      [TENANT],
+    );
+    expect(audits).toHaveLength(1);
+  });
+});
+
+describe('an appointment with no consent record (the gate doing its job)', () => {
+  it('is kept in the diary, and the reminder is refused consent:missing', async () => {
+    await withTenant(appDb, TENANT, (tx) =>
+      upsertAppointment(tx, ctx.keys, {
+        tenantId: TENANT,
+        source: 'api',
+        externalId: 'apt-no-consent',
+        rawPhone: '+916000000064',
+        defaultRegion: 'IN',
+        customerName: 'Asha',
+        service: 'Blood test',
+        startsAt: addMinutes(clock.now(), 20 * 60),
+        timezone: 'Asia/Kolkata',
+        // No `consent`: the merchant did not tell us how the customer asked.
+        now: clock.now(),
+      }),
+    );
+    expect((await sweepReminders()).scheduled).toBe(1);
+    expect(await dispatchOnce(ctx)).toEqual([
+      expect.objectContaining({ kind: 'gated', reason: 'consent:missing' }),
+    ]);
+    const [row] = await q<{ status: string }>(
+      `select status from appointments where tenant_id = $1 and external_id = 'apt-no-consent'`,
+      [TENANT],
+    );
+    // The appointment itself is untouched — only the call was refused.
+    expect(row?.status).toBe('scheduled');
   });
 });

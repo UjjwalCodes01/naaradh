@@ -18,7 +18,7 @@ appointment confirmation, lead callback — through the same gate, the same tool
 | [docs/security/](docs/security/checklist.md) | SPEC §14 checklist with evidence, the 14 Sep 2026 implementation audit, VPC-SC evaluation, restore-drill log |
 | [docs/decisions/](docs/decisions/) | ADRs — engine choice, billing unit, gate semantics, data residency, promotional calling (ADR-0010) |
 | [docs/runbooks/](docs/runbooks/README.md) | What to do at 2 a.m., symptom first |
-| [docs/phase-reviews/](docs/phase-reviews/) | What each phase actually delivered, what is blocked and why |
+| [docs/phase-reviews/](docs/phase-reviews/) | What each phase actually delivered, what is blocked and why — including [`pre-phase-6-audit.md`](docs/phase-reviews/pre-phase-6-audit.md), the core's readiness for US/EU |
 
 ## Quick start
 

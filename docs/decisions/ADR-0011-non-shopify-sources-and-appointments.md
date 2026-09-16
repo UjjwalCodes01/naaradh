@@ -57,26 +57,35 @@ contract, one gate, one set of limits, with vendor code confined to a thin adapt
    provider has since taken comes back as "that time has gone" and the agent offers the current
    list again. Nothing is "confirmed" to a customer that the provider did not confirm.
 
-7. **Appointment reminders come from the appointment, not from a call.** An `appointments` row
+7. **An appointment carries the consent that makes its reminder lawful.** A reminder is a
+   *service* call, and India (and the EU) want a consent record for one — the gate refuses
+   `consent:missing` otherwise, and it is right to. So `PUT /v1/appointments/{ref}` takes an
+   optional `consent` block (how the customer asked: a booking form, the merchant's app, a phone
+   call), recorded in the same ledger as every other consent, once per appointment. When the
+   agent books on a call, the ask itself is the evidence: the tool records `verbal` consent with
+   the attempt as its evidence URI. An appointment sent without consent is still kept — the
+   support line can answer "do I have an appointment?" — it just never produces a call.
+
+8. **Appointment reminders come from the appointment, not from a call.** An `appointments` row
    with `starts_at` in the future produces one `appointment_confirm` intent inside the existing
    envelope (24 hours to 2 hours before the appointment, recipient's zone, 09:00–21:00). Moving
    the appointment moves the reminder; cancelling it cancels the intent.
 
-8. **Appointment calls stay away from medicine.** The shipped appointment scripts forbid
+9. **Appointment calls stay away from medicine.** The shipped appointment scripts forbid
    diagnosis, prescriptions, test results and any clinical advice, and say so in their
    `forbidden_topics`; anything clinical becomes a ticket or a transfer. A lab or clinic tenant
    gets the same guardrails as everyone else — the vertical changes the script, not the rules.
 
-9. **Automation platforms get recipes, not integrations.** Zapier, Make and n8n can already
+10. **Automation platforms get recipes, not integrations.** Zapier, Make and n8n can already
    create intents and receive `outcome.final`; Phase 5 ships documented recipes and signature
    verification snippets (`docs/api/automation.md`) instead of three more OAuth apps to maintain.
 
-10. **CRM integrations wait for their OAuth apps.** Zoho and HubSpot (P5-CRM-1/2) need a
+11. **CRM integrations wait for their OAuth apps.** Zoho and HubSpot (P5-CRM-1/2) need a
     published OAuth client per vendor and a marketplace listing — human work. The lead-callback
     use case they feed already works through `POST /v1/intents` with a public site key, and that
     is what the docs recommend until the apps exist.
 
-11. **Billing is unchanged.** A booked appointment is `booked`, which is already in the billable
+12. **Billing is unchanged.** A booked appointment is `booked`, which is already in the billable
     set (invariant 11). Nothing in this ADR adds or removes a billable outcome.
 
 ## New edge cases
@@ -98,6 +107,8 @@ contract, one gate, one set of limits, with vendor code confined to a thin adapt
 | E-132 | Slot offered, caller silent, offer used minutes later | Offers expire with the call; a stale slot id is refused and the list is re-read |
 | E-133 | Appointment moved or cancelled in the merchant's calendar after a reminder was queued | The sweep re-reads the appointment: moved → the reminder moves, cancelled → the intent is cancelled |
 | E-134 | Appointment less than 2 hours away when it is created | No reminder call (inside the envelope's `notAfter`); the merchant sees the reason |
+| E-140 | Appointment sent with no consent record | Kept for the support line; the reminder is refused `consent:missing` (§7) |
+| E-141 | Customer reschedules on a reminder call and the agent books a new slot | The old row is cancelled so the provider releases the slot; without a new booking it stays `rescheduled` and nobody's appointment is lost |
 | E-135 | Appointment at 08:00, reminder due the evening before after 21:00 | Window rules win (invariant 3): the reminder is placed at 09:00 only if that is still ≥ 2 hours before |
 | E-136 | Caller asks a clinical question on an appointment call | Never answered; ticket or transfer to the clinic's staff |
 | E-137 | A merchant sends appointments for a customer who opted out | Suppression is absolute (invariant 6): no reminder call; the appointment stays in their calendar |

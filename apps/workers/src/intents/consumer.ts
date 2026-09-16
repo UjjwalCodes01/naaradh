@@ -194,6 +194,7 @@ async function recoveryForOrder(
     orderId: order.id,
     phoneHash: order.phoneHash,
     checkoutToken: order.checkoutToken,
+    source: 'shopify',
     placedAt: order.placedAt,
     now,
   });

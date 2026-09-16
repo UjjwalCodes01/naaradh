@@ -1,6 +1,7 @@
 import { and, eq, inArray, lt, sql } from 'drizzle-orm';
 import { schema, withTenant } from '@naaradh/db';
 import {
+  APPOINTMENT_RETENTION_DAYS,
   CHECKOUT_RETENTION_DAYS,
   ERASURE_COMPLETION_TARGET_DAYS,
   ORDER_CACHE_RETENTION_DAYS,
@@ -8,6 +9,7 @@ import {
 import {
   audit,
   emitMerchantEvent,
+  eraseAppointments,
   eraseCheckouts,
   eraseOrdersPlacedBefore,
   eraseSubject,
@@ -28,7 +30,8 @@ import { runLoop } from '../loop.js';
  *              intent variables, order cache and ticket text removed. Target: done within
  *              ERASURE_COMPLETION_TARGET_DAYS of the request (Q-06); overdue is an alert.
  *   retention  per tenant, media older than `retention_days` is deleted; order-cache rows older
- *              than ORDER_CACHE_RETENTION_DAYS are tombstoned.
+ *              than ORDER_CACHE_RETENTION_DAYS are tombstoned; checkout and appointment rows
+ *              lose their phone link on their own schedules (ADR-0010, ADR-0011).
  *
  * Media deletes happen OUTSIDE transactions; see packages/pipeline/src/privacy.ts.
  */
@@ -157,6 +160,7 @@ export interface RetentionReport {
   readonly mediaPurged: number;
   readonly ordersErased: number;
   readonly checkoutsErased: number;
+  readonly appointmentsErased: number;
 }
 
 export async function runRetentionOnce(ctx: WorkerContext): Promise<RetentionReport> {
@@ -164,7 +168,13 @@ export async function runRetentionOnce(ctx: WorkerContext): Promise<RetentionRep
   const tenants = await ctx.service
     .select({ id: schema.tenants.id, retentionDays: schema.tenants.retentionDays })
     .from(schema.tenants);
-  const report = { tenants: tenants.length, mediaPurged: 0, ordersErased: 0, checkoutsErased: 0 };
+  const report = {
+    tenants: tenants.length,
+    mediaPurged: 0,
+    ordersErased: 0,
+    checkoutsErased: 0,
+    appointmentsErased: 0,
+  };
   for (const t of tenants) {
     const cutoff = addDays(now, -t.retentionDays);
     for (;;) {
@@ -199,6 +209,9 @@ export async function runRetentionOnce(ctx: WorkerContext): Promise<RetentionRep
     );
     report.checkoutsErased += await withTenant(ctx.app, t.id, (tx) =>
       eraseCheckouts(tx, t.id, { before: addDays(now, -CHECKOUT_RETENTION_DAYS) }, now),
+    );
+    report.appointmentsErased += await withTenant(ctx.app, t.id, (tx) =>
+      eraseAppointments(tx, t.id, { before: addDays(now, -APPOINTMENT_RETENTION_DAYS) }, now),
     );
   }
   return report;

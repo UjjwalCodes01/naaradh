@@ -118,7 +118,8 @@ const ctx: WorkerContext = {
   secrets: secretsResolver,
   // ADR-0011: appointment calendars. A cancellation decided on a call reaches the provider
   // through the reconcile tick; without credentials the registry simply refuses.
-  calendars: calendarRegistry({ now: () => systemClock.now() }),
+  // No agent is waiting on the reconcile tick, so the provider gets longer here than in voice.
+  calendars: calendarRegistry({ now: () => systemClock.now(), timeoutMs: 8_000 }),
   mailer:
     env.POSTMARK_TOKEN === undefined
       ? memoryMailer()

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import { schema } from '@naaradh/db';
 import { NEVER_RETRY, RETRY_ELIGIBLE } from '@naaradh/compliance';
 import { EXTRACTION_SCHEMAS } from '@naaradh/scripts';
-import { WRITEBACK_USE_CASES, scrubExtracted } from '../../src/results/finalize.js';
+import {
+  WRITEBACK_USE_CASES,
+  appointmentStatusAfterCall,
+  scrubExtracted,
+} from '../../src/results/finalize.js';
 
 /**
  * An extraction outcome the database cannot store becomes `inconclusive` and a RETRY — which
@@ -50,5 +54,25 @@ describe('results side effects', () => {
       nps: 7,
       comment: '[in dashboard]',
     });
+  });
+});
+
+describe('an appointment call changes the appointment (ADR-0011 §7)', () => {
+  it('confirmed and cancelled are taken at face value', () => {
+    expect(appointmentStatusAfterCall('confirmed', false)).toBe('confirmed');
+    expect(appointmentStatusAfterCall('cancelled', false)).toBe('cancelled');
+  });
+
+  it('a reschedule gives up the old slot only when a new one was actually booked', () => {
+    // With a replacement the old slot must be released, or the merchant's diary shows the
+    // customer twice; the `cancelled` status is what tells the provider.
+    expect(appointmentStatusAfterCall('rescheduled', true)).toBe('cancelled');
+    // Without one, releasing it would leave the customer with no appointment at all.
+    expect(appointmentStatusAfterCall('rescheduled', false)).toBe('rescheduled');
+  });
+
+  it('every other outcome leaves the appointment alone', () => {
+    for (const o of ['no_answer', 'voicemail', 'inconclusive', 'transferred', 'opt_out', 'booked'])
+      expect(appointmentStatusAfterCall(o, true)).toBeNull();
   });
 });

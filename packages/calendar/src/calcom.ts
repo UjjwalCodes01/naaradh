@@ -28,7 +28,13 @@ import {
  */
 const BASE_URL = 'https://api.cal.com/v2';
 const API_VERSION = '2024-08-13';
-const TIMEOUT_MS = 6_000;
+/**
+ * Must stay BELOW the agent's tool budget (`TOOL_TIMEOUT_MS.get_slots` is 4 s,
+ * `book_slot` 5 s in packages/scripts): an adapter that answers after the engine has given up
+ * leaves the caller in silence and, worse, can book a slot nobody hears about. Batch callers
+ * (the reconcile cancellation sync) raise it explicitly.
+ */
+const TIMEOUT_MS = 3_000;
 
 const SlotsResponse = z.object({
   data: z.union([

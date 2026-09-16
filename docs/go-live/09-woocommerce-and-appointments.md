@@ -114,6 +114,10 @@ echo "sm://projects/$GCP_PROJECT/secrets/calcom-$TENANT_ID"
   customer's language. It is a *service* purpose: no consent row and no DLT template needed.
 - Appointments reach Naaradh either from the merchant's system (`PUT /v1/appointments/{ref}`) or
   because the agent booked them on a call.
+- **The merchant must send `consent` with each appointment** — how the customer asked for it
+  (`form`, `api`, `verbal`, with their own evidence reference). A reminder is a service call and
+  India wants that record; without it every reminder is refused `consent:missing`. Appointments
+  the agent books on a call carry `verbal` consent automatically, with the call as evidence.
 - One reminder call per appointment, 24 to 2 hours before, inside 09:00–21:00 where the customer
   is. The merchant sees the diary and each decision under **Appointments**.
 

@@ -1372,6 +1372,8 @@ const cartOps: Record<string, PathItemObject> = {
           'IANA zone the appointment is in — decides what the customer hears and when they may be called.',
         status: 'Your state for it. `cancelled`, `completed` and `no_show` stop any queued call.',
         calendar_id: 'A calendar from `GET /v1/calendars`, when you connected one.',
+        consent:
+          'How the customer asked for this appointment. A reminder call is a **service** purpose, and India and the EU want a record of the ask: without this the reminder is refused `consent:missing` and you will see that on the appointment. `source`: `form` (a booking form), `api` (your own app), `verbal` (taken on the phone — keep your own note or recording), `checkout`/`*_written` for a booked service at checkout. `evidence_uri` is your own reference to the proof. Recorded once per appointment in the consent ledger. An appointment Naaradh booked on a call records `verbal` consent by itself.',
       }),
       responses: {
         '200': jsonResponse(

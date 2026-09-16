@@ -145,6 +145,7 @@ export function registerCartRoutes(app: FastifyInstance, deps: CartRouteDeps): v
         orderId: order?.id ?? null,
         phoneHash: cart.phoneHash,
         checkoutToken: ref,
+        source: 'api',
         placedAt: completedAt,
         now,
       });

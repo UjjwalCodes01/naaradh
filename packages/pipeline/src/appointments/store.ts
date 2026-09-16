@@ -1,6 +1,6 @@
 import { and, eq, isNull, lt, sql } from 'drizzle-orm';
 import { schema, withTenant, type Db, type DbOrTx } from '@naaradh/db';
-import { USE_CASE_WINDOWS } from '@naaradh/compliance';
+import { USE_CASE_WINDOWS, recordConsent, type ConsentSource } from '@naaradh/compliance';
 import { addMinutes, newId, type PhoneRegion } from '@naaradh/shared';
 import { audit } from '../audit.js';
 import { cancelIntents } from '../cancel.js';
@@ -37,6 +37,17 @@ export interface AppointmentInput {
   readonly bookedByAttemptId?: string | null;
   /** When the caller is already a contact (a voice booking): no number is needed or wanted. */
   readonly existingContact?: { readonly contactId: string; readonly phoneHash: string };
+  /**
+   * How the customer asked for this appointment. A reminder is a SERVICE call, and India (and
+   * the EU) want a consent row for one — without this, the reminder is refused
+   * `consent:missing`, which is the gate doing its job, not a bug to work around. The merchant
+   * supplies it with the appointment; the agent supplies `verbal` when it books on a call.
+   */
+  readonly consent?: {
+    readonly source: ConsentSource;
+    readonly evidenceUri?: string | undefined;
+    readonly wordingVersion?: string | undefined;
+  };
   readonly now: Date;
 }
 
@@ -56,6 +67,16 @@ export async function upsertAppointment(
 ): Promise<AppointmentResult> {
   let contactId: string | null = input.existingContact?.contactId ?? null;
   let phoneHash: string | null = input.existingContact?.phoneHash ?? null;
+  // The consent (and the calling window) follow the RECIPIENT's region, invariant 2.
+  let region: string = input.defaultRegion;
+  if (input.existingContact !== undefined) {
+    const [c] = await tx
+      .select({ region: schema.contacts.region })
+      .from(schema.contacts)
+      .where(eq(schema.contacts.id, input.existingContact.contactId))
+      .limit(1);
+    region = c?.region ?? input.defaultRegion;
+  }
   if (input.rawPhone !== null && input.rawPhone.trim().length > 0) {
     const c = await upsertContact(tx, keys, {
       tenantId: input.tenantId,
@@ -70,6 +91,7 @@ export async function upsertAppointment(
     if (c.ok) {
       contactId = c.contactId;
       phoneHash = c.phoneHash;
+      region = c.phone.region;
     }
   }
   // Without a number there is nobody to call; the appointment is still worth recording for the
@@ -88,6 +110,18 @@ export async function upsertAppointment(
     )
     .for('update')
     .limit(1);
+
+  // The consent is recorded before the row, so a failure to record cannot leave an appointment
+  // that looks callable. Idempotent by (phone, purpose, external ref, source) at the ledger.
+  if (input.consent !== undefined && phoneHash !== null)
+    await recordServiceConsent(tx, {
+      tenantId: input.tenantId,
+      phoneHash,
+      region,
+      externalRef: input.externalId,
+      capturedAt: input.now,
+      consent: input.consent,
+    });
 
   if (existing === undefined) {
     const id = newId('appointment');
@@ -158,6 +192,51 @@ export async function upsertAppointment(
       after: { starts_at: input.startsAt.toISOString(), status },
     });
   return { kind: 'recorded', appointmentId: existing.id, created: false };
+}
+
+/** One live service grant per (phone, appointment, source): a nightly re-sync adds nothing. */
+async function recordServiceConsent(
+  tx: DbOrTx,
+  input: {
+    readonly tenantId: string;
+    readonly phoneHash: string;
+    readonly region: string;
+    readonly externalRef: string;
+    readonly capturedAt: Date;
+    readonly consent: {
+      readonly source: ConsentSource;
+      readonly evidenceUri?: string | undefined;
+      readonly wordingVersion?: string | undefined;
+    };
+  },
+): Promise<void> {
+  const [already] = await tx
+    .select({ id: schema.consents.id })
+    .from(schema.consents)
+    .where(
+      and(
+        eq(schema.consents.tenantId, input.tenantId),
+        eq(schema.consents.phoneHash, input.phoneHash),
+        eq(schema.consents.action, 'grant'),
+        eq(schema.consents.purpose, 'service'),
+        eq(schema.consents.externalRef, input.externalRef),
+        sql`not exists (select 1 from consents r where r.action = 'revoke' and r.grant_id = ${schema.consents.id})`,
+      ),
+    )
+    .limit(1);
+  if (already !== undefined) return;
+  await recordConsent(tx, {
+    tenantId: input.tenantId,
+    phoneHash: input.phoneHash,
+    purpose: 'service',
+    source: input.consent.source,
+    recipientRegion: input.region,
+    capturedAt: input.capturedAt,
+    externalRef: input.externalRef,
+    evidenceUri: input.consent.evidenceUri,
+    wordingVersion: input.consent.wordingVersion,
+    context: { surface: 'appointment' },
+  });
 }
 
 export interface ReminderReport {

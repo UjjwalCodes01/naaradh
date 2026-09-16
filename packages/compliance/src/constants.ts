@@ -292,6 +292,12 @@ export const ORDER_CACHE_RETENTION_DAYS = 180;
  * attribution window after it. DECISION (data minimisation) — rows keep their counts.
  */
 export const CHECKOUT_RETENTION_DAYS = 30;
+/**
+ * ADR-0011: an appointment's phone link is needed until the appointment happens and for a
+ * while after, so the support line can answer "did I come in?". Matches the order cache.
+ * DECISION (data minimisation) — the time and the service stay; the person does not.
+ */
+export const APPOINTMENT_RETENTION_DAYS = 180;
 
 /** A self-service do-not-call submission becomes a global suppression within this long. */
 export const DNC_PAGE_PROCESSING_HOURS = 24;

@@ -31,6 +31,19 @@ export const AppointmentBody = z.object({
     .default('scheduled'),
   /** The calendar it belongs to, when the merchant connected one. */
   calendar_id: z.string().trim().max(40).nullable().default(null),
+  /**
+   * How the customer asked for this appointment. A reminder call is a SERVICE purpose, and
+   * India and the EU want a consent record for one: without this the reminder is refused
+   * `consent:missing`. `verbal` covers a booking taken on the phone (keep your own evidence),
+   * `form` a booking form, `api` a booking made in your own app.
+   */
+  consent: z
+    .object({
+      source: z.enum(['form', 'form_written', 'api', 'verbal', 'checkout', 'checkout_written']),
+      wording_version: z.string().max(64).optional(),
+      evidence_uri: z.string().url().optional(),
+    })
+    .optional(),
 });
 
 export interface AppointmentRouteDeps {
@@ -104,6 +117,15 @@ export function registerAppointmentRoutes(app: FastifyInstance, deps: Appointmen
         endsAt,
         timezone: body.timezone,
         status: body.status,
+        ...(body.consent === undefined
+          ? {}
+          : {
+              consent: {
+                source: body.consent.source,
+                wordingVersion: body.consent.wording_version,
+                evidenceUri: body.consent.evidence_uri,
+              },
+            }),
         now,
       });
     });

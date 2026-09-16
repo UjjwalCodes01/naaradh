@@ -257,6 +257,9 @@ export async function bookSlot(
     providerRef: booking.providerRef,
     bookedByAttemptId: ctx.attempt.id,
     existingContact: { contactId: ctx.attempt.contactId, phoneHash: ctx.attempt.phoneHash },
+    // The customer asked for this appointment out loud on a recorded, disclosed call: that is
+    // the consent for the reminder, and the attempt is its evidence (ADR-0011 §7).
+    consent: { source: 'verbal', evidenceUri: `naaradh:attempt/${ctx.attempt.id}` },
     now: ctx.now,
   });
 

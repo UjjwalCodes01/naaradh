@@ -91,6 +91,31 @@ export const WRITEBACK_USE_CASES: ReadonlySet<string> = new Set([
   'delivery_reschedule',
 ]);
 
+/**
+ * What an appointment-reminder call does to the appointment (ADR-0011 §7).
+ *
+ * The only subtle case is a reschedule: the old slot is given up ONLY when the agent actually
+ * booked a new one on the same call (`book_slot` wrote a row against this attempt). Without a
+ * replacement, releasing the slot would leave the customer with no appointment at all; with
+ * one, keeping it would leave two live bookings in the merchant's diary. `cancelled` is what
+ * makes the reconcile tick tell the provider.
+ */
+export function appointmentStatusAfterCall(
+  outcome: string,
+  hasReplacement: boolean,
+): 'confirmed' | 'cancelled' | 'rescheduled' | null {
+  switch (outcome) {
+    case 'confirmed':
+      return 'confirmed';
+    case 'cancelled':
+      return 'cancelled';
+    case 'rescheduled':
+      return hasReplacement ? 'cancelled' : 'rescheduled';
+    default:
+      return null;
+  }
+}
+
 /** Which outcomes carry a protective suppression (E-03, E-11, E-26, E-12). */
 export function suppressionFor(outcome: string): {
   reason: 'opt_out' | 'minor' | 'wrong_number' | 'recording_refused';
@@ -475,14 +500,24 @@ export async function finalizeAttempt(
 
   // --- ADR-0011 §7: an appointment call's answer is the appointment's new state ------------------
   if (intent !== null && !superseded && intent.useCase === 'appointment_confirm') {
-    const next =
-      outcome === 'confirmed'
-        ? 'confirmed'
-        : outcome === 'cancelled'
-          ? 'cancelled'
-          : outcome === 'rescheduled'
-            ? 'rescheduled'
-            : null;
+    // A reschedule gives up the old slot ONLY if the agent actually booked a new one on this
+    // call; otherwise the customer would be left with no appointment at all. When it did, the
+    // old row becomes `cancelled` so the reconcile tick releases the slot with the provider —
+    // two live bookings for one customer is a wrong diary, not a detail.
+    const [replacement] =
+      outcome === 'rescheduled'
+        ? await tx
+            .select({ id: schema.appointments.id, startsAt: schema.appointments.startsAt })
+            .from(schema.appointments)
+            .where(
+              and(
+                eq(schema.appointments.tenantId, tenantId),
+                eq(schema.appointments.bookedByAttemptId, attempt.id),
+              ),
+            )
+            .limit(1)
+        : [];
+    const next = appointmentStatusAfterCall(outcome, replacement !== undefined);
     if (next !== null) {
       const rows = await tx
         .update(schema.appointments)
@@ -501,7 +536,17 @@ export async function finalizeAttempt(
           action: `appointment.${next}`,
           targetType: 'appointment',
           targetId: r.id,
-          after: { attempt_id: attempt.id, outcome, provider_ref: r.providerRef },
+          after: {
+            attempt_id: attempt.id,
+            outcome,
+            provider_ref: r.providerRef,
+            ...(replacement === undefined
+              ? {}
+              : {
+                  superseded_by: replacement.id,
+                  new_starts_at: replacement.startsAt.toISOString(),
+                }),
+          },
         });
       // A cancellation still has to reach the provider: reconcile does that (network call).
     }

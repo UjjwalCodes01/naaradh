@@ -25,10 +25,41 @@ from appointments where tenant_id = '<ten_…>' order by starts_at desc limit 20
 |---|---|
 | `intent_id` set | the call is queued — follow it in the dashboard (Order calls) for the gate trace |
 | `intent_id` null, `reminder_swept_at` null | not due yet: more than 24 hours away |
-| `reminder_swept_at` set, no `intent_id` | Naaradh decided against a call: no phone, less than 2 hours away when it arrived (E-134), the use case is off, or the gate refused (suppression, window, tenant paused) |
+| `reminder_swept_at` set, no `intent_id` | Naaradh decided against a call: no phone, less than 2 hours away when it arrived (E-134), or the use case is off |
+| `intent_id` set but the intent is `GATED` `consent:missing` | The appointment came with no record of how the customer asked (E-140). A reminder is a service call and India wants one. The merchant must send `consent` with the appointment (`PUT /v1/appointments/{ref}`); an appointment the agent booked on a call carries `verbal` consent automatically |
 | `status` `cancelled`/`completed`/`no_show` | nothing to remind about |
 
 The sweep runs on the reconcile tick. `appointment_confirm` must be **on** for the tenant (Settings → what Naaradh calls for) and have an approved script in the customer's language — it is a *service* purpose, so it needs no consent and no DLT template.
+
+## "Everything is refused consent:missing"
+
+A reminder is a **service** call, and the Indian and EU rules want a consent record for one. Send
+it with the appointment:
+
+```json
+PUT /v1/appointments/lab-77
+{ "phone": "…", "starts_at": "…", "timezone": "Asia/Kolkata",
+  "consent": { "source": "form", "evidence_uri": "https://lab.example/bookings/77" } }
+```
+
+`source` says how the customer asked — `form` (a booking form), `api` (the merchant's own app),
+`verbal` (taken on the phone; keep your own recording or note). One grant per appointment, in the
+same ledger as every other consent, and visible in the consent query in
+`promotional-calling.md`. Appointments the agent booked on a call record `verbal` consent with
+the call as evidence, so their reminders work without the merchant doing anything.
+
+## "The customer rescheduled but the old slot is still booked"
+
+It should not be: when the agent books a new slot on a reminder call, the old appointment is
+marked `cancelled` and the reconcile tick releases it with the provider (E-141). If the customer
+asked to reschedule but nothing was booked (the provider was down, no time suited), the old row
+stays `rescheduled` **and keeps its slot** — deliberately, so nobody ends up with no appointment.
+Those rows are the ones to chase by hand:
+
+```sql
+select id, external_id, starts_at, provider_ref from appointments
+where tenant_id = '<ten_…>' and status = 'rescheduled' and starts_at > now();
+```
 
 ## "The agent offered a time that does not exist"
 

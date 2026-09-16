@@ -12,11 +12,19 @@ export interface CalendarRegistry {
 }
 
 export function calendarRegistry(
-  options: { readonly now?: () => Date; readonly fetchImpl?: typeof fetch } = {},
+  options: {
+    readonly now?: () => Date;
+    readonly fetchImpl?: typeof fetch;
+    /** Per-provider HTTP timeout. Default (3 s) fits inside the agent's tool budget. */
+    readonly timeoutMs?: number;
+  } = {},
 ): CalendarRegistry {
   const now = options.now ?? (() => new Date());
   const ports: Partial<Record<CalendarProvider, CalendarPort>> = {
-    calcom: calcomCalendar(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    calcom: calcomCalendar({
+      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+      ...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+    }),
     manual: fakeCalendar({ now }),
   };
   return {

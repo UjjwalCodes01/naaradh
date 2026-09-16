@@ -63,6 +63,12 @@ export async function dispatchIntent(
 ): Promise<DispatchOutcome> {
   const now = ctx.clock.now();
 
+  // ---- Phase 0: DND scrub, OUTSIDE any transaction -----------------------------------------
+  // The provider is a network call and Phase A holds the intent row: a slow scrub must never
+  // hold a Postgres transaction open (the same rule the Shopify write-back follows). The gate
+  // then reads the cache this filled; an empty cache fails closed (`dnd:unknown`).
+  await scrubDndBeforeGate(ctx, intentId, tenantId, now);
+
   // ---- Phase A: gate + attempt row, one tenant transaction ---------------------------------
   const phaseA = await withTenant(
     ctx.app,
@@ -89,7 +95,6 @@ export async function dispatchIntent(
         return { kind: 'cancelled' };
       }
 
-      if (loaded.intent.purpose === 'promotional') await ensureDndScrub(ctx, tx, loaded, now);
       const deps = buildGateDeps(tx, ctx.redis, ctx.gate, loaded.tenantZone, now);
       const result = await gateIntent(
         { tenant: loaded.tenant, contact: loaded.contact, intent: loaded.intent, now },
@@ -213,28 +218,47 @@ interface DialPlan {
 }
 
 /**
- * Promotional calls need a fresh DND answer (gate step 8). The provider needs the number, which
- * only the dispatcher can decrypt, so the scrub happens here, just before the gate reads the
- * cache. Without a provider nothing is looked up and the gate fails closed.
+ * Promotional calls need a fresh DND answer (gate step 8, ADR-0010 §6). The provider needs the
+ * plaintext number, which only the dispatcher can decrypt, so the scrub happens here — and
+ * deliberately NOT inside the gate transaction: an unresponsive provider would otherwise hold
+ * the intent row for its whole timeout.
+ *
+ * Reads and writes touch `dnd_scrub_cache`, which is global and carries no RLS policy, so the
+ * cache write needs no tenant context. Everything else is read in one short transaction.
+ * Failures are swallowed: no answer means the gate refuses (`dnd:unknown`), which is the
+ * conservative outcome anyway.
  */
-async function ensureDndScrub(
+async function scrubDndBeforeGate(
   ctx: WorkerContext,
-  tx: Tx,
-  loaded: Awaited<ReturnType<typeof loadGateInput>>,
+  intentId: string,
+  tenantId: string,
   now: Date,
 ): Promise<void> {
   const provider = ctx.dnd;
   if (provider === undefined || provider.name === 'none' || ctx.keys.privateKeyPem === null) return;
-  const phoneHash = loaded.intent.phoneHash;
-  if ((await cachedDnd(tx, phoneHash, now)) !== null) return;
-  const [contact] = await tx
-    .select({ phoneEnc: schema.contacts.phoneEnc })
-    .from(schema.contacts)
-    .where(eq(schema.contacts.id, loaded.contact.id))
-    .limit(1);
-  if (contact?.phoneEnc === null || contact?.phoneEnc === undefined) return;
-  const e164 = decryptPhone(contact.phoneEnc, ctx.keys.privateKeyPem);
-  await refreshDnd(tx, provider, phoneHash, e164, loaded.intent.recipientRegion, now);
+  const subject = await withTenant(ctx.app, tenantId, async (tx) => {
+    const [row] = await tx
+      .select({
+        purpose: schema.callIntents.purpose,
+        phoneHash: schema.callIntents.phoneHash,
+        region: schema.callIntents.recipientRegion,
+        phoneEnc: schema.contacts.phoneEnc,
+      })
+      .from(schema.callIntents)
+      .innerJoin(schema.contacts, eq(schema.contacts.id, schema.callIntents.contactId))
+      .where(eq(schema.callIntents.id, intentId))
+      .limit(1);
+    if (row === undefined || row.purpose !== 'promotional' || row.phoneEnc === null) return null;
+    if ((await cachedDnd(tx, row.phoneHash, now)) !== null) return null;
+    return row;
+  });
+  if (subject === null || subject.phoneEnc === null) return;
+  try {
+    const e164 = decryptPhone(subject.phoneEnc, ctx.keys.privateKeyPem);
+    await refreshDnd(ctx.app, provider, subject.phoneHash, e164, subject.region, now);
+  } catch (error) {
+    ctx.log.warn({ err: error, intent_id: intentId }, 'DND scrub failed; the gate will refuse');
+  }
 }
 
 async function prepareDial(

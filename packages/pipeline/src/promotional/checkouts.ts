@@ -342,6 +342,11 @@ export async function convertCheckouts(
     readonly orderId: string | null;
     readonly phoneHash: string | null;
     readonly checkoutToken: string | null;
+    /**
+     * Which platform the token belongs to. A token matches only within its own source: two
+     * platforms could otherwise collide on the same reference (E-139).
+     */
+    readonly source?: CheckoutSource;
     readonly placedAt: Date;
     readonly now: Date;
   },
@@ -349,7 +354,14 @@ export async function convertCheckouts(
   const since = addMinutes(input.placedAt, -ABANDONED_CART_MAX_AGE_HOURS * 60);
   const matches = [];
   if (input.checkoutToken !== null)
-    matches.push(eq(schema.checkouts.externalId, input.checkoutToken));
+    matches.push(
+      input.source === undefined
+        ? eq(schema.checkouts.externalId, input.checkoutToken)
+        : and(
+            eq(schema.checkouts.source, input.source),
+            eq(schema.checkouts.externalId, input.checkoutToken),
+          ),
+    );
   if (input.phoneHash !== null)
     matches.push(
       and(

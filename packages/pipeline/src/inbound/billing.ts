@@ -22,6 +22,11 @@ export interface InboundPlan {
 }
 
 /** INR view of the support-line plans in the catalogue (billing/plans.ts). */
+/**
+ * INR reference table for the inbound plans, for docs and the dashboard's price list. Metering
+ * does NOT use it: `inboundPlanFor()` reads the tenant's own currency through `effectivePlan`,
+ * so a USD-billed tenant is metered in cents. Do not add a caller that meters from here.
+ */
 export const INBOUND_PLANS: Readonly<Record<string, InboundPlan>> = Object.fromEntries(
   Object.values(PLANS)
     .filter((p) => p.kind === 'inbound')
