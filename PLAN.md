@@ -408,8 +408,14 @@ scrub provider. Decide the `*_paise` → `*_minor` renaming before any non-INR t
 
 ### Workstreams
 
+Started 19 Sep 2026 (code only, no accounts): ADR-0012 regional isolation — `DATA_REGION` per
+deployment, refused in the gate (`tenant:other_region`), in inbound admission
+(`inbound:other_region`, forwarded not dropped) and in every cross-tenant sweep; and P6-CMP-2
+scripts for en-US, en-GB, de-DE, fr-FR, es-ES seeded by the merchant's country (non-English
+wording needs a native review before approval).
+
 **INF**
-- P6-INF-1 New GCP projects `naaradh-prod-us` (`us-central1`) and `naaradh-prod-eu` (`europe-west1`) from the same Terraform modules; tenant `data_region` routing; no cross-region PII.
+- ◐ P6-INF-1 New GCP projects `naaradh-prod-us` (`us-central1`) and `naaradh-prod-eu` (`europe-west1`) from the same Terraform modules; tenant `data_region` routing; no cross-region PII.
 - P6-INF-2 Separate Pub/Sub, Cloud SQL, GCS, Redis per region; shared DNS/LB with region-aware routing; status page per region.
 
 **ENG**
@@ -420,7 +426,7 @@ scrub provider. Decide the `*_paise` → `*_minor` renaming before any non-INR t
 - P6-LEG-1 US: TCPA design review — prior express consent (transactional) vs prior express **written** consent (marketing); DNC scrubbing + SAN; state disclosure laws (e.g., California AB 2905); two-party recording states list; HIPAA BAA path for healthcare. `[LEGAL]`
 - P6-LEG-2 EU/UK: ePrivacy Art. 13(3) opt-in for all automated calls; GDPR DPA (Art. 28) + DPIA; AI Act Art. 50 disclosure (already in scripts, verify wording per language); Germany all-party recording consent; UK PECR/TPS. `[LEGAL]`
 - P6-CMP-1 Gate rules per region: consent source requirements, windows (state/country variants), DNC/TPS scrub providers, recording-consent question flow for two-party states/DE.
-- P6-CMP-2 Scripts per locale (en-US, en-GB, de-DE, fr-FR, es-ES) with disclosure lines; extraction schemas unchanged.
+- ✅ P6-CMP-2 Scripts per locale (en-US, en-GB, de-DE, fr-FR, es-ES) with disclosure lines; extraction schemas unchanged. Cart recovery + appointment confirmation shipped; `[VERIFY: native review]` on de/fr/es.
 
 **BILL / GTM**
 - P6-BILL-1 Stripe subscriptions (USD/EUR/GBP), per-minute plans (SPEC §2.2); Shopify Billing already region-agnostic.

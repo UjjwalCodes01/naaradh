@@ -292,6 +292,7 @@ export async function loadGateInput(tx: Tx, intentId: string): Promise<LoadedGat
   const tenant: TenantSnapshot = {
     id: t.id,
     status: t.status,
+    dataRegion: t.dataRegion,
     reviewUntil: t.reviewUntil,
     dltLinkedAt: t.dltLinkedAt,
     promotionalPausedAt: t.promotionalPausedAt,

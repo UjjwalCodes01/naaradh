@@ -111,6 +111,18 @@ export async function gateIntent(input: GateInput, deps: GateDeps): Promise<Gate
 
   // ---- 1. tenant active && billing ok (E-50, E-61, E-73) -------------------------------------
   const s1 = await step(1, 'tenant+billing', () => {
+    // ADR-0012 / E-142: one deployment serves one region. A tenant from another one is never
+    // dialled here, whatever else is true — its data belongs to another deployment.
+    if (
+      deps.dataRegion !== undefined &&
+      tenant.dataRegion !== undefined &&
+      tenant.dataRegion !== deps.dataRegion
+    )
+      return {
+        ok: false,
+        reason: 'tenant:other_region',
+        detail: { tenant_region: tenant.dataRegion, deployment_region: deps.dataRegion },
+      };
     // ADR-0010 §5: a complaint about a promotional call pauses promotional calling only.
     if (
       intent.purpose === 'promotional' &&

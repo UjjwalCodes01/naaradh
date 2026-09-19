@@ -1183,3 +1183,39 @@ describe('an appointment with no consent record (the gate doing its job)', () =>
     expect(row?.status).toBe('scheduled');
   });
 });
+
+describe('one deployment serves one region (ADR-0012, E-142)', () => {
+  const OTHER = newId('tenant');
+
+  it('a sweep never reads another region’s rows', async () => {
+    await service.query(
+      `insert into tenants (id, name, country, data_region, status, billing_status) values ($1, 'Client US', 'US', 'us', 'active', 'active')`,
+      [OTHER],
+    );
+    await service.query(
+      `insert into checkouts (id, tenant_id, source, external_id, phone_hash, recipient_region, value_minor, currency, item_summary, item_count, consent_wording, status, source_created_at, source_updated_at)
+       values ($1, $2, 'api', 'us-cart-1', $3, 'US', 9900, 'USD', '1 item', 1, $4, 'open', $5, $5)`,
+      [newId('checkout'), OTHER, hash('+12125550101'), WORDING, addMinutes(clock.now(), -90)],
+    );
+
+    // This deployment holds `in`: the US cart is not even read.
+    const scoped = await sweepAbandonedCheckouts(
+      svcDb,
+      appDb,
+      ctx.keys,
+      clock.now(),
+      undefined,
+      'in',
+    );
+    const [untouched] = await q<{ status: string; swept_at: Date | null }>(
+      `select status, swept_at from checkouts where tenant_id = $1 and external_id = 'us-cart-1'`,
+      [OTHER],
+    );
+    expect(untouched).toMatchObject({ status: 'open', swept_at: null });
+    expect(scoped.considered).toBe(0);
+
+    // Without a region (today's single-region deployment) the same sweep sees it.
+    const unscoped = await sweepAbandonedCheckouts(svcDb, appDb, ctx.keys, clock.now());
+    expect(unscoped.considered).toBeGreaterThan(0);
+  });
+});

@@ -206,6 +206,7 @@ async function decide(
           billingStatus: schema.tenants.billingStatus,
           billingGraceUntil: schema.tenants.billingGraceUntil,
           country: schema.tenants.country,
+          dataRegion: schema.tenants.dataRegion,
         })
         .from(schema.tenants)
         .where(eq(schema.tenants.id, tenantId))
@@ -279,6 +280,7 @@ async function decide(
                   status: tenant.status,
                   billingStatus: tenant.billingStatus,
                   billingGraceUntil: tenant.billingGraceUntil,
+                  dataRegion: tenant.dataRegion,
                 },
           profile:
             p === null
@@ -292,6 +294,8 @@ async function decide(
                   hasFallbackForward: p.fallbackForwardEnc !== null,
                 },
           callerHash: caller.hash,
+          // ADR-0012: this deployment answers only for the region whose data it holds.
+          ...(deps.dataRegion === undefined ? {} : { dataRegion: deps.dataRegion }),
         },
         admissionDeps,
       );

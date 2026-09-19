@@ -4,6 +4,7 @@ import { isoWeekOf, qaSampleKey, qaSampleSize } from '../src/admin/qa.js';
 import { twoProportionPValue } from '../src/dashboard/ab.js';
 import { explainCheckout, explainOutcome } from '../src/dashboard/explain.js';
 import { roiSettingsOf } from '../src/dashboard/settings.js';
+import { setupLocaleFor } from '../src/dashboard/setup.js';
 
 describe('weekly QA sample (P4-OPS-1)', () => {
   it('ISO weeks, including the year boundary', () => {
@@ -88,5 +89,22 @@ describe('ROI settings', () => {
       rtoCostPaise: null,
       attributionHours: 24,
     });
+  });
+});
+
+describe('a new merchant is set up in its own language (P6-CMP-2, ADR-0012 §3)', () => {
+  it('maps a country to the language its customers speak', () => {
+    expect(setupLocaleFor('IN')).toBe('hi-IN');
+    expect(setupLocaleFor('us')).toBe('en-US');
+    expect(setupLocaleFor('GB')).toBe('en-GB');
+    expect(setupLocaleFor('IE')).toBe('en-GB');
+    expect(setupLocaleFor('DE')).toBe('de-DE');
+    expect(setupLocaleFor('AT')).toBe('de-DE');
+    expect(setupLocaleFor('FR')).toBe('fr-FR');
+    expect(setupLocaleFor('ES')).toBe('es-ES');
+    expect(setupLocaleFor('MX')).toBe('es-ES');
+    // Anything unmapped gets US English rather than Indian English or nothing at all.
+    expect(setupLocaleFor('JP')).toBe('en-US');
+    expect(setupLocaleFor('')).toBe('en-US');
   });
 });

@@ -931,6 +931,14 @@ Every transition writes `audit_log`; every terminal state emits a merchant webho
 - **E-138** A CRM or automation tool creates a lead-callback intent with no consent → allowed as a service purpose (the customer asked to be called), refused for anything promotional.
 - **E-139** Two platforms report the same cart → one row per (tenant, source, ref); the 7-day per-phone cooldown means one call at most.
 
+### 12.9 Regional isolation (ADR-0012)
+
+- **E-142** A tenant whose `data_region` is not this deployment's → every outbound call refused `tenant:other_region`; inbound not answered here (the caller is forwarded, never dead air); cross-tenant sweeps skip the tenant entirely.
+- **E-143** A US or EU store installs the Shopify app while only the India deployment exists → it installs and is waitlisted (Q-20); the tenant is created with its own `data_region` and nothing can call it.
+- **E-144** A webhook for a shop in another region reaches this deployment → verified and acknowledged, acted on only if the tenant is in region; otherwise audited and ignored, never silently dropped.
+- **E-145** Staff open a tenant from another region in the console → the console is per region; that tenant is not in this database.
+- **E-146** `DATA_REGION` misconfigured → every tenant is out of region, so the first dispatch fails loudly rather than writing foreign data.
+
 ---
 
 ## 13. Legal documents to prepare `[LEGAL — drafts, then lawyer]`
@@ -1113,6 +1121,7 @@ TCCCPR (TRAI regulation on commercial communication) · DLT (Distributed Ledger 
 
 | Version | Date | Change |
 |---|---|---|
+| 1.5 | 19 Sep 2026 | **Regional isolation (ADR-0012, PLAN Phase 6 groundwork):** §12.9 adds E-142–E-146. One deployment serves one region (`DATA_REGION`): the gate refuses `tenant:other_region`, inbound admission refuses `inbound:other_region` with a forward, and every cross-tenant sweep filters on `tenants.data_region`. A tenant's region is set once at provisioning and never changes. Nothing changes for the India deployment, where every tenant is `in`. |
 | 1.4 | 16 Sep 2026 | **Non-Shopify sources and appointments (ADR-0011, PLAN Phase 5):** §12.8 adds edge cases E-120–E-139. One ingestion contract for carts (`PUT /v1/carts/{ref}`) instead of a parser per platform — WooCommerce, one-click checkouts and bespoke stores all use it, under the same promotional rules as ADR-0010. Appointments get a calendar port (Cal.com adapter `[VERIFY]`), two agent tools (`get_slots`, `book_slot`) that can only offer times the provider returned, and one confirmation call per appointment inside the existing −24 h/−2 h envelope. The billable set (§2.2, E-60) is unchanged: `booked` was already in it. New open questions Q-25–Q-27. |
 | 1.3 | 16 Sep 2026 | **Promotional calling (ADR-0010, PLAN Phase 4):** §12.7 adds edge cases E-100–E-119 (abandoned checkout, consent checkbox, feedback, A/B, recovery attribution, promotional pause, erasure). No change to the billable outcome set (§2.2, E-60): a recovered cart is **measured, not billed** until Q-24 is decided. New open questions Q-21–Q-24. The outcome enum gains `will_complete`, `will_buy_later`, `not_interested`, `price_objection`, `qualified`, `feedback_given` — none of them billable. |
 | 1.0 | 11 Sep 2026 | Initial specification. |

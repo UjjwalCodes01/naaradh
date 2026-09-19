@@ -22,6 +22,10 @@ const outcomesOf = (name: string): readonly string[] => {
 
 describe('promotional templates', () => {
   const promotional = [ABANDONED_CART_HI_IN, ABANDONED_CART_EN_IN, FEEDBACK_HI_IN, FEEDBACK_EN_IN];
+  /** Every promotional template we ship, in every locale (P6-CMP-2 added five more). */
+  const allPromotional = DEFAULT_TEMPLATES.filter((t) =>
+    ['abandoned_cart', 'feedback', 'reactivation'].includes(t.use_case),
+  );
 
   it('validate, carry an opt-out line and are shipped by default', () => {
     for (const t of promotional) {
@@ -29,6 +33,22 @@ describe('promotional templates', () => {
       expect(t.opt_out_line).toBeTruthy();
       expect(DEFAULT_TEMPLATES).toContain(t);
     }
+  });
+
+  it('every promotional template in every locale can be opted out of and forbids discounts', () => {
+    // Language-independent rules, so the Phase 6 locales are held to them too.
+    for (const t of allPromotional) {
+      expect(validateScript(t), `${t.use_case}/${t.locale}`).toMatchObject({ ok: true });
+      expect(t.opt_out_line, `${t.use_case}/${t.locale}`).toBeTruthy();
+      expect(t.forbidden_topics, `${t.use_case}/${t.locale}`).toContain('discount');
+      for (const v of variableRefs(
+        [t.opening, t.purpose_line, t.closing, ...t.branches.map((b) => b.say)].join(' '),
+      ))
+        expect(VARIABLES_ALLOWED[t.use_case], `${t.use_case}/${t.locale}`).toContain(v);
+    }
+    // The five Phase 6 locales are actually there.
+    const locales = allPromotional.map((t) => t.locale);
+    for (const l of ['en-US', 'en-GB', 'de-DE', 'fr-FR', 'es-ES']) expect(locales).toContain(l);
   });
 
   it('a promotional script without an opt-out line fails validation', () => {
@@ -146,5 +166,42 @@ describe('feedback extraction (ADR-0010 §7)', () => {
     ])
       expect(outcomesOf('feedback_v1')).not.toContain(billable);
     expect(outcomesOf('abandoned_cart_v1')).not.toContain('confirmed');
+  });
+});
+
+describe('Phase 6 locales (P6-CMP-2)', () => {
+  const phase6 = ['en-US', 'en-GB', 'de-DE', 'fr-FR', 'es-ES'] as const;
+
+  it('every Phase 6 locale has a cart and an appointment script, and both validate', () => {
+    for (const locale of phase6)
+      for (const useCase of ['abandoned_cart', 'appointment_confirm']) {
+        const t = DEFAULT_TEMPLATES.find((x) => x.locale === locale && x.use_case === useCase);
+        expect(t, `${useCase}/${locale}`).toBeDefined();
+        if (t !== undefined)
+          expect(validateScript(t), `${useCase}/${locale}`).toMatchObject({ ok: true });
+      }
+  });
+
+  it('an appointment script never opens a clinical conversation, in any language', () => {
+    for (const t of DEFAULT_TEMPLATES.filter((x) => x.use_case === 'appointment_confirm')) {
+      for (const topic of ['diagnosis', 'prescription', 'test_results', 'medical_advice'])
+        expect(t.forbidden_topics, t.locale).toContain(topic);
+      // Every one has a branch for "the customer asked something medical".
+      expect(
+        t.branches.some((b) => b.outcome === 'needs_merchant_action'),
+        t.locale,
+      ).toBe(true);
+    }
+  });
+
+  it('the disclosure is the FIRST thing said, in the language of the call', () => {
+    // validateScript enforces it; this pins the intent so a "nicer" greeting cannot creep in.
+    for (const t of DEFAULT_TEMPLATES) {
+      const firstSentence = t.opening.split(/[.!?।]/)[0] ?? '';
+      expect(firstSentence.length, `${t.use_case}/${t.locale}`).toBeGreaterThan(10);
+      expect(validateScript({ ...t, opening: 'Hello.' }).ok, `${t.use_case}/${t.locale}`).toBe(
+        false,
+      );
+    }
   });
 });

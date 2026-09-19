@@ -26,6 +26,8 @@ export type KillSwitchScope = EnumValues<typeof schema.killSwitchScope>;
 export interface TenantSnapshot {
   readonly id: string;
   readonly status: TenantStatus;
+  /** ADR-0012: where this tenant's data lives. A deployment serves exactly one region. */
+  readonly dataRegion?: string;
   readonly reviewUntil: Date | null;
   readonly dltLinkedAt: Date | null;
   /** ADR-0010 §5: promotional calling paused after a complaint on a promotional call. */
@@ -232,6 +234,8 @@ export interface GateDeps {
   readonly concurrency: ConcurrencyPort;
   readonly numbers: NumberPort;
   readonly scripts: ScriptPort;
+  /** The region this deployment serves (ADR-0012). Absent → no region check (tests, dev). */
+  readonly dataRegion?: string;
 }
 
 // ---------------------------------------------------------------------------

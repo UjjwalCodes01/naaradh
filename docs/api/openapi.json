@@ -457,6 +457,7 @@
                   "engine:circuit_open",
                   "tenant:inactive",
                   "tenant:pending_review_promotional",
+                  "tenant:other_region",
                   "tenant:promotional_paused",
                   "billing:not_set_up",
                   "billing:frozen",
@@ -4250,6 +4251,7 @@
                             "engine:circuit_open",
                             "tenant:inactive",
                             "tenant:pending_review_promotional",
+                            "tenant:other_region",
                             "tenant:promotional_paused",
                             "billing:not_set_up",
                             "billing:frozen",
@@ -7673,7 +7675,8 @@
                           "inbound:minute_cap",
                           "inbound:concurrency",
                           "inbound:abuse",
-                          "inbound:engine_down"
+                          "inbound:engine_down",
+                          "inbound:other_region"
                         ],
                         "type": "string"
                       }
@@ -7886,6 +7889,7 @@
                           "engine:circuit_open",
                           "tenant:inactive",
                           "tenant:pending_review_promotional",
+                          "tenant:other_region",
                           "tenant:promotional_paused",
                           "billing:not_set_up",
                           "billing:frozen",

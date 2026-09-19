@@ -3,6 +3,7 @@ import { schema, withTenant, type Db, type DbOrTx } from '@naaradh/db';
 import { USE_CASE_WINDOWS, recordConsent, type ConsentSource } from '@naaradh/compliance';
 import { addMinutes, newId, type PhoneRegion } from '@naaradh/shared';
 import { audit } from '../audit.js';
+import { inRegion, type DataRegion } from '../promotional/checkouts.js';
 import { cancelIntents } from '../cancel.js';
 import { upsertContact, type PhoneKeys } from '../contacts.js';
 import { createIntent } from '../intents.js';
@@ -260,14 +261,18 @@ export async function sweepAppointmentReminders(
   keys: PhoneKeys,
   now: Date,
   limit = 200,
+  /** ADR-0012: only this deployment's region. */
+  dataRegion?: DataRegion,
 ): Promise<ReminderReport> {
   const window = USE_CASE_WINDOWS.appointment_confirm;
   const horizon = addMinutes(now, -window.notBeforeMinutes);
   const candidates = await service
     .select({ id: schema.appointments.id, tenantId: schema.appointments.tenantId })
     .from(schema.appointments)
+    .innerJoin(schema.tenants, eq(schema.tenants.id, schema.appointments.tenantId))
     .where(
       and(
+        inRegion(dataRegion),
         sql`${schema.appointments.status} in ('scheduled','rescheduled')`,
         isNull(schema.appointments.intentId),
         isNull(schema.appointments.erasedAt),

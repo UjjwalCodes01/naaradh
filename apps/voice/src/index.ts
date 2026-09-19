@@ -40,6 +40,7 @@ const app = await buildServer({
   rateLimitPerMinute: env.RATE_LIMIT_PER_MINUTE,
   // ADR-0011: the appointment tools. Without a connected calendar they refuse politely and
   // the agent offers a callback — never a made-up time.
+  dataRegion: env.DATA_REGION,
   calendars: calendarRegistry({ now: () => systemClock.now() }),
   secrets: env.NODE_ENV === 'production' ? secretManagerReader() : inlineSecretReader(),
   logLevel: env.LOG_LEVEL,

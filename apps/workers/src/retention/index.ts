@@ -11,6 +11,7 @@ import {
   emitMerchantEvent,
   eraseAppointments,
   eraseCheckouts,
+  inRegion,
   eraseOrdersPlacedBefore,
   eraseSubject,
   markMediaPurged,
@@ -165,9 +166,11 @@ export interface RetentionReport {
 
 export async function runRetentionOnce(ctx: WorkerContext): Promise<RetentionReport> {
   const now = ctx.clock.now();
+  // ADR-0012: this deployment ages out only the data it holds.
   const tenants = await ctx.service
     .select({ id: schema.tenants.id, retentionDays: schema.tenants.retentionDays })
-    .from(schema.tenants);
+    .from(schema.tenants)
+    .where(inRegion(ctx.dataRegion));
   const report = {
     tenants: tenants.length,
     mediaPurged: 0,

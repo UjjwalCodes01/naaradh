@@ -28,6 +28,8 @@ export interface AdmissionNumber {
 export interface AdmissionTenant {
   readonly id: string;
   readonly status: TenantStatus;
+  /** ADR-0012: a deployment answers only for tenants whose data it holds. */
+  readonly dataRegion?: string;
   readonly billingStatus: BillingStatus;
   readonly billingGraceUntil: Date | null;
 }
@@ -48,6 +50,8 @@ export interface AdmissionInput {
   readonly profile: AdmissionProfile | null;
   /** Null when the caller withheld their number (E-80) — they are admitted, but not rate-keyed. */
   readonly callerHash: string | null;
+  /** The region this deployment serves (ADR-0012). Absent → no region check (tests, dev). */
+  readonly dataRegion?: string;
 }
 
 export interface AdmissionDeps {
@@ -74,6 +78,7 @@ export const INBOUND_REASONS = {
   'inbound:concurrency': 'All agent lines for this merchant are busy.',
   'inbound:abuse': 'This caller has called too many times in the last hour.',
   'inbound:engine_down': 'The voice engine is unavailable.',
+  'inbound:other_region': "This merchant's data lives in another region (ADR-0012).",
 } as const;
 
 export type InboundReason = keyof typeof INBOUND_REASONS;
@@ -172,6 +177,18 @@ export async function admitInbound(
   ) {
     return refuse(2, 'tenant', 'inbound:tenant_inactive', 'forward', { status: t?.status ?? null });
   }
+  // ADR-0012 / E-142: this deployment holds one region's data and answers for no other. The
+  // caller still hears something — a forward or the closed message, never dead air (E-92).
+  if (
+    input.dataRegion !== undefined &&
+    t.dataRegion !== undefined &&
+    t.dataRegion !== input.dataRegion
+  )
+    return refuse(2, 'tenant', 'inbound:other_region', 'forward', {
+      tenant_region: t.dataRegion,
+      deployment_region: input.dataRegion,
+    });
+
   const inGrace =
     t.billingStatus === 'frozen' && t.billingGraceUntil !== null && input.now < t.billingGraceUntil;
   if (t.billingStatus !== 'active' && !inGrace) {

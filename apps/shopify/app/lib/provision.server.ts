@@ -1,5 +1,10 @@
 import { withTenant } from '@naaradh/db';
-import { dataRegionFor, ensureDefaultSetup, provisionShopifyInstall } from '@naaradh/pipeline';
+import {
+  dataRegionFor,
+  ensureDefaultSetup,
+  provisionShopifyInstall,
+  setupLocaleFor,
+} from '@naaradh/pipeline';
 import { billingCurrency, createAdminClient } from '@naaradh/shopify-sdk';
 import { systemClock } from '@naaradh/shared';
 import { db } from './db.server';
@@ -68,7 +73,8 @@ export async function provisionShop(
     ensureDefaultSetup(
       tx,
       { tenantId: r.tenantId, type: 'user', id: `shopify:${shop}` },
-      country === 'IN' ? 'hi-IN' : 'en-IN',
+      // The drafts are written in the language that store's customers speak (ADR-0012 §3).
+      setupLocaleFor(country),
     ),
   );
   return r.tenantId;

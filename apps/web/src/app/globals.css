@@ -1,28 +1,64 @@
 @import 'tailwindcss';
 
+/**
+ * Design tokens for naaradh.com (the marketing site). Tailwind v4 reads `@theme` and generates
+ * the utilities, so `bg-cream`, `text-forest`, `font-hand` all come from here — one place to
+ * change a colour, no hex codes scattered through components.
+ */
+@theme {
+  /* Warm paper the whole site sits on, and the slightly deeper tone for quiet bands. */
+  --color-cream: #f5f2ea;
+  --color-cream-200: #eceadf;
+
+  /* Text. Headings are near-black with a green cast; body is a warm grey. */
+  --color-ink: #111a15;
+  --color-body: #5c6660;
+  --color-muted: #8a918c;
+
+  /* The brand greens: deep for buttons and the footer, bright for accents. */
+  --color-forest: #123d2b;
+  --color-forest-700: #0d2f21;
+  --color-forest-500: #1c5a3f;
+  --color-leaf: #2f8a57;
+
+  /* Pale greens for bands, icon chips and rules. */
+  --color-sage: #e5efe3;
+  --color-sage-100: #eef4ec;
+  --color-mint: #dcefdf;
+  --color-peach: #fbf3e8;
+  --color-line: #e6e3d9;
+  --color-line-soft: #edebe3;
+
+  --font-sans: var(--font-jakarta), var(--font-deva), ui-sans-serif, system-ui, 'Segoe UI', Roboto,
+    'Noto Sans', 'Noto Sans Devanagari', sans-serif;
+  --font-hand: var(--font-caveat), ui-serif, cursive;
+}
+
 :root {
   color-scheme: light;
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    'Noto Sans',
-    'Noto Sans Devanagari',
-    sans-serif;
+  @apply bg-cream text-ink antialiased;
+  font-family: var(--font-sans);
 }
 
+/* The dashboard and legal pages keep their own plain styling on a white ground. */
 .prose-legal h2 {
-  @apply mt-8 mb-2 text-lg font-semibold text-slate-900;
+  @apply mt-8 mb-2 text-lg font-semibold text-ink;
 }
 .prose-legal p,
 .prose-legal li {
-  @apply text-sm leading-6 text-slate-700;
+  @apply text-sm leading-6 text-body;
 }
 .prose-legal ul {
   @apply ml-5 list-disc space-y-1;
+}
+
+/* FAQ rows are native <details>: no JavaScript, works before hydration and without it. */
+.faq-row summary::-webkit-details-marker {
+  display: none;
+}
+.faq-row[open] .faq-plus {
+  transform: rotate(45deg);
 }

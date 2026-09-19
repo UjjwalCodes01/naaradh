@@ -28,6 +28,8 @@ export interface GateDepsConfig {
   readonly engines: EngineConfig;
   readonly engineDailyCapPaise: Readonly<Record<string, number>>;
   readonly globalDailyCapPaise: number | null;
+  /** ADR-0012: the region this deployment serves. Every other region's tenant is refused. */
+  readonly dataRegion?: string;
 }
 
 /**
@@ -53,6 +55,7 @@ export function buildGateDeps(
     () => now,
   );
   return {
+    ...(config.dataRegion === undefined ? {} : { dataRegion: config.dataRegion }),
     engines: enginePort(redis, config.engines),
     killSwitches: killSwitchPort(redis),
     spend: { ...tenant, ...platform },

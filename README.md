@@ -8,6 +8,7 @@ appointment confirmation, lead callback — through the same gate, the same tool
 
 | Read this | For |
 |---|---|
+| [docs/STATUS.md](docs/STATUS.md) | **What is built and what is left, in one document** — start here if you are not writing code |
 | [CLAUDE.md](CLAUDE.md) | The 19 invariants, conventions, definition of done. **Read before editing anything.** |
 | [AGENTS.md](AGENTS.md) | Engineering reference: pipeline behaviour, gate order, contracts |
 | [PLAN.md](PLAN.md) | Phased delivery plan and ticket ids |
@@ -73,9 +74,9 @@ linters honour it.
 | Area | State |
 |---|---|
 | Monorepo, toolchain, CI, lint rules, local services | done |
-| `packages/db` — 28-table Drizzle schema, RLS with `app_tenant_id()` (raises, never silent), role split (app / service / migrator), append-only + immutability + billable + envelope triggers, Neon runbook (ADR-0004), Postgres-as-queue columns (ADR-0005) | done, 31 integration tests |
+| `packages/db` — 46-table Drizzle schema, RLS with `app_tenant_id()` (raises, never silent), role split (app / service / migrator), append-only + immutability + billable + envelope triggers, Neon runbook (ADR-0004), Postgres-as-queue columns (ADR-0005) | done, 31 integration tests |
 | `packages/shared` — phone normalise/hash/mask, RSA-OAEP encrypt (public key at ingestion, private key only in dispatcher/results), signing (Shopify HMAC, merchant webhooks, engine URL tags, API keys), logger redaction, money, clock | done |
-| `packages/compliance` — the 12-step `gateIntent()` with full trace, windows in the recipient's zone (single-zone and coast-to-coast intersection), consent rules by region, `isBillable`, retry policy, Postgres + Redis adapters, consent/suppression/complaint ledger; inbound `admitInbound()`, identity, cancellation and transfer policies | done, 170 regression tests |
+| `packages/compliance` — the 13-step `gateIntent()` with full trace, windows in the recipient's zone (single-zone and coast-to-coast intersection), consent rules by region, `isBillable`, retry policy, Postgres + Redis adapters, consent/suppression/complaint ledger; inbound `admitInbound()`, identity, cancellation and transfer policies | done, 192 regression tests |
 | `packages/scripts` — templates, disclosure validator (invariant 7), E-72 variable sanitiser, prompt renderer (variables never enter the system prompt), extraction schemas | done |
 | `packages/engines` — adapter contract (outbound + inbound/tools surface), deterministic simulator with 19 scenarios (duplicate / out-of-order / missing / unsigned webhooks, 429, 5xx, timeout-after-send) plus an inbound conversation driver, shared contract harness, registry | done, 29 contract tests |
 | `packages/pipeline` — contact upsert, `createIntent` (E-42/46/47/52/72, gated placeholders for E-43/E-26), cancellation, audit scrubbing, merchant-webhook outbox | done, 14 integration tests |

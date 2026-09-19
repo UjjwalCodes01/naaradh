@@ -59,6 +59,13 @@ export const GATE_REASONS = {
     hint: 'Transactional calls continue. Promotional calls start automatically after review.',
     temporary: true,
   },
+  'tenant:other_region': {
+    title: 'Account belongs to another region',
+    explanation:
+      "This account's data lives in another region, and calls are always placed by the deployment that holds it (ADR-0012). Nothing was dialled here.",
+    hint: 'If you are seeing this in production, a request reached the wrong region: check the routing before anything else.',
+    temporary: false,
+  },
   'tenant:promotional_paused': {
     title: 'Promotional calls paused',
     explanation:

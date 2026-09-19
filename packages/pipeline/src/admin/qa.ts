@@ -9,6 +9,7 @@ import {
 } from '@naaradh/compliance';
 import { NaaradhError, addDays, newId } from '@naaradh/shared';
 import { audit } from '../audit.js';
+import { inRegion, type DataRegion } from '../promotional/checkouts.js';
 
 /**
  * Weekly QA sampling (P4-OPS-1, ADR-0010 §11). Every Monday, 2% of last week's human-answered
@@ -64,15 +65,22 @@ export interface QaSampleReport {
  * reviewed and are not eligible; a tenant already sampled for the week is left alone, so late
  * results arriving after the run never change a published sample.
  */
-export async function sampleWeeklyQa(service: Db, now: Date): Promise<QaSampleReport> {
+export async function sampleWeeklyQa(
+  service: Db,
+  now: Date,
+  /** ADR-0012: only this deployment's region. */
+  dataRegion?: DataRegion,
+): Promise<QaSampleReport> {
   const to = weekStart(now);
   const from = addDays(to, -7);
   const week = isoWeekOf(from);
   const calls = await service
     .select({ id: schema.callAttempts.id, tenantId: schema.callAttempts.tenantId })
     .from(schema.callAttempts)
+    .innerJoin(schema.tenants, eq(schema.tenants.id, schema.callAttempts.tenantId))
     .where(
       and(
+        inRegion(dataRegion),
         eq(schema.callAttempts.answeredBy, 'human'),
         isNotNull(schema.callAttempts.endedAt),
         gte(schema.callAttempts.endedAt, from),

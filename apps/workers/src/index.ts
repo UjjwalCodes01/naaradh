@@ -93,6 +93,7 @@ const ctx: WorkerContext = {
         [env.ENGINE_DEFAULT_US]: env.ENGINE_MAX_CONCURRENCY,
       },
     },
+    dataRegion: env.DATA_REGION,
     engineDailyCapPaise: {
       [env.ENGINE_DEFAULT_IN]: env.ENGINE_DAILY_CAP_PAISE,
       [env.ENGINE_DEFAULT_US]: env.ENGINE_DAILY_CAP_PAISE,
@@ -115,6 +116,7 @@ const ctx: WorkerContext = {
     (env.SHOPIFY_WRITEBACK ?? (env.NODE_ENV === 'production' ? 'live' : 'recording')) === 'live'
       ? shopifyWriteback({ secrets: secretsResolver, apiVersion: env.SHOPIFY_ADMIN_API_VERSION })
       : recordingWriteback(),
+  dataRegion: env.DATA_REGION,
   secrets: secretsResolver,
   // ADR-0011: appointment calendars. A cancellation decided on a call reaches the provider
   // through the reconcile tick; without credentials the registry simply refuses.

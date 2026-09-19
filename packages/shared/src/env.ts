@@ -23,6 +23,12 @@ export const baseEnv = {
   GCP_PROJECT: z.string().min(1).default('naaradh-local'),
   GCP_REGION: z.string().min(1).default('asia-south1'),
   /**
+   * The data region this deployment serves (ADR-0012). One deployment, one region: the gate,
+   * inbound admission and every cross-tenant sweep refuse a tenant whose `data_region` differs,
+   * so a misrouted request fails loudly instead of writing personal data across a border.
+   */
+  DATA_REGION: z.enum(['in', 'us', 'eu']).default('in'),
+  /**
    * How many proxies sit in front of the service, i.e. how many trailing X-Forwarded-For
    * entries are ours (Cloud Run's front end + the external HTTPS load balancer = 2). Only that
    * many are trusted when deriving the client IP for rate limits and API-key IP allow-lists;

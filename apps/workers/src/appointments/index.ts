@@ -1,7 +1,7 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { schema, withTenant } from '@naaradh/db';
 import { CalendarUnavailable, type CalendarRef } from '@naaradh/calendar';
-import { audit } from '@naaradh/pipeline';
+import { audit, inRegion } from '@naaradh/pipeline';
 import type { WorkerContext } from '../context.js';
 
 /**
@@ -31,8 +31,10 @@ export async function syncAppointmentsOnce(
       providerRef: schema.appointments.providerRef,
     })
     .from(schema.appointments)
+    .innerJoin(schema.tenants, eq(schema.tenants.id, schema.appointments.tenantId))
     .where(
       and(
+        inRegion(ctx.dataRegion),
         eq(schema.appointments.status, 'cancelled'),
         isNotNull(schema.appointments.providerRef),
         isNotNull(schema.appointments.calendarId),

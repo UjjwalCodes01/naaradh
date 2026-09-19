@@ -439,6 +439,379 @@ export const APPOINTMENT_BOOK_EN_IN: ScriptTemplate = {
   transfer_line: 'Connecting you to the {{brand}} team now, one moment.',
 };
 
+// ---------------------------------------------------------------------------
+// Phase 6 locales (ADR-0012 groundwork, P6-CMP-2). The disclosure lines come from
+// packages/scripts/src/disclosures.ts and the validator enforces them; the rest of the copy is
+// a DRAFT for the merchant to review before approval.
+//
+// `[VERIFY: native review]` — the German, French and Spanish wording was written by an engineer,
+// not a native speaker or a lawyer. Have both read it before any merchant approves it. The
+// English variants differ from en-IN on purpose: no "kindly", no "do the needful", plain dates.
+// ---------------------------------------------------------------------------
+
+export const ABANDONED_CART_EN_US: ScriptTemplate = {
+  use_case: 'abandoned_cart',
+  locale: 'en-US',
+  opening:
+    'Hi {{customer_name}}, this is an automated AI assistant calling on behalf of {{brand}}. This call is being recorded.',
+  purpose_line:
+    'You left {{cart_summary}} in your cart at {{brand}}. Can I help you finish checking out?',
+  branches: [
+    {
+      intent: 'yes',
+      say: 'Great. Your cart is saved — you can check out any time on the {{brand}} website.',
+      outcome: 'will_complete',
+    },
+    {
+      intent: 'wants_link',
+      say: 'Sure. I will let the {{brand}} team know to send you the link to your cart.',
+      outcome: 'will_complete',
+    },
+    {
+      intent: 'later',
+      say: 'No problem, it will be there when you are ready.',
+      outcome: 'will_buy_later',
+    },
+    {
+      intent: 'price',
+      say: 'I understand. I will pass that along to the {{brand}} team.',
+      outcome: 'price_objection',
+    },
+    { intent: 'no', say: 'Understood. Thanks for your time.', outcome: 'not_interested' },
+  ],
+  closing: 'Thanks, and have a good day.',
+  extraction: 'abandoned_cart_v1',
+  max_duration_sec: 150,
+  forbidden_topics: ['otp', 'card', 'upi_pin', 'aadhaar', 'password', 'discount'],
+  facts: [],
+  opt_out_line:
+    'If you would rather not get calls like this, just say "stop calling" and we will not call this number again.',
+};
+
+export const ABANDONED_CART_EN_GB: ScriptTemplate = {
+  ...ABANDONED_CART_EN_US,
+  locale: 'en-GB',
+  opening:
+    'Hello {{customer_name}}, this is an automated AI assistant calling on behalf of {{brand}}. This call is being recorded.',
+  purpose_line:
+    'You left {{cart_summary}} in your basket at {{brand}}. Can I help you finish your order?',
+  branches: [
+    {
+      intent: 'yes',
+      say: 'Lovely. Your basket is saved — you can check out whenever suits you on the {{brand}} website.',
+      outcome: 'will_complete',
+    },
+    {
+      intent: 'wants_link',
+      say: 'Of course. I will let the {{brand}} team know to send you the link to your basket.',
+      outcome: 'will_complete',
+    },
+    {
+      intent: 'later',
+      say: 'No problem, it will be there when you are ready.',
+      outcome: 'will_buy_later',
+    },
+    {
+      intent: 'price',
+      say: 'I understand. I will pass that on to the {{brand}} team.',
+      outcome: 'price_objection',
+    },
+    { intent: 'no', say: 'Understood. Thank you for your time.', outcome: 'not_interested' },
+  ],
+  closing: 'Thank you, and have a good day.',
+};
+
+export const ABANDONED_CART_DE_DE: ScriptTemplate = {
+  use_case: 'abandoned_cart',
+  locale: 'de-DE',
+  opening:
+    'Guten Tag {{customer_name}}, hier ist ein automatisierter KI-Assistent im Auftrag von {{brand}}. Dieses Gespräch wird aufgezeichnet.',
+  purpose_line:
+    'Sie haben {{cart_summary}} in Ihrem Warenkorb bei {{brand}} gelassen. Kann ich Ihnen helfen, die Bestellung abzuschließen?',
+  branches: [
+    {
+      intent: 'yes',
+      say: 'Sehr gern. Ihr Warenkorb ist gespeichert — Sie können die Bestellung jederzeit auf der Website von {{brand}} abschließen.',
+      outcome: 'will_complete',
+    },
+    {
+      intent: 'wants_link',
+      say: 'Natürlich. Ich sage dem Team von {{brand}} Bescheid, dass Sie den Link zu Ihrem Warenkorb möchten.',
+      outcome: 'will_complete',
+    },
+    {
+      intent: 'later',
+      say: 'Kein Problem, der Warenkorb bleibt gespeichert.',
+      outcome: 'will_buy_later',
+    },
+    {
+      intent: 'price',
+      say: 'Das verstehe ich. Ich gebe das an das Team von {{brand}} weiter.',
+      outcome: 'price_objection',
+    },
+    { intent: 'no', say: 'Alles klar. Vielen Dank für Ihre Zeit.', outcome: 'not_interested' },
+  ],
+  closing: 'Vielen Dank und einen schönen Tag.',
+  extraction: 'abandoned_cart_v1',
+  max_duration_sec: 150,
+  forbidden_topics: ['otp', 'card', 'upi_pin', 'aadhaar', 'password', 'discount'],
+  facts: [],
+  opt_out_line:
+    'Wenn Sie keine solchen Anrufe wünschen, sagen Sie einfach "nicht mehr anrufen" — dann rufen wir diese Nummer nicht wieder an.',
+};
+
+export const ABANDONED_CART_FR_FR: ScriptTemplate = {
+  use_case: 'abandoned_cart',
+  locale: 'fr-FR',
+  opening:
+    'Bonjour {{customer_name}}, je suis un assistant IA automatisé qui appelle de la part de {{brand}}. Cet appel est enregistré.',
+  purpose_line:
+    'Vous avez laissé {{cart_summary}} dans votre panier chez {{brand}}. Puis-je vous aider à finaliser votre commande ?',
+  branches: [
+    {
+      intent: 'yes',
+      say: 'Très bien. Votre panier est conservé — vous pouvez finaliser la commande quand vous voulez sur le site de {{brand}}.',
+      outcome: 'will_complete',
+    },
+    {
+      intent: 'wants_link',
+      say: "Bien sûr. Je préviens l'équipe de {{brand}} pour qu'elle vous envoie le lien vers votre panier.",
+      outcome: 'will_complete',
+    },
+    {
+      intent: 'later',
+      say: 'Pas de souci, votre panier vous attend.',
+      outcome: 'will_buy_later',
+    },
+    {
+      intent: 'price',
+      say: "Je comprends. Je transmets votre remarque à l'équipe de {{brand}}.",
+      outcome: 'price_objection',
+    },
+    { intent: 'no', say: 'Très bien. Merci de votre temps.', outcome: 'not_interested' },
+  ],
+  closing: 'Merci et bonne journée.',
+  extraction: 'abandoned_cart_v1',
+  max_duration_sec: 150,
+  forbidden_topics: ['otp', 'card', 'upi_pin', 'aadhaar', 'password', 'discount'],
+  facts: [],
+  opt_out_line:
+    'Si vous ne souhaitez plus recevoir ce type d\'appel, dites simplement "ne plus appeler" et nous ne rappellerons pas ce numéro.',
+};
+
+export const ABANDONED_CART_ES_ES: ScriptTemplate = {
+  use_case: 'abandoned_cart',
+  locale: 'es-ES',
+  opening:
+    'Hola {{customer_name}}, soy un asistente de IA automatizado que llama de parte de {{brand}}. Esta llamada está siendo grabada.',
+  purpose_line:
+    'Dejaste {{cart_summary}} en tu cesta de {{brand}}. ¿Puedo ayudarte a terminar el pedido?',
+  branches: [
+    {
+      intent: 'yes',
+      say: 'Perfecto. Tu cesta está guardada — puedes terminar el pedido cuando quieras en la web de {{brand}}.',
+      outcome: 'will_complete',
+    },
+    {
+      intent: 'wants_link',
+      say: 'Claro. Aviso al equipo de {{brand}} para que te envíe el enlace a tu cesta.',
+      outcome: 'will_complete',
+    },
+    {
+      intent: 'later',
+      say: 'Sin problema, la cesta te espera.',
+      outcome: 'will_buy_later',
+    },
+    {
+      intent: 'price',
+      say: 'Lo entiendo. Se lo comento al equipo de {{brand}}.',
+      outcome: 'price_objection',
+    },
+    { intent: 'no', say: 'De acuerdo. Gracias por tu tiempo.', outcome: 'not_interested' },
+  ],
+  closing: 'Gracias y que tengas un buen día.',
+  extraction: 'abandoned_cart_v1',
+  max_duration_sec: 150,
+  forbidden_topics: ['otp', 'card', 'upi_pin', 'aadhaar', 'password', 'discount'],
+  facts: [],
+  opt_out_line:
+    'Si prefieres no recibir estas llamadas, di "no me llaméis" y no volveremos a llamar a este número.',
+};
+
+export const APPOINTMENT_CONFIRM_EN_US: ScriptTemplate = {
+  ...APPOINTMENT_CONFIRM_EN_IN,
+  locale: 'en-US',
+  opening:
+    'Hi {{customer_name}}, this is an automated AI assistant calling on behalf of {{brand}}. This call is being recorded.',
+  purpose_line: 'You have {{service}} scheduled for {{date}} at {{time}}. Can I confirm that?',
+};
+
+export const APPOINTMENT_CONFIRM_EN_GB: ScriptTemplate = {
+  ...APPOINTMENT_CONFIRM_EN_IN,
+  locale: 'en-GB',
+  opening:
+    'Hello {{customer_name}}, this is an automated AI assistant calling on behalf of {{brand}}. This call is being recorded.',
+  purpose_line: 'You have {{service}} booked for {{date}} at {{time}}. Shall I confirm that?',
+};
+
+export const APPOINTMENT_CONFIRM_DE_DE: ScriptTemplate = {
+  use_case: 'appointment_confirm',
+  locale: 'de-DE',
+  opening:
+    'Guten Tag {{customer_name}}, hier ist ein automatisierter KI-Assistent im Auftrag von {{brand}}. Dieses Gespräch wird aufgezeichnet.',
+  purpose_line:
+    'Sie haben einen Termin für {{service}} am {{date}} um {{time}}. Soll ich den Termin bestätigen?',
+  branches: [
+    {
+      intent: 'yes',
+      say: 'Der Termin ist bestätigt, vielen Dank. Bitte kommen Sie ein paar Minuten früher.',
+      outcome: 'confirmed',
+    },
+    {
+      intent: 'reschedule',
+      say: 'Selbstverständlich. Ich sehe nach, welche Zeiten frei sind.',
+      outcome: 'rescheduled',
+      ask: 'Welcher dieser Termine passt Ihnen am besten?',
+    },
+    {
+      intent: 'cancel',
+      say: 'Kein Problem, ich storniere den Termin. Sie können jederzeit einen neuen buchen.',
+      outcome: 'cancelled',
+    },
+    {
+      intent: 'clinical',
+      say: 'Zu medizinischen Fragen kann ich nichts sagen. Ich gebe das an das Team von {{brand}} weiter, man wird Sie zurückrufen.',
+      outcome: 'needs_merchant_action',
+    },
+    {
+      intent: 'human',
+      say: 'Ich verbinde Sie mit dem Team von {{brand}}.',
+      outcome: 'transferred',
+    },
+  ],
+  closing: 'Vielen Dank, bis dahin.',
+  extraction: 'appointment_v1',
+  max_duration_sec: 240,
+  forbidden_topics: [
+    'otp',
+    'card',
+    'upi_pin',
+    'aadhaar',
+    'password',
+    'diagnosis',
+    'prescription',
+    'test_results',
+    'medical_advice',
+  ],
+  facts: [],
+  transfer_line: 'Ich verbinde Sie jetzt mit dem Team von {{brand}}, einen Moment bitte.',
+};
+
+export const APPOINTMENT_CONFIRM_FR_FR: ScriptTemplate = {
+  use_case: 'appointment_confirm',
+  locale: 'fr-FR',
+  opening:
+    'Bonjour {{customer_name}}, je suis un assistant IA automatisé qui appelle de la part de {{brand}}. Cet appel est enregistré.',
+  purpose_line:
+    'Vous avez un rendez-vous pour {{service}} le {{date}} à {{time}}. Puis-je le confirmer ?',
+  branches: [
+    {
+      intent: 'yes',
+      say: "C'est confirmé, merci. Merci d'arriver quelques minutes en avance.",
+      outcome: 'confirmed',
+    },
+    {
+      intent: 'reschedule',
+      say: 'Bien sûr. Je regarde les créneaux disponibles.',
+      outcome: 'rescheduled',
+      ask: 'Lequel de ces créneaux vous convient le mieux ?',
+    },
+    {
+      intent: 'cancel',
+      say: "Pas de problème, j'annule le rendez-vous. Vous pourrez en reprendre un quand vous voudrez.",
+      outcome: 'cancelled',
+    },
+    {
+      intent: 'clinical',
+      say: "Je ne peux pas répondre aux questions médicales. Je transmets votre demande à l'équipe de {{brand}}, qui vous rappellera.",
+      outcome: 'needs_merchant_action',
+    },
+    {
+      intent: 'human',
+      say: "Je vous mets en relation avec l'équipe de {{brand}}.",
+      outcome: 'transferred',
+    },
+  ],
+  closing: 'Merci, à bientôt.',
+  extraction: 'appointment_v1',
+  max_duration_sec: 240,
+  forbidden_topics: [
+    'otp',
+    'card',
+    'upi_pin',
+    'aadhaar',
+    'password',
+    'diagnosis',
+    'prescription',
+    'test_results',
+    'medical_advice',
+  ],
+  facts: [],
+  transfer_line: "Je vous mets en relation avec l'équipe de {{brand}}, un instant.",
+};
+
+export const APPOINTMENT_CONFIRM_ES_ES: ScriptTemplate = {
+  use_case: 'appointment_confirm',
+  locale: 'es-ES',
+  opening:
+    'Hola {{customer_name}}, soy un asistente de IA automatizado que llama de parte de {{brand}}. Esta llamada está siendo grabada.',
+  purpose_line: 'Tienes una cita para {{service}} el {{date}} a las {{time}}. ¿La confirmo?',
+  branches: [
+    {
+      intent: 'yes',
+      say: 'Confirmada, gracias. Ven unos minutos antes, por favor.',
+      outcome: 'confirmed',
+    },
+    {
+      intent: 'reschedule',
+      say: 'Por supuesto. Miro qué horas hay libres.',
+      outcome: 'rescheduled',
+      ask: '¿Cuál de estas horas te viene mejor?',
+    },
+    {
+      intent: 'cancel',
+      say: 'Sin problema, la cancelo. Puedes pedir otra cita cuando quieras.',
+      outcome: 'cancelled',
+    },
+    {
+      intent: 'clinical',
+      say: 'No puedo dar consejo médico. Se lo paso al equipo de {{brand}} y te llamarán.',
+      outcome: 'needs_merchant_action',
+    },
+    {
+      intent: 'human',
+      say: 'Te paso con el equipo de {{brand}}.',
+      outcome: 'transferred',
+    },
+  ],
+  closing: 'Gracias, nos vemos.',
+  extraction: 'appointment_v1',
+  max_duration_sec: 240,
+  forbidden_topics: [
+    'otp',
+    'card',
+    'upi_pin',
+    'aadhaar',
+    'password',
+    'diagnosis',
+    'prescription',
+    'test_results',
+    'medical_advice',
+  ],
+  facts: [],
+  transfer_line: 'Te paso con el equipo de {{brand}}, un momento.',
+};
+
 export const DEFAULT_TEMPLATES: readonly ScriptTemplate[] = [
   COD_CONFIRM_HI_IN,
   COD_CONFIRM_EN_IN,
@@ -450,4 +823,15 @@ export const DEFAULT_TEMPLATES: readonly ScriptTemplate[] = [
   APPOINTMENT_CONFIRM_HI_IN,
   APPOINTMENT_CONFIRM_EN_IN,
   APPOINTMENT_BOOK_EN_IN,
+  // Phase 6 locales — drafts, and the non-English ones need a native review.
+  ABANDONED_CART_EN_US,
+  ABANDONED_CART_EN_GB,
+  ABANDONED_CART_DE_DE,
+  ABANDONED_CART_FR_FR,
+  ABANDONED_CART_ES_ES,
+  APPOINTMENT_CONFIRM_EN_US,
+  APPOINTMENT_CONFIRM_EN_GB,
+  APPOINTMENT_CONFIRM_DE_DE,
+  APPOINTMENT_CONFIRM_FR_FR,
+  APPOINTMENT_CONFIRM_ES_ES,
 ];

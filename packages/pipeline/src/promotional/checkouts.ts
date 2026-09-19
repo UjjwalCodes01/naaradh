@@ -30,6 +30,16 @@ import { isKnownConsentWording } from './consent-wording.js';
  */
 export type CheckoutSource = string;
 
+/**
+ * ADR-0012: a cross-tenant sweep reads only the region this deployment holds. Passing no region
+ * (tests, and the single-region deployment today) reads every tenant, as before.
+ */
+export type DataRegion = (typeof schema.dataRegion.enumValues)[number];
+
+export function inRegion(dataRegion: DataRegion | undefined) {
+  return dataRegion === undefined ? sql`true` : eq(schema.tenants.dataRegion, dataRegion);
+}
+
 /** The `intent_source` enum value for a cart source; anything unknown is plain `api`. */
 export function intentSourceFor(source: string): 'shopify' | 'woocommerce' | 'api' {
   return source === 'shopify' ? 'shopify' : source === 'woocommerce' ? 'woocommerce' : 'api';
@@ -420,16 +430,20 @@ export async function sweepAbandonedCheckouts(
   keys: PhoneKeys,
   now: Date,
   limit = 200,
+  /** ADR-0012: only this deployment's region. Absent → every tenant (single-region today). */
+  dataRegion?: DataRegion,
 ): Promise<SweepReport> {
   const idleBefore = addMinutes(now, -ABANDONED_CART_IDLE_MINUTES);
   const candidates = await service
     .select({ id: schema.checkouts.id, tenantId: schema.checkouts.tenantId })
     .from(schema.checkouts)
+    .innerJoin(schema.tenants, eq(schema.tenants.id, schema.checkouts.tenantId))
     .where(
       and(
         eq(schema.checkouts.status, 'open'),
         lte(schema.checkouts.sourceUpdatedAt, idleBefore),
         isNull(schema.checkouts.erasedAt),
+        inRegion(dataRegion),
       ),
     )
     .orderBy(schema.checkouts.sourceUpdatedAt)

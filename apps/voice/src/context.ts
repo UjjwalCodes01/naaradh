@@ -38,5 +38,7 @@ export interface VoiceDeps {
   readonly calendars?: CalendarRegistry;
   /** Reads `calendars.credentials_secret_ref`. Absent → no provider call is attempted. */
   readonly secrets?: { resolve(ref: string): Promise<string> };
+  /** The data region this deployment serves (ADR-0012); absent → no region check. */
+  readonly dataRegion?: string;
   readonly logLevel?: string;
 }

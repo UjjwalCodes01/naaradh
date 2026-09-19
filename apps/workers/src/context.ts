@@ -4,7 +4,7 @@ import type { Clock, Logger } from '@naaradh/shared';
 import type { EngineRegistry } from '@naaradh/engines-registry';
 import type { CalendarRegistry } from '@naaradh/calendar';
 import type { DndProvider, GateDepsConfig } from '@naaradh/compliance';
-import type { PhoneKeys } from '@naaradh/pipeline';
+import type { DataRegion, PhoneKeys } from '@naaradh/pipeline';
 import type { RecordingStore } from './results/recordings.js';
 import type { ShopifyWriteback } from './results/writeback.js';
 import type { RazorpayClient } from '@naaradh/payments';
@@ -52,4 +52,6 @@ export interface WorkerContext {
    * decided on a call is not pushed to the provider.
    */
   readonly calendars?: CalendarRegistry;
+  /** The data region this deployment serves (ADR-0012); absent → every tenant. */
+  readonly dataRegion?: DataRegion;
 }

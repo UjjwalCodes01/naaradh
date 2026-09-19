@@ -377,6 +377,8 @@ export async function runReconcile(
         ctx.app,
         ctx.keys,
         ctx.clock.now(),
+        undefined,
+        ctx.dataRegion,
       );
       if (reminders.considered > 0) ctx.log.info(reminders, 'appointment reminder sweep');
       const calendarSync = await syncAppointmentsOnce(ctx);

@@ -12,7 +12,7 @@ export async function runQaWeekly(ctx: WorkerContext, now: Date): Promise<QaSamp
   const got = await ctx.redis.set(key, ctx.workerId, 'EX', 8 * 24 * 3600, 'NX');
   if (got !== 'OK') return null;
   try {
-    return await sampleWeeklyQa(ctx.service, now);
+    return await sampleWeeklyQa(ctx.service, now, ctx.dataRegion);
   } catch (error) {
     await ctx.redis.del(key);
     throw error;

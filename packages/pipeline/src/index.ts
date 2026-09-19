@@ -282,6 +282,7 @@ export {
 export {
   CHECKOUT_OPEN_STATUSES,
   convertCheckouts,
+  inRegion,
   intentSourceFor,
   eraseCheckouts,
   recordCheckout,
@@ -289,6 +290,7 @@ export {
   sweepAbandonedCheckouts,
   type CheckoutInput,
   type CheckoutSource,
+  type DataRegion,
   type RecordCheckoutResult,
   type SweepReport,
 } from './promotional/checkouts.js';
@@ -384,7 +386,7 @@ export {
   shopifySubscriptionTerms,
   type ShopifySubscriptionTerms,
 } from './billing/shopify-subscribe.js';
-export { ensureDefaultSetup } from './dashboard/setup.js';
+export { ensureDefaultSetup, setupLocaleFor, type SetupLocale } from './dashboard/setup.js';
 // Key rotation jobs (docs/runbooks/secret-rotation.md)
 export {
   CUSTOMER_PHONE_COLUMNS,
