@@ -173,10 +173,10 @@ function Bubble({
 function CallScene() {
   return (
     <div
-      className="relative mx-auto h-[270px] w-[342px] sm:h-[450px] sm:w-[560px] 2xl:h-[540px] 2xl:w-[672px]"
+      className="relative mx-auto h-[275px] w-[342px] sm:h-[466px] sm:w-[580px] lg:h-[370px] lg:w-[460px] xl:h-[482px] xl:w-[600px] 2xl:h-[595px] 2xl:w-[740px] min-[1800px]:h-[691px] min-[1800px]:w-[860px]"
       aria-hidden
     >
-      <div className="absolute top-0 left-0 h-[450px] w-[560px] origin-top-left scale-[0.61] sm:scale-100 2xl:scale-[1.2]">
+      <div className="absolute top-0 left-0 h-[450px] w-[560px] origin-top-left scale-[0.611] sm:scale-[1.036] lg:scale-[0.821] xl:scale-[1.071] 2xl:scale-[1.321] min-[1800px]:scale-[1.536]">
         {/* the phone */}
         <div className="absolute top-0 left-1/2 flex h-[440px] w-[232px] -translate-x-1/2 flex-col items-center rounded-[40px] border-[7px] border-[#1b211e] bg-[#0f1311] px-5 pt-4 pb-6 text-white shadow-[0_40px_80px_-30px_rgba(17,26,21,0.55)]">
           <div className="flex w-full items-center justify-between text-[10px] text-white/60">
@@ -378,19 +378,23 @@ export default function ProductPage() {
     <>
       {/* ---- hero ---------------------------------------------------------------- */}
       <section className="flex min-h-[calc(100svh-72px)] items-center overflow-x-clip py-10 lg:py-12">
-        <div className={`${WRAP} grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr]`}>
+        <div
+          className={`${WRAP} grid grid-cols-[minmax(0,1fr)] items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] xl:gap-16`}
+        >
           <div>
             <Eyebrow>Products</Eyebrow>
-            <h1 className="mt-6 text-[2.5rem] leading-[1.06] font-extrabold tracking-[-0.03em] text-ink sm:text-[3.1rem] lg:text-[2.9rem] xl:text-[3.2rem] 2xl:text-[3.6rem]">
+            <h1 className="mt-6 text-[2.7rem] leading-[1.05] font-extrabold tracking-[-0.03em] text-ink sm:text-[3.7rem] lg:text-[3.4rem] xl:text-[3.9rem] 2xl:text-[4.4rem]">
               Two products.
               <br />
-              One reliable <span className="text-leaf">AI voice agent.</span>
+              One reliable
+              <br />
+              <span className="text-leaf">AI voice agent.</span>
             </h1>
-            <p className="mt-7 max-w-xl text-[16px] leading-relaxed text-body xl:text-[18px] 2xl:max-w-2xl 2xl:text-[19px]">
+            <p className="mt-7 max-w-xl text-[17px] leading-relaxed text-body xl:max-w-2xl xl:text-[19px] 2xl:text-[21px]">
               Naaradh handles the phone, so you can focus on growing your brand. Choose one product
               or use both — built for Indian ecommerce, with compliance at the core.
             </p>
-            <div className="mt-9 flex flex-wrap gap-3">
+            <div className="mt-10 flex flex-wrap gap-4">
               <Button href={LINKS.shopifyInstall} size="lg" arrow>
                 Install on Shopify
               </Button>
