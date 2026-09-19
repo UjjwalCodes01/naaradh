@@ -58,7 +58,7 @@ const WHY: readonly { Icon: Icon; title: string; body: string }[] = [
   {
     Icon: ShieldIcon,
     title: 'Built for compliance',
-    body: 'Follows Indian telecom rules: calling hours, DND, consent and disclosure.',
+    body: 'Built around Indian telecom rules: calling hours, DND, consent and disclosure.',
   },
   {
     Icon: RupeeIcon,
@@ -92,7 +92,7 @@ const FAQS = [
   },
   {
     q: 'Is it compliant with Indian telecom regulations?',
-    a: 'It is built around them: calls only between 9 a.m. and 9 p.m., DND checks, recorded consent for marketing calls, and every call opens by saying it is an AI and that it is recorded. Opt-outs are permanent.',
+    a: 'It is built around them: calls only between 9 a.m. and 9 p.m., DND checks, recorded consent for marketing calls, and every call opens by saying it is an AI and that it is recorded. A customer who says no is not called for that reason again for at least 90 days, and a number on our do-not-call list is never called.',
   },
   {
     q: 'Can I customize the voice and language?',

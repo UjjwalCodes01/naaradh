@@ -1,5 +1,6 @@
 import Image from 'next/image';
-import { PLANS, formatMinor, type Plan } from '@naaradh/pipeline';
+import { PLANS, type Plan } from '@naaradh/pipeline';
+import { rupees } from '@/lib/money';
 import { LINKS } from '@/lib/site-links';
 import {
   ArrowRightIcon,
@@ -49,12 +50,12 @@ const PRODUCTS = [
   {
     Icon: PhoneCallIcon,
     title: 'AI Customer Support Line',
-    body: 'Answers your store’s phone line 24/7. Handles order tracking, address changes, returns, policies and more. Passes to your team when needed.',
+    body: 'Answers your store’s phone line 24/7. Handles order tracking, returns and policy questions, and takes address changes as tickets. Passes to your team when needed.',
     points: [
       'Natural, human-like conversations',
       'Answers common questions',
       'Raises a ticket if needed',
-      'Handoff to human during hours',
+      'Hands over to your team during working hours',
     ],
   },
   {
@@ -63,7 +64,7 @@ const PRODUCTS = [
     body: 'Calls your customers before shipping to confirm cash-on-delivery orders. Helps you reduce RTOs and save on shipping costs.',
     points: [
       'Verifies order & delivery details',
-      'Can cancel unshipped COD orders',
+      'Cancels unshipped COD orders on request, if you allow it',
       'Only calls within allowed hours',
       'Respects DND and consent rules',
     ],
@@ -83,7 +84,7 @@ const USE_CASES = [
   {
     Icon: ChatIcon,
     title: 'Post-delivery feedback',
-    body: 'Understand your customers and improve.',
+    body: 'Hear how it went after delivery (with consent).',
   },
   {
     Icon: CalendarIcon,
@@ -123,7 +124,7 @@ const COMPLIANCE = [
   [
     { Icon: ClockIcon, label: 'Calls only 9 a.m. – 9 p.m.' },
     { Icon: ShieldIcon, label: 'Checks DND registry' },
-    { Icon: DocIcon, label: 'Calls only with recorded consent' },
+    { Icon: DocIcon, label: 'Marketing calls only with recorded consent' },
   ],
   [
     { Icon: WaveIcon, label: 'Clearly announces it’s an AI' },
@@ -139,11 +140,11 @@ const FAQS = [
   },
   {
     q: 'Is my customer data safe?',
-    a: 'Phone numbers are encrypted and stored as one-way hashes for lookups; nobody at Naaradh can read a customer’s number out of the database. Every merchant’s data is isolated at the database level, and every time a recording or transcript is opened it is written to an access log you can read.',
+    a: 'Phone numbers are stored encrypted, and we look customers up by a one-way hash, so numbers never appear in our logs or exports. Every merchant’s data is isolated at the database level, and every time a recording or transcript is opened it is written to an access log you can read.',
   },
   {
     q: 'Do you call without consent?',
-    a: 'Never for marketing. Abandoned-cart and feedback calls go only to people who ticked Naaradh’s own consent box, and the wording they agreed to is stored with the record. Order confirmations are calls about an order the customer placed with you. Anyone can opt out on the call or on our do-not-call page, and that is permanent.',
+    a: 'Never for marketing. Cart-recovery and feedback calls go only to people who gave recorded consent, and the exact wording they agreed to is stored with it. Order confirmations are calls about an order the customer just placed with you. Anyone who says no on a call is not called for that reason again for at least 90 days, and a number registered on our do-not-call page is never called again.',
   },
   {
     q: 'What languages are supported?',
@@ -151,22 +152,19 @@ const FAQS = [
   },
   {
     q: 'How does pricing work?',
-    a: 'Outbound calls are billed only when a person answered and gave a definitive answer — confirmed, cancelled, rescheduled or booked. No answer, voicemail, a wrong number or an unclear call is never billed. The support line is billed per connected minute. You set a monthly spending cap and calls pause at it.',
+    a: 'Outbound calls are billed only when a person answered and gave a definitive answer — confirmed, confirmed with changes, cancelled, rescheduled or booked. No answer, voicemail, a wrong number or an unclear call is never billed. The support line is billed per connected minute. You set a monthly spending cap and calls pause at it.',
   },
 ] as const;
 
 /** ₹1,999 rather than ₹1999.00 when the fee is a whole number of rupees. */
 function monthlyFee(plan: Plan | undefined): string {
-  const minor = plan?.prices.INR.feeMinor ?? 0;
-  return minor % 100 === 0
-    ? `₹${(minor / 100).toLocaleString('en-IN')}`
-    : formatMinor(minor, 'INR');
+  return rupees(plan?.prices.INR.feeMinor ?? 0);
 }
 
 function planLine(plan: Plan | undefined): string {
   return plan === undefined
     ? ''
-    : `${String(plan.prices.INR.includedUnits)} ${plan.unit === 'outcome' ? 'confirmed outcomes' : 'minutes'} / month`;
+    : `${plan.prices.INR.includedUnits.toLocaleString('en-IN')} ${plan.unit === 'outcome' ? 'confirmed outcomes' : 'minutes'} / month`;
 }
 
 function Pill({ children }: { children: string }) {
@@ -229,8 +227,8 @@ export default function Home() {
               width={1345}
               height={884}
               priority
-              sizes="(max-width: 1024px) 100vw, 60vw"
-              className="h-auto w-full 2xl:w-[110%] 2xl:max-w-none"
+              sizes="(max-width: 1024px) 100vw, 70vw"
+              className="h-auto w-full max-w-none xl:-ml-[7%] xl:w-[122%] min-[1800px]:-ml-[12%] min-[1800px]:w-[130%]"
             />
           </div>
         </div>
@@ -331,7 +329,7 @@ export default function Home() {
                 <br className="hidden sm:block" /> order confirmations.
               </>
             }
-            body="Naaradh can also call customers who abandoned a cart (with consent), collect feedback after delivery, and remind people about appointments."
+            body="With their consent, Naaradh can also call customers who left a cart behind or ask for feedback after delivery. It can remind people about appointments too."
           >
             <div className="mt-9">
               <Button href={LINKS.useCases} size="lg" variant="secondary" arrow>
@@ -412,7 +410,7 @@ export default function Home() {
                 <br className="hidden sm:block" /> By design.
               </>
             }
-            body="Naaradh follows Indian telecom rules and industry best practices, so your business stays safe."
+            body="Naaradh is built around Indian telecom rules and industry best practice: calling hours, DND, consent and disclosure are checked on every call."
           >
             <div className="mt-9">
               <Button href={LINKS.compliance} size="lg" variant="secondary" arrow>
@@ -525,7 +523,7 @@ export default function Home() {
                 <br className="hidden sm:block" /> with your business.
               </>
             }
-            body="Clear pricing. No hidden fees."
+            body={`Clear pricing. No hidden fees. Confirmation calls below; the 24/7 support line is priced separately, from ${monthlyFee(PLANS['inbound_starter'])} a month.`}
           >
             <div className="mt-9">
               <Button href={LINKS.pricing} size="lg" variant="secondary" arrow>
@@ -545,9 +543,9 @@ export default function Home() {
                 <span className="text-[16px] font-medium tracking-normal text-muted"> / month</span>
               </p>
               <ul className="mt-7 mb-9 space-y-3.5">
-                <Tick>AI support line</Tick>
-                <Tick>COD order confirmation</Tick>
+                <Tick>COD order confirmation calls</Tick>
                 <Tick>{planLine(starter)}</Tick>
+                <Tick>Billed only on a clear answer</Tick>
               </ul>
               <Button
                 href={LINKS.shopifyInstall}
@@ -574,7 +572,7 @@ export default function Home() {
               </p>
               <ul className="mt-7 mb-9 space-y-3.5">
                 <Tick>Everything in Starter</Tick>
-                <Tick>Higher call limits</Tick>
+                <Tick>{planLine(growth)}</Tick>
                 <Tick>Priority support</Tick>
               </ul>
               <Button href={LINKS.shopifyInstall} size="lg" arrow className="mt-auto w-full">

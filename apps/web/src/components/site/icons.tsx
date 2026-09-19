@@ -352,6 +352,46 @@ export function EndCallIcon(props: IconProps) {
   );
 }
 
+export function TagIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3.5 12.2V4.5a1 1 0 0 1 1-1h7.7l8.3 8.3a1.4 1.4 0 0 1 0 2l-6.7 6.7a1.4 1.4 0 0 1-2 0L3.5 12.2Z" />
+      <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+/** A dial with the needle short of the top: "your spending cap". */
+export function GaugeIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 17a8 8 0 1 1 16 0" />
+      <path d="m12 17 3.5-5" strokeWidth="1.9" />
+      <circle cx="12" cy="17" r="1.3" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+export function BuildingIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5 20.5V4.5a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v16" />
+      <path d="M3.5 20.5h17M9 7.5h1.5M13.5 7.5H15M9 11h1.5M13.5 11H15M9 14.5h1.5M13.5 14.5H15" />
+      <path d="M10.5 20.5v-3h3v3" />
+    </svg>
+  );
+}
+
+export function UsersIcon(props: IconProps) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="9" cy="8.5" r="3.3" />
+      <path d="M3 19.5a6 6 0 0 1 12 0" />
+      <path d="M15.5 5.4a3.3 3.3 0 0 1 0 6.2M17.5 14a6 6 0 0 1 3.5 5.5" />
+    </svg>
+  );
+}
+
 export function PlusIcon(props: IconProps) {
   return (
     <svg {...base} {...props}>

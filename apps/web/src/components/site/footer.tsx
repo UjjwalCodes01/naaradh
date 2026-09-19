@@ -7,12 +7,12 @@ const COLUMNS = [
   {
     heading: 'Product',
     links: [
-      { href: '/#products', label: 'Features' },
+      { href: '/product', label: 'Features' },
       { href: LINKS.pricing, label: 'Pricing' },
       { href: '/#integrations', label: 'Shopify App' },
       { href: '/#integrations', label: 'WooCommerce' },
+      { href: LINKS.talkToUs, label: 'REST API' },
     ],
-    muted: 'API (Coming Soon)',
   },
   {
     heading: 'Company',
@@ -92,9 +92,6 @@ export function SiteFooter() {
                     </Link>
                   </li>
                 ))}
-                {'muted' in column ? (
-                  <li className="text-[15px] text-cream/40">{column.muted}</li>
-                ) : null}
               </ul>
             </div>
           ))}
@@ -125,7 +122,7 @@ export function SiteFooter() {
                 </button>
               </div>
             </form>
-            <p className="mt-3 text-[14px] text-cream/55">We’ll only send important updates.</p>
+            <p className="mt-3 text-[14px] text-cream/55">We’ll get back to you personally.</p>
           </div>
         </div>
 
