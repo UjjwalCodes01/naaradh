@@ -209,3 +209,43 @@ export function parseExtraction(name: string, raw: unknown): ParseExtractionResu
     value: r.data as { outcome: string; confidence: number } & Record<string, unknown>,
   };
 }
+
+/**
+ * An extraction schema as flat JSON Schema, for engines that collect the result themselves
+ * (Retell's post-call analysis, P6-ENG-1). Our schemas are flat objects of enums, strings,
+ * numbers and booleans; anything else is a programming error and throws at agent creation, not
+ * on a live call. The engine's answer is still validated with `parseExtraction` afterwards.
+ */
+export type ExtractionJsonSchema = {
+  readonly type: 'object';
+  readonly properties: Readonly<
+    Record<
+      string,
+      | { readonly type: 'string'; readonly enum: readonly string[] }
+      | { readonly type: 'string' | 'number' | 'integer' | 'boolean' }
+    >
+  >;
+  readonly required: readonly string[];
+};
+
+export function extractionJsonSchema(name: string): ExtractionJsonSchema {
+  const schema = (EXTRACTION_SCHEMAS as Record<string, z.ZodTypeAny | undefined>)[name];
+  if (schema === undefined || !(schema instanceof z.ZodObject))
+    throw new Error(`unknown extraction schema ${name}`);
+  const properties: Record<string, ExtractionJsonSchema['properties'][string]> = {};
+  const required: string[] = [];
+  for (const [key, raw] of Object.entries(schema.shape as Record<string, z.ZodTypeAny>)) {
+    let field = raw;
+    const optional = field instanceof z.ZodOptional;
+    if (field instanceof z.ZodOptional) field = field.unwrap() as z.ZodTypeAny;
+    if (field instanceof z.ZodEnum)
+      properties[key] = { type: 'string', enum: field.options as string[] };
+    else if (field instanceof z.ZodString) properties[key] = { type: 'string' };
+    else if (field instanceof z.ZodNumber)
+      properties[key] = { type: field.isInt ? 'integer' : 'number' };
+    else if (field instanceof z.ZodBoolean) properties[key] = { type: 'boolean' };
+    else throw new Error(`extraction ${name}.${key}: unsupported field type`);
+    if (!optional) required.push(key);
+  }
+  return { type: 'object', properties, required };
+}

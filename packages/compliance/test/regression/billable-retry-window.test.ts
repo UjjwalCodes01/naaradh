@@ -176,16 +176,16 @@ describe('windows (invariants 2 & 3, E-51)', () => {
     expect(isOpen(istInstant('2026-09-14', '20:56'), w, 0)).toBe(true);
   });
 
-  it('US intersection: open only when both coasts are open', () => {
+  it('US intersection: open only when both coasts are open (09:00–20:00, P6-CMP-1)', () => {
     const w = windowFor('US', null);
     if (w === null) throw new Error();
-    // 2026-09-14: EDT = UTC-4, PDT = UTC-7. 08:00 PT = 11:00 ET = 15:00Z; 21:00 ET = 18:00 PT = 01:00Z next day.
-    expect(isOpen(new Date('2026-09-14T14:59:00Z'), w)).toBe(false); // 10:59 ET / 07:59 PT
-    expect(isOpen(new Date('2026-09-14T15:00:00Z'), w)).toBe(true); // 11:00 ET / 08:00 PT
-    expect(isOpen(new Date('2026-09-15T00:59:00Z'), w)).toBe(true); // 20:59 ET / 17:59 PT
-    expect(isOpen(new Date('2026-09-15T01:00:00Z'), w)).toBe(false); // 21:00 ET
-    expect(nextOpen(new Date('2026-09-15T01:00:00Z'), w).toISOString()).toBe(
-      '2026-09-15T15:00:00.000Z',
+    // 2026-09-14: EDT = UTC-4, PDT = UTC-7. 09:00 PT = 12:00 ET = 16:00Z; 20:00 ET = 17:00 PT = 00:00Z next day.
+    expect(isOpen(new Date('2026-09-14T15:59:00Z'), w)).toBe(false); // 11:59 ET / 08:59 PT
+    expect(isOpen(new Date('2026-09-14T16:00:00Z'), w)).toBe(true); // 12:00 ET / 09:00 PT
+    expect(isOpen(new Date('2026-09-14T23:59:00Z'), w)).toBe(true); // 19:59 ET / 16:59 PT
+    expect(isOpen(new Date('2026-09-15T00:00:00Z'), w)).toBe(false); // 20:00 ET
+    expect(nextOpen(new Date('2026-09-15T00:00:00Z'), w).toISOString()).toBe(
+      '2026-09-15T16:00:00.000Z',
     );
   });
 });

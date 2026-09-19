@@ -154,6 +154,7 @@ export function numberPort(tx: Tx): NumberPort {
           status: schema.numbers.status,
           answerRate7d: schema.numbers.answerRate7d,
           tenantId: schema.numbers.tenantId,
+          attestation: schema.numbers.attestation,
         })
         .from(schema.numbers)
         .where(
@@ -176,6 +177,7 @@ export function numberPort(tx: Tx): NumberPort {
         status: r.status,
         answerRate7d: r.answerRate7d === null ? null : Number(r.answerRate7d),
         ownedByTenant: r.tenantId === tenantId,
+        attestation: r.attestation,
       }));
     },
   };

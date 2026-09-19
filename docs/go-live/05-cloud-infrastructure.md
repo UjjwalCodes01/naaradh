@@ -81,11 +81,13 @@ Order matters (details in `infra/README.md` and `deploy.md`):
    versioning on, uniform access. (It is not managed by the state it holds.)
 2. Fill `infra/envs/<env>.tfvars`: `project_id`, `github_repo`, `hostnames`, `iap_members`,
    `alert_email`, sizing. **Never put a secret in a tfvars file** — they are committed.
-3. `terraform -chdir=infra init -backend-config=…` → `plan -var-file=envs/<env>.tfvars` → review →
-   `apply`. The first apply creates empty **secret containers**, networking, Redis, Pub/Sub, the
-   bucket, KMS, the load balancer, Armor, monitoring and the Cloud Run services (with a bootstrap
-   image).
-4. **Add secret values** ([07](07-secrets-and-configuration.md)), then re-deploy.
+3. `terraform -chdir=infra init -backend-config=…`, then a **targeted** apply first — APIs, IAM,
+   network, KMS, registry, the empty **secret containers** and Redis (exact command:
+   `infra/README.md` → "Bootstrap"). A full first apply would fail: Cloud Run will not start a
+   service whose secrets have no version yet.
+4. **Add secret values** ([07](07-secrets-and-configuration.md)), then the full `plan` → review →
+   `apply` (Pub/Sub, bucket, load balancer, Armor, monitoring and the Cloud Run services on the
+   bootstrap image).
 5. Enable `web`, `shopify` and `console` in the tfvars (`services.<name>.enabled = true` and a
    hostname) once their secrets have values; apply.
 6. **Console only:** after it exists, read the IAP backend service id and set

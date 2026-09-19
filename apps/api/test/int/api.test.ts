@@ -128,6 +128,30 @@ beforeAll(async () => {
       },
     },
     razorpayPlanIds: { 'starter+-': 'plan_STARTER', 'growth+inbound_growth': 'plan_BOTH' },
+    stripe: {
+      createCheckoutSession: async (input) => {
+        stripeCheckouts.push(input);
+        return {
+          id: 'cs_test_APITEST1',
+          url: 'https://checkout.stripe.test/c/cs_test_APITEST1',
+          status: 'open',
+          subscriptionId: null,
+          customerId: null,
+          tenantId: input.tenantId,
+        };
+      },
+      retrieveCheckoutSession: async () => {
+        throw new Error('unused');
+      },
+      retrieveSubscription: async () => {
+        throw new Error('unused');
+      },
+      createInvoiceItem: async () => ({ id: 'ii_x' }),
+      cancelSubscription: async () => {
+        throw new Error('unused');
+      },
+    },
+    stripePriceIds: { growth: 'price_GROWTH', inbound_growth: 'price_INGROWTH' },
     signer: devSigner(),
     secrets: inlineSecretStore(),
     clock: () => NOW,
@@ -953,6 +977,8 @@ describe('privacy + complaints (P2-CMP-1…3)', () => {
   });
 });
 
+const stripeCheckouts: { priceIds: readonly string[]; tenantId: string; successUrl: string }[] = [];
+
 describe('billing routes (ADR-0008)', () => {
   it('GET /v1/billing: the plan, allowance and usage for this period', async () => {
     const r = await app.inject({ method: 'GET', url: '/v1/billing', headers: auth(secretKey.key) });
@@ -1048,6 +1074,57 @@ describe('billing routes (ADR-0008)', () => {
     await service.query(
       `update integrations set status = 'uninstalled' where external_id = 'api-billing-test.myshopify.com'`,
     );
+  });
+
+  it('Stripe checkout (P6-BILL-1): dollar accounts only, https return URLs, a pending row keyed by the session', async () => {
+    const checkout = (payload: Record<string, unknown>) =>
+      app.inject({
+        method: 'POST',
+        url: '/v1/billing/stripe/checkout',
+        payload,
+        headers: auth(secretKey.key),
+      });
+    const urls = { success_url: 'https://shop.test/ok', cancel_url: 'https://shop.test/back' };
+    // A rupee account is billed through Razorpay, never Stripe.
+    expect((await checkout({ plan_code: 'growth', ...urls })).statusCode).toBe(422);
+    expect(stripeCheckouts).toHaveLength(0);
+
+    await service.query(`update tenants set currency = 'USD' where id = $1`, [TENANT]);
+    try {
+      expect(
+        (await checkout({ plan_code: 'growth', ...urls, success_url: 'http://shop.test/ok' }))
+          .statusCode,
+      ).toBe(422);
+      expect((await checkout({ plan_code: 'scale', ...urls })).statusCode).toBe(422);
+      expect((await checkout(urls)).statusCode).toBe(422);
+      expect(stripeCheckouts).toHaveLength(0);
+
+      const r = await checkout({
+        plan_code: 'growth',
+        inbound_plan_code: 'inbound_growth',
+        ...urls,
+      });
+      expect(r.statusCode).toBe(201);
+      expect(r.json()).toMatchObject({
+        status: 'pending',
+        checkout_url: 'https://checkout.stripe.test/c/cs_test_APITEST1',
+      });
+      expect(stripeCheckouts).toEqual([
+        expect.objectContaining({
+          priceIds: ['price_GROWTH', 'price_INGROWTH'],
+          tenantId: TENANT,
+          successUrl: urls.success_url,
+        }),
+      ]);
+      const [row] = (
+        await service.query<{ status: string; currency: string }>(
+          `select status, currency from billing_subscriptions where provider = 'stripe' and provider_subscription_id = 'cs_test_APITEST1'`,
+        )
+      ).rows;
+      expect(row).toEqual({ status: 'pending', currency: 'USD' });
+    } finally {
+      await service.query(`update tenants set currency = 'INR' where id = $1`, [TENANT]);
+    }
   });
 
   it('pricing is not merchant-editable: the app role cannot touch plan or overrides', async () => {

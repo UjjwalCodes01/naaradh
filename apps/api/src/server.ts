@@ -24,7 +24,7 @@ function openApiJson(): string {
   openApiCache ??= serializeOpenApiDocument(buildOpenApiDocument());
   return openApiCache;
 }
-import type { RazorpayClient } from '@naaradh/payments';
+import type { RazorpayClient, StripeClient } from '@naaradh/payments';
 import type { SecretStore } from './secrets.js';
 
 /**
@@ -42,6 +42,9 @@ export interface ApiDeps {
   /** Null when Razorpay is not configured (direct billing unavailable). */
   readonly razorpay?: RazorpayClient | null;
   readonly razorpayPlanIds?: Readonly<Record<string, string>>;
+  /** Null when Stripe is not configured (dollar billing unavailable, P6-BILL-1). */
+  readonly stripe?: StripeClient | null;
+  readonly stripePriceIds?: Readonly<Record<string, string>>;
   readonly secrets: SecretStore;
   readonly clock: () => Date;
   readonly rateLimitKeyPerMinute: number;
@@ -127,6 +130,8 @@ export async function buildServer(deps: ApiDeps): Promise<FastifyInstance> {
     db: deps.db,
     razorpay: deps.razorpay ?? null,
     razorpayPlanIds: deps.razorpayPlanIds ?? {},
+    stripe: deps.stripe ?? null,
+    stripePriceIds: deps.stripePriceIds ?? {},
     clock: deps.clock,
   });
   registerPrivacyRoutes(app, {

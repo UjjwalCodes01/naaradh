@@ -139,6 +139,15 @@ export const NumberAssignInput = z
       });
   });
 
+/**
+ * P6-ENG-2 — the attestation a number's calls actually carry, as a person saw it: from a test
+ * call to a handset that shows it, or the carrier's report. Never copied from documentation.
+ */
+export const NumberAttestationInput = z.object({
+  attestation: z.enum(['A', 'B', 'C']).nullable(),
+  evidence: Note,
+});
+
 export const NumberStatusInput = z.object({
   status: z.enum(NUMBER_STATUSES),
   reason: Note,
@@ -162,6 +171,9 @@ export interface NumberView {
   readonly tenantName: string | null;
   readonly lastUsedAt: Date | null;
   readonly provisioningNote: string | null;
+  /** STIR/SHAKEN attestation recorded by staff (P6-ENG-2); North America needs A. */
+  readonly attestation: 'A' | 'B' | 'C' | null;
+  readonly attestationCheckedAt: Date | null;
   readonly createdAt: Date;
 }
 
@@ -197,6 +209,8 @@ export async function listNumbers(db: Db, now: Date, tenantId?: string): Promise
       tenantName: schema.tenants.name,
       lastUsedAt: schema.numbers.lastUsedAt,
       provisioningNote: schema.numbers.provisioningNote,
+      attestation: schema.numbers.attestation,
+      attestationCheckedAt: schema.numbers.attestationCheckedAt,
       createdAt: schema.numbers.createdAt,
       attempts7d: sql<number | null>`${attempts.n}`,
     })
@@ -328,6 +342,34 @@ export async function setNumberPurposes(
       targetId: id,
       before: { purpose_allowed: n.purposeAllowed },
       after: { purpose_allowed: input.purposeAllowed, note: input.provisioningNote },
+    });
+  });
+}
+
+export async function setNumberAttestation(
+  db: Db,
+  staff: StaffActor,
+  id: string,
+  input: z.infer<typeof NumberAttestationInput>,
+  now: Date,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const n = await loadNumber(tx, id);
+    await tx
+      .update(schema.numbers)
+      .set({
+        attestation: input.attestation,
+        attestationCheckedAt: input.attestation === null ? null : now,
+      })
+      .where(eq(schema.numbers.id, id));
+    await audit(tx, {
+      tenantId: n.tenantId,
+      ...staffAudit(staff),
+      action: 'number.attestation_recorded',
+      targetType: 'number',
+      targetId: id,
+      before: { attestation: n.attestation },
+      after: { attestation: input.attestation, evidence: input.evidence },
     });
   });
 }

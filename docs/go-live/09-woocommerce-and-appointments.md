@@ -1,7 +1,6 @@
 # 9. WooCommerce and the appointments vertical
 
-**Audience:** the founder. **Code state:** built and tested (`docs/phase-reviews/phase-5.md`,
-ADR-0011). Everything below is the part only a person can do: a WordPress.org listing, a Cal.com
+**Audience:** the founder. **Code state:** built and tested (ADR-0011). Everything below is the part only a person can do: a WordPress.org listing, a Cal.com
 account, and one credential per merchant.
 
 Nothing here is needed for Shopify merchants or for the support line. Do it when a WooCommerce

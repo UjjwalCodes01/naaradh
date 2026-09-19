@@ -34,16 +34,29 @@ Use two separate app records so staging never touches production merchants (SPEC
 
 From `apps/shopify` (Shopify CLI 3.x is installed; upgrade with `npm i -g @shopify/cli@latest`):
 
+Staging first, in this order:
+
 ```bash
-shopify app config link          # choose your organisation → "create a new app" → name it
-                                 # writes client_id into the toml it links
-shopify app config use staging   # switch between linked configs
-shopify app deploy               # releases a version: scopes, URLs, webhook subscriptions
+cp shopify.app.toml shopify.app.staging.toml
+# edit shopify.app.staging.toml: application_url, [auth] redirect_urls and both webhook `uri`
+# values → the stage hostnames in the table above
+shopify app config link --config staging     # organisation → "create a new app" → "Naaradh (staging)"
+                                             # writes client_id into shopify.app.staging.toml
+shopify app config use staging               # make staging the default for dev/deploy
+(cd extensions/call-consent-checkout && npm install)   # the extension's own deps (not pnpm)
+shopify app deploy                           # releases a version: scopes, URLs, webhooks, extensions
 ```
 
-For the staging config, copy `shopify.app.toml` to `shopify.app.staging.toml` and change the
-`application_url`, `[auth] redirect_urls` and both webhook `uri` values to the stage hostnames.
-Keep `api_version = "2026-07"` equal to `SHOPIFY_ADMIN_API_VERSION` in the workers.
+Then the production app the same way with `shopify app config link` (default config,
+`shopify.app.toml`). Keep `api_version = "2026-07"` equal to `SHOPIFY_ADMIN_API_VERSION` in the
+workers.
+
+> **Protected customer data before the first deploy.** The toml subscribes to `orders/*`,
+> `checkouts/*` and `customers/*`, which carry protected customer data. Shopify refuses to
+> release those subscriptions until the app has *requested* protected customer data access —
+> do step 1–2 of [§7](#7-protected-customer-data-level-2) (the request, Level 1 is enough for a
+> dev store) right after `config link` and before `deploy`. `[VERIFY]` the exact error on the
+> first deploy.
 
 What the toml declares (don't change without the process in CLAUDE.md):
 
@@ -57,8 +70,9 @@ What the toml declares (don't change without the process in CLAUDE.md):
 - **Extensions** (`apps/shopify/extensions/`, ADR-0010 §2): `call-consent-checkout` (checkout UI
   extension, Shopify Plus stores) and `call-consent-cart` (theme app block for the cart page, every
   plan). Both show the consent wording and write the `naaradh_call_consent` attribute. They are
-  released by the same `shopify app deploy`; the CLI builds them from their own `package.json`
-  (not the pnpm workspace). Check the target and API version against the Shopify changelog first
+  released by the same `shopify app deploy`; the CLI builds the checkout extension from its own
+  `package.json`, which is **not** part of the pnpm workspace — run `npm install` in
+  `extensions/call-consent-checkout` once before `dev` or `deploy`, or its build fails. Check the target and API version against the Shopify changelog first
   (`[VERIFY]` in the toml), and do not deploy them to production until counsel approves the
   wording (Q-08) — the text lives in `packages/pipeline/src/promotional/consent-wording.ts` and
   a unit test fails if the extension copies drift from it. Merchants add the cart block in the
@@ -98,16 +112,27 @@ Billing on a development store uses **test charges** — the app sets `test: tru
 
 ## 4. Local development against the dev store
 
+Always develop against the **staging** app (`shopify app config use staging`): the toml has
+`automatically_update_urls_on_dev = true`, so `shopify app dev` on the production config would
+repoint the production app's URLs at your tunnel.
+
 ```bash
-pnpm dev:shopify     # shopify app dev — tunnel + dev store; needs SHOPIFY_* and DATABASE_URL etc.
+cd apps/shopify && shopify app dev    # run it directly, not through turbo: the CLI asks
+                                      # questions (org, app, store) that turbo cannot answer
 ```
 
-Webhooks from `shopify app dev` go to the hooks URL in the toml, so for local work run hooks and
-workers too (README "Running the pipeline locally"), or trigger a topic on demand:
+`shopify.web.toml` starts the React Router server with `../../.env.local` loaded (database,
+`PHONE_HASH_KEY`, `STAFF_ENC_PUBLIC_KEY`, `SHOPIFY_TOKEN_KEY`); the CLI supplies the app's own
+keys, URL and port.
+
+Webhooks go to the hooks URL in the toml, not to the tunnel (the embedded app has no webhook
+route). For local work run hooks (port 3002) and the workers too (README "Running the pipeline
+locally"), and trigger topics at hooks directly:
 
 ```bash
-shopify app webhook trigger --topic orders/create --address https://<your tunnel>/shopify/webhooks
-# see `shopify app webhook trigger --help` for the API-version and client-secret flags it asks for
+shopify app webhook trigger --topic orders/create \
+  --address http://localhost:3002/shopify/webhooks --client-secret "$SHOPIFY_API_SECRET"
+# see `shopify app webhook trigger --help` for the API-version flag
 ```
 
 ## 5. Onboarding flow the merchant sees
@@ -171,9 +196,16 @@ Checklist (SPEC §8.6, `[VERIFY current list]`):
 Client A runs today as a **custom-app mirror** (webhooks verified with a per-shop secret in
 `SHOPIFY_WEBHOOK_SECRETS`). To move them:
 
+hooks verifies a shop's webhooks with its `SHOPIFY_WEBHOOK_SECRETS` entry **instead of** the
+public app's secret, so the entry must go at the moment of the switch — while it exists, the
+public app's webhooks for that shop are refused 401 (Shopify retries them for 48 hours, so a
+short overlap loses nothing).
+
 1. Install the **production** public app on Client A's store. Provisioning finds the existing
    Shopify integration for that shop and switches it to the new stored session
    (`shopify-session:offline_<shop>`); the tenant, its history and settings stay.
-2. Confirm webhooks arrive from the public app (hooks logs; `webhook_events`).
-3. Uninstall the old custom app from the store and remove its entry from `SHOPIFY_WEBHOOK_SECRETS`.
+2. Immediately uninstall the old custom app, remove Client A's entry from
+   `SHOPIFY_WEBHOOK_SECRETS` (new secret version) and redeploy hooks.
+3. Confirm webhooks arrive from the public app (hooks logs; `webhook_events`), including the
+   retried ones from the gap.
 4. Re-approve a plan through Shopify Billing if Client A was on a manual arrangement.

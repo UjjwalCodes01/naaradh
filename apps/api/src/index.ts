@@ -1,4 +1,4 @@
-import { createRazorpayClient } from '@naaradh/payments';
+import { createRazorpayClient, createStripeClient } from '@naaradh/payments';
 import { Redis } from 'ioredis';
 import { createDb } from '@naaradh/db';
 import { loadApiEnv } from './env.js';
@@ -30,6 +30,11 @@ const app = await buildServer({
       ? createRazorpayClient({ keyId: env.RAZORPAY_KEY_ID, keySecret: env.RAZORPAY_KEY_SECRET })
       : null,
   razorpayPlanIds: env.RAZORPAY_PLAN_IDS,
+  stripe:
+    env.STRIPE_SECRET_KEY === undefined
+      ? null
+      : createStripeClient({ secretKey: env.STRIPE_SECRET_KEY }),
+  stripePriceIds: env.STRIPE_PRICE_IDS,
   signer: env.RECORDINGS_BUCKET === undefined ? devSigner() : gcsSigner(),
   secrets:
     env.NODE_ENV === 'production'

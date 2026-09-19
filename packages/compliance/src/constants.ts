@@ -45,19 +45,140 @@ export const WINDOW_IN: CallingWindow = {
   close: '21:00',
 };
 
-/** VERIFY — FCC baseline is 8am-9pm local; several states are stricter. */
-export const WINDOW_US_DEFAULT: CallingWindow = {
-  zone: 'America/New_York',
-  open: '08:00',
-  close: '21:00',
+/**
+ * A calling-window rule for one region and purpose (P6-CMP-1). Every non-Indian rule is
+ * `[LEGAL]`: chosen as the conservative intersection of the rules we know of, pending the
+ * TCPA / ePrivacy review (P6-LEG-1, P6-LEG-2, Q-29). Tightening one is always safe; loosening one
+ * needs the review first.
+ */
+export interface WindowRule {
+  /** Local-time segments, 24h: open inclusive, close exclusive. Most regions have one. */
+  readonly segments: readonly { readonly open: string; readonly close: string }[];
+  /** ISO weekdays allowed (1 = Monday … 7 = Sunday); null = every day. */
+  readonly days: readonly number[] | null;
+  /** Public holidays on which no call of this kind starts. */
+  readonly holidays: 'US' | 'FR' | null;
+}
+
+const DAILY = null;
+const MON_SAT = [1, 2, 3, 4, 5, 6] as const;
+const MON_FRI = [1, 2, 3, 4, 5] as const;
+
+/**
+ * US. The federal rule is 08:00–21:00 local for telephone solicitations (47 CFR 64.1200(c)(1)).
+ * Several states are stricter — 08:00–20:00 in Florida, Oklahoma and Washington among others —
+ * and several ban solicitation calls on Sundays and legal holidays. 09:00–20:00, Monday to
+ * Saturday, never on a federal holiday, satisfies all of those at once for marketing.
+ * Service calls about the customer's own order or appointment keep 09:00–20:00 every day.
+ */
+const US_SERVICE: WindowRule = {
+  segments: [{ open: '09:00', close: '20:00' }],
+  days: DAILY,
+  holidays: null,
+};
+const US_MARKETING: WindowRule = {
+  segments: [{ open: '09:00', close: '20:00' }],
+  days: MON_SAT,
+  holidays: 'US',
 };
 
-/** VERIFY — member-state variation is wide; 09:00-20:00 is the conservative intersection. */
-export const WINDOW_EU_DEFAULT: CallingWindow = {
-  zone: 'Europe/Berlin',
-  open: '09:00',
-  close: '20:00',
+/**
+ * Canada. CRTC telemarketing rules: 09:00–21:30 on weekdays, 10:00–18:00 at weekends. Marketing
+ * here keeps the US hours and drops the weekend rather than modelling a second set of hours.
+ */
+const CA_MARKETING: WindowRule = {
+  segments: [{ open: '09:00', close: '20:00' }],
+  days: MON_FRI,
+  holidays: null,
 };
+
+/**
+ * France. Décret n° 2022-1313: commercial prospecting calls only Monday to Friday, 10:00–13:00
+ * and 14:00–20:00, never on a public holiday.
+ */
+const FR_MARKETING: WindowRule = {
+  segments: [
+    { open: '10:00', close: '13:00' },
+    { open: '14:00', close: '20:00' },
+  ],
+  days: MON_FRI,
+  holidays: 'FR',
+};
+
+/** Europe and the UK otherwise: 09:00–20:00, and no marketing on a Sunday. */
+const EU_SERVICE: WindowRule = {
+  segments: [{ open: '09:00', close: '20:00' }],
+  days: DAILY,
+  holidays: null,
+};
+const EU_MARKETING: WindowRule = {
+  segments: [{ open: '09:00', close: '20:00' }],
+  days: MON_SAT,
+  holidays: null,
+};
+
+/** Kind of call → rule. `service` and `transactional` share hours; `promotional` is marketing. */
+export interface RegionWindowRules {
+  readonly transactional: WindowRule;
+  readonly service: WindowRule;
+  readonly promotional: WindowRule;
+}
+
+export const WINDOW_RULES_US: RegionWindowRules = {
+  transactional: US_SERVICE,
+  service: US_SERVICE,
+  promotional: US_MARKETING,
+};
+export const WINDOW_RULES_CA: RegionWindowRules = {
+  transactional: US_SERVICE,
+  service: US_SERVICE,
+  promotional: CA_MARKETING,
+};
+export const WINDOW_RULES_FR: RegionWindowRules = {
+  transactional: EU_SERVICE,
+  service: EU_SERVICE,
+  promotional: FR_MARKETING,
+};
+export const WINDOW_RULES_EU: RegionWindowRules = {
+  transactional: EU_SERVICE,
+  service: EU_SERVICE,
+  promotional: EU_MARKETING,
+};
+
+// ---------------------------------------------------------------------------
+// Recording consent (P6-CMP-1, Q-12)
+// ---------------------------------------------------------------------------
+
+/**
+ * How the recording is handled at the start of a call, by the RECIPIENT's region:
+ *
+ *   notice  the opening says the call is recorded (invariant 7); staying on the line after an
+ *           unambiguous notice is consent where one party's consent suffices.
+ *   ask     the opening also ASKS, and the call goes on only after a clear yes. Required where
+ *           every party must agree: about a dozen US states (California, Florida, Illinois,
+ *           Maryland, Massachusetts, Montana, Nevada, New Hampshire, Pennsylvania, Washington…),
+ *           Germany (§201 StGB), Switzerland (Art. 179bis StGB) and Austria (§120 StGB).
+ *
+ * A US number does not reliably say which state its owner is in, so every US call asks.
+ * `[LEGAL]` — P6-LEG-1, P6-LEG-2. Asking where notice would do costs a sentence; the reverse is
+ * a criminal offence in some of these places.
+ */
+export type RecordingConsentMode = 'notice' | 'ask';
+
+/**
+ * P6-ENG-2 — recipient regions where the caller ID must carry STIR/SHAKEN A-attestation. US
+ * (FCC TRACED Act) and Canadian (CRTC) carriers label or block calls with weaker attestation,
+ * and an automated call labelled "Spam Likely" is both unanswered and complained about. The
+ * number's attestation is recorded by a person from a test call or the carrier's report
+ * (`numbers.attestation`); a number never checked is not used.
+ */
+export const ATTESTED_CLI_REGIONS: ReadonlySet<string> = new Set(['US', 'CA']);
+
+const RECORDING_CONSENT_ASK = new Set(['US', 'DE', 'CH', 'AT']);
+
+export function recordingConsentFor(region: string): RecordingConsentMode {
+  return RECORDING_CONSENT_ASK.has(region) ? 'ask' : 'notice';
+}
 
 /**
  * Dial no later than this many minutes before window close, so a call that connects does

@@ -10,7 +10,7 @@ import {
   suppress,
   windowFor,
 } from '@naaradh/compliance';
-import type { EngineEvent, EndReason } from '@naaradh/engines-core';
+import { recordingRefused, type EngineEvent, type EndReason } from '@naaradh/engines-core';
 import { audit, emitMerchantEvent, meterOutcome } from '@naaradh/pipeline';
 import { parseExtraction } from '@naaradh/scripts';
 import { newId } from '@naaradh/shared';
@@ -190,7 +190,12 @@ export async function finalizeAttempt(
   let recordingUri: string | null = null;
   let transcriptUri: string | null = null;
   let recordingError: string | null = null;
-  if (ev.recordingUrl !== null) {
+  // The customer refused the recording (P6-CMP-1): keep neither the audio nor the words. What
+  // the engine captured before the refusal is not ours to keep, so it never reaches our store.
+  const refused = recordingRefused(ev);
+  if (refused && (ev.recordingUrl !== null || ev.transcript !== null))
+    ctx.log.info({ attempt_id: attempt.id }, 'recording refused: media not persisted');
+  if (ev.recordingUrl !== null && !refused) {
     try {
       recordingUri = await ctx.recordings.persistRecording(tenantId, attempt.id, ev.recordingUrl);
     } catch (error) {
@@ -198,7 +203,7 @@ export async function finalizeAttempt(
       ctx.log.error({ err: error, attempt_id: attempt.id }, 'recording persist failed (E-34)');
     }
   }
-  if (ev.transcript !== null)
+  if (ev.transcript !== null && !refused)
     transcriptUri = await ctx.recordings.persistTranscript(tenantId, attempt.id, ev.transcript);
 
   // --- disclosures (invariant 7) ----------------------------------------------------------------
@@ -362,7 +367,9 @@ export async function finalizeAttempt(
 
   // --- side effects ---------------------------------------------------------------------------------------
   await releaseConcurrency(ctx.redis, tenantId, attempt.engine);
-  if (costInr !== null) await recordSpend(ctx.redis, attempt.engine, costInr, now);
+  // Every currency counts toward its own cap (P6): Retell's dollars, an Indian engine's rupees.
+  if (ev.vendorCost !== null && /^[A-Z]{3}$/.test(ev.vendorCost.currency))
+    await recordSpend(ctx.redis, attempt.engine, ev.vendorCost, now);
 
   const sup = suppressionFor(outcome);
   if (sup !== null) {
@@ -433,7 +440,7 @@ export async function finalizeAttempt(
         .from(schema.contacts)
         .where(eq(schema.contacts.id, contactId))
         .limit(1);
-      const window = windowFor(intent.recipientRegion, contact?.timezone ?? null);
+      const window = windowFor(intent.recipientRegion, contact?.timezone ?? null, intent.purpose);
       // ADR-0010 §3: a use case with its own attempt limit (promotional: 1) is exhausted here
       // rather than scheduled for a retry the gate would refuse anyway.
       const useCaseCap = MAX_ATTEMPTS_BY_USE_CASE[intent.useCase];

@@ -106,6 +106,7 @@ export {
   markTenantCapped,
   fromShopifyStatus,
   fromRazorpayStatus,
+  fromStripeStatus,
   BILLING_GRACE_DAYS,
   type SubscriptionStatus,
   type TenantBillingStatus,
@@ -166,6 +167,7 @@ export {
   NumberInput,
   NumberPurposesInput,
   NumberStatusInput,
+  NumberAttestationInput,
   PURPOSES,
   assignNumber,
   createDirectTenant,
@@ -175,6 +177,7 @@ export {
   setDltLink,
   setNumberPurposes,
   setNumberStatus,
+  setNumberAttestation,
   type DirectTenantResult,
   type NumberSeries,
   type NumberStatus,
@@ -376,7 +379,16 @@ export {
   planKey,
   razorpayPlanFor,
   recordRazorpaySubscription,
+  assertBilledDirectly,
 } from './billing/razorpay-subscribe.js';
+export {
+  STRIPE_CURRENCIES,
+  StripeCheckoutInput,
+  stripePricesFor,
+  recordStripeCheckout,
+  attachStripeSubscription,
+  type StripeCurrency,
+} from './billing/stripe-subscribe.js';
 export {
   ATTESTATION_VERSION,
   MERCHANT_ATTESTATION,
@@ -400,3 +412,19 @@ export {
   type RotationCounts,
   type RotationOptions,
 } from './rotation.js';
+export {
+  loadDncRegistry,
+  dncRegistryStatus,
+  parseRegistryLine,
+  type DncListSpec,
+  type DncLoadResult,
+} from './dnc/registry.js';
+export {
+  DATA_REGIONS,
+  DirectoryEntry,
+  DirectorySnapshot,
+  applyDirectorySnapshot,
+  localDirectoryEntries,
+  lookupRegion,
+  type DirectoryApplied,
+} from './region/directory.js';

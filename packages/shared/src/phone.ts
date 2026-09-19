@@ -157,6 +157,35 @@ export function normalizePhone(input: string, defaultRegion?: PhoneRegion): Norm
   };
 }
 
+/**
+ * A time-zone hint from the digits alone, for the few North American area codes that sit
+ * OUTSIDE the span the window intersection assumes (P6-CMP-1). A US number with no shipping
+ * address is called only when it is permitted in both New York and Los Angeles — which is
+ * 06:00 in Honolulu. Hawaii and Alaska, and Atlantic and Newfoundland Canada (east of Toronto),
+ * are therefore pinned by area code. Everything else returns null and the intersection applies.
+ *
+ * Area codes stay with a number when it moves; this is the convention regulators and carriers
+ * use too, and it errs toward the number's home, which is where its owner most likely is.
+ */
+const NANP_ZONE_BY_AREA_CODE: Readonly<Record<string, string>> = {
+  // United States
+  '808': 'Pacific/Honolulu',
+  '907': 'America/Anchorage',
+  // Canada — Atlantic and Newfoundland
+  '902': 'America/Halifax',
+  '782': 'America/Halifax',
+  '506': 'America/Moncton',
+  '428': 'America/Moncton',
+  '709': 'America/St_Johns',
+  '879': 'America/St_Johns',
+};
+
+export function zoneHintForNumber(phone: ParsedPhone): string | null {
+  if (phone.region !== 'US' && phone.region !== 'CA') return null;
+  if (!phone.e164.startsWith('+1') || phone.e164.length !== 12) return null;
+  return NANP_ZONE_BY_AREA_CODE[phone.e164.slice(2, 5)] ?? null;
+}
+
 function mapType(t: PhoneNumberType | undefined): ParsedPhone['type'] {
   if (t === 'MOBILE') return 'mobile';
   if (t === 'FIXED_LINE') return 'landline';

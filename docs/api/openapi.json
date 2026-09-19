@@ -1816,7 +1816,7 @@
     },
     "/v1/billing/razorpay/subscribe": {
       "post": {
-        "description": "Creates a Razorpay subscription for the chosen plan combination and returns the mandate authorisation URL; the subscription becomes active when Razorpay's webhook is confirmed by a re-fetch. Outbound plan codes: `starter`, `growth`, `scale`, `enterprise`. Support-line plan codes: `inbound_starter`, `inbound_growth`, `inbound_scale`. At least one of the two is required. 403 when the account is a Shopify install (billed through Shopify only); 422 when the combination is not offered; 503 when Razorpay is not configured or unavailable.\n\nScope: `billing:write`.",
+        "description": "Creates a Razorpay subscription for the chosen plan combination and returns the mandate authorisation URL; the subscription becomes active when Razorpay's webhook is confirmed by a re-fetch. Outbound plan codes: `starter`, `growth`, `scale`, `enterprise`. Support-line plan codes: `inbound_starter`, `inbound_growth`, `inbound_scale`. At least one of the two is required. 403 when the account is a Shopify install (billed through Shopify only); 409 when it already has an active subscription; 422 when the combination is not offered; 503 when Razorpay is not configured or unavailable.\n\nScope: `billing:write`.",
         "operationId": "subscribeRazorpay",
         "parameters": [
           {
@@ -1923,6 +1923,134 @@
           }
         ],
         "summary": "Start a Razorpay subscription (direct INR merchants)",
+        "tags": [
+          "Billing"
+        ]
+      }
+    },
+    "/v1/billing/stripe/checkout": {
+      "post": {
+        "description": "Creates a Stripe Checkout session for the chosen plans and returns its URL; the subscription becomes active when Stripe's webhook is confirmed by a re-fetch of the session and subscription. Only accounts billed in USD. Outbound plan codes: `starter`, `growth`, `scale`, `enterprise`. Support-line plan codes: `inbound_starter`, `inbound_growth`, `inbound_scale`. At least one of the two is required; `success_url` and `cancel_url` must be https. 403 when the account is a Shopify install (billed through Shopify only); 409 when it already has an active subscription; 422 when the account's currency or the plan is not offered through Stripe; 503 when Stripe is not configured or unavailable.\n\nScope: `billing:write`.",
+        "operationId": "createStripeCheckout",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "cancel_url": {
+                    "format": "uri",
+                    "maxLength": 500,
+                    "type": "string"
+                  },
+                  "inbound_plan_code": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "plan_code": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "success_url": {
+                    "format": "uri",
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "success_url",
+                  "cancel_url"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "checkout_url": {
+                      "format": "uri",
+                      "type": "string"
+                    },
+                    "status": {
+                      "const": "pending",
+                      "type": "string"
+                    },
+                    "subscription_id": {
+                      "description": "26-character ULID with a type prefix",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "subscription_id",
+                    "status",
+                    "checkout_url"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Created; send the merchant to `checkout_url`.",
+            "headers": {
+              "Idempotent-Replay": {
+                "$ref": "#/components/headers/IdempotentReplay"
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          },
+          "503": {
+            "$ref": "#/components/responses/EngineUnavailable"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "billing:write"
+            ]
+          }
+        ],
+        "summary": "Start a Stripe subscription (direct USD merchants)",
         "tags": [
           "Billing"
         ]

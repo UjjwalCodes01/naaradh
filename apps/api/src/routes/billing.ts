@@ -1,15 +1,28 @@
+import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { withTenant, type Db } from '@naaradh/db';
+import { eq } from 'drizzle-orm';
+import { schema, withTenant, type Db } from '@naaradh/db';
 import {
   SubscribeInput,
   listDisputes,
   openDispute,
   razorpayPlanFor,
   recordRazorpaySubscription,
+  recordStripeCheckout,
+  StripeCheckoutInput,
+  stripePricesFor,
   usageSummary,
+  type StripeCurrency,
 } from '@naaradh/pipeline';
-import { RazorpayError, RazorpayRetryableError, type RazorpayClient } from '@naaradh/payments';
+import {
+  RazorpayError,
+  RazorpayRetryableError,
+  StripeError,
+  StripeRetryableError,
+  type RazorpayClient,
+  type StripeClient,
+} from '@naaradh/payments';
 import { NaaradhError } from '@naaradh/shared';
 import { requireScope } from '../auth.js';
 
@@ -18,6 +31,7 @@ import { requireScope } from '../auth.js';
  *
  *   GET  /v1/billing                        plan, allowance, usage, charges this period     billing:read
  *   POST /v1/billing/razorpay/subscribe     start a Razorpay subscription (direct merchants) billing:write
+ *   POST /v1/billing/stripe/checkout        start a Stripe subscription (dollar merchants)    billing:write
  *   POST /v1/outcomes/:id/disputes          dispute a billed outcome within 7 days (E-62)  billing:write
  *   GET  /v1/disputes                                                                        billing:read
  *
@@ -29,6 +43,10 @@ export interface BillingRouteDeps {
   readonly razorpay: RazorpayClient | null;
   /** `"<outbound plan>+<inbound plan>"` (either side may be `-`) → Razorpay plan id. */
   readonly razorpayPlanIds: Readonly<Record<string, string>>;
+  /** Null when Stripe is not configured (dollar billing unavailable). P6-BILL-1. */
+  readonly stripe?: StripeClient | null;
+  /** Plan code → Stripe price id (USD). */
+  readonly stripePriceIds?: Readonly<Record<string, string>>;
   readonly clock: () => Date;
 }
 
@@ -85,6 +103,52 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
       .send({ subscription_id: id, status: 'pending', authorize_url: sub.shortUrl });
   });
 
+  app.post('/v1/billing/stripe/checkout', async (request, reply) => {
+    const auth = requireScope(request, 'billing:write');
+    const raw = StripeCheckoutInput.parse(request.body);
+    const body = SubscribeInput.parse({
+      plan_code: raw.plan_code,
+      inbound_plan_code: raw.inbound_plan_code,
+    });
+    const stripe = deps.stripe ?? null;
+    if (stripe === null)
+      throw new NaaradhError('ENGINE_UNAVAILABLE', 'Stripe billing is not configured');
+    const { prices, currency } = await withTenant(deps.db, auth.tenantId, async (tx) => {
+      const [t] = await tx
+        .select({ currency: schema.tenants.currency })
+        .from(schema.tenants)
+        .where(eq(schema.tenants.id, auth.tenantId))
+        .limit(1);
+      const cur = t?.currency ?? 'USD';
+      return {
+        prices: await stripePricesFor(tx, auth.tenantId, deps.stripePriceIds ?? {}, body, cur),
+        currency: cur as StripeCurrency,
+      };
+    });
+    // The provider call happens outside any transaction.
+    const session = await createStripeCheckout(stripe, {
+      priceIds: prices,
+      tenantId: auth.tenantId,
+      successUrl: raw.success_url,
+      cancelUrl: raw.cancel_url,
+      // request.id can come from a client header; a fresh key per request is ours alone.
+      idempotencyKey: `checkout:${auth.tenantId}:${randomUUID()}`,
+    });
+    const id = await withTenant(deps.db, auth.tenantId, (tx) =>
+      recordStripeCheckout(
+        tx,
+        { tenantId: auth.tenantId, type: 'api_key', id: auth.apiKeyId, requestId: request.id },
+        body,
+        session,
+        currency,
+      ),
+    );
+    // The merchant pays at checkout_url; the webhook + re-fetch activates the subscription.
+    return reply
+      .code(201)
+      .send({ subscription_id: id, status: 'pending', checkout_url: session.url });
+  });
+
   app.post<{ Params: { id: string } }>('/v1/outcomes/:id/disputes', async (request, reply) => {
     const auth = requireScope(request, 'billing:write');
     const body = DisputeBody.parse(request.body);
@@ -133,6 +197,27 @@ export async function createRazorpaySubscription(
       });
     if (error instanceof RazorpayError)
       throw new NaaradhError('VALIDATION_FAILED', 'Razorpay refused the subscription', {
+        context: { code: error.code ?? 'unknown' },
+      });
+    throw error;
+  }
+}
+
+/** Stripe errors become client-facing NaaradhErrors (no provider internals leak). */
+export async function createStripeCheckout(
+  stripe: StripeClient,
+  input: Parameters<StripeClient['createCheckoutSession']>[0],
+) {
+  try {
+    return await stripe.createCheckoutSession(input);
+  } catch (error) {
+    if (error instanceof StripeRetryableError)
+      throw new NaaradhError('ENGINE_UNAVAILABLE', 'Stripe is unavailable, try again shortly', {
+        retryable: true,
+        retryAfterSec: 30,
+      });
+    if (error instanceof StripeError)
+      throw new NaaradhError('VALIDATION_FAILED', 'Stripe refused the checkout', {
         context: { code: error.code ?? 'unknown' },
       });
     throw error;

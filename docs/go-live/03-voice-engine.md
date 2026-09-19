@@ -5,9 +5,26 @@ text-to-speech and the PSTN connection (SPEC §5.1). Naaradh keeps everything ar
 be called, identity, tools, knowledge, outcomes, billing. Product code only talks to
 `VoiceEngineAdapter`; a vendor is plugged in by writing one adapter package (invariant 13).
 
-**Today only the simulator adapter exists.** Setting `ENGINE_DEFAULT_IN=bolna` makes the registry
-refuse with "adapter is not implemented — blocked on ADR-0001". That is deliberate: the adapter is
-written for the engine that wins the bake-off, from its real payloads.
+**Today two adapters exist: the simulator, and Retell for US/EU** (built from Retell's published
+API, not yet run against a real account — [10](10-us-eu.md#2-retell-account-and-recorded-payloads-p6-eng-1)).
+There is no Indian adapter: setting `ENGINE_DEFAULT_IN=bolna` or `omnidim` is refused **at boot**
+("has no adapter yet (ADR-0001)"). That is deliberate: the adapter is written for the engine that
+wins the bake-off, from its real payloads.
+
+**Adding the winner's adapter touches:** a new `packages/engines/<vendor>` package (client, event
+mapping, signature check, a fake vendor server and `test/contract.test.ts` against the shared
+harness); the registry (`packages/engines/registry`: dependency, the `case` in `create`, the
+vendor's env and its key check in `refineEngineEnv`, and removing it from `NOT_IMPLEMENTED`);
+`.env.example`; the tfvars (`ENGINE_DEFAULT_IN`, `enabled_optional_secrets`); per-engine
+concurrency and spend caps in `apps/workers/src/index.ts`. The `engine_<vendor>` webhook source,
+the import ban and the console's engine list already include Bolna and OmniDimension.
+
+**Record from the first real test calls** (sanitised, fake numbers only): the webhook signature
+header and exactly what it signs; every event type and its order; every end reason seen (no
+answer, busy, voicemail, hang-up, max duration); the tool-call body and whether it has an
+invocation id; cost and duration units against the invoice; whether recording URLs need
+authentication; and whether webhooks are signed at all — an unsigned vendor's outcome must come
+from a re-fetch (E-23).
 
 ## 1. Candidates (SPEC §5.2, prices `[VERIFY]`)
 

@@ -4,12 +4,14 @@ import { createDb } from '@naaradh/db';
 import { createServiceDb } from '@naaradh/db/service';
 import { createLogger, shopifyTokenKeyring, systemClock } from '@naaradh/shared';
 import { EngineRegistry } from '@naaradh/engines-registry';
+import { noDndProvider, regionalDndProvider, registryDndProvider } from '@naaradh/compliance';
 import { createPubSubBus } from './bus.js';
 import type { WorkerContext } from './context.js';
-import { createRazorpayClient } from '@naaradh/payments';
+import { createRazorpayClient, createStripeClient } from '@naaradh/payments';
 import { runActions } from './actions/index.js';
 import { handleBillingEvent, runBilling } from './billing/index.js';
 import { runComplaints } from './complaints/index.js';
+import { runRegionDirectorySync } from './region/directory-sync.js';
 import { runRetention } from './retention/index.js';
 import { startHealthServer } from './health.js';
 import { shopifyTokenResolver } from './shopify-tokens.js';
@@ -99,7 +101,27 @@ const ctx: WorkerContext = {
       [env.ENGINE_DEFAULT_US]: env.ENGINE_DAILY_CAP_PAISE,
     },
     globalDailyCapPaise: env.GLOBAL_DAILY_CAP_PAISE,
+    engineDailyCapUsdCents: {
+      [env.ENGINE_DEFAULT_IN]: env.ENGINE_DAILY_CAP_USD_CENTS,
+      [env.ENGINE_DEFAULT_US]: env.ENGINE_DAILY_CAP_USD_CENTS,
+    },
+    globalDailyCapUsdCents: env.GLOBAL_DAILY_CAP_USD_CENTS,
   },
+  // P6-CMP-1: US/UK recipients are screened against the loaded registries; everything else
+  // keeps the fail-closed placeholder until its own screening exists.
+  ...(env.DND_REGISTRY_REGIONS.length === 0
+    ? {}
+    : {
+        dnd: regionalDndProvider(
+          Object.fromEntries(
+            env.DND_REGISTRY_REGIONS.map((r) => [
+              r,
+              registryDndProvider(app.db, { hashKey: env.PHONE_HASH_KEY }),
+            ]),
+          ),
+          noDndProvider,
+        ),
+      }),
   hooksBaseUrl: env.HOOKS_BASE_URL,
   voiceBaseUrl: env.VOICE_BASE_URL,
   engineWebhookKey: env.ENGINE_WEBHOOK_KEY,
@@ -112,6 +134,10 @@ const ctx: WorkerContext = {
     env.RAZORPAY_KEY_ID !== undefined && env.RAZORPAY_KEY_SECRET !== undefined
       ? createRazorpayClient({ keyId: env.RAZORPAY_KEY_ID, keySecret: env.RAZORPAY_KEY_SECRET })
       : null,
+  stripe:
+    env.STRIPE_SECRET_KEY === undefined
+      ? null
+      : createStripeClient({ secretKey: env.STRIPE_SECRET_KEY }),
   shopify:
     (env.SHOPIFY_WRITEBACK ?? (env.NODE_ENV === 'production' ? 'live' : 'recording')) === 'live'
       ? shopifyWriteback({ secrets: secretsResolver, apiVersion: env.SHOPIFY_ADMIN_API_VERSION })
@@ -149,8 +175,22 @@ if (role === 'results' || role === 'all')
   stops.push(await bus.subscribe('engine.events', 'results', (m) => handleEngineEvent(ctx, m)));
 if (role === 'dispatcher' || role === 'all')
   runs.push(runDispatcher(ctx, env.DISPATCH_POLL_MS, controller.signal));
-if (role === 'reconcile' || role === 'all')
+if (role === 'reconcile' || role === 'all') {
   runs.push(runReconcile(ctx, env.RECONCILE_INTERVAL_MS, controller.signal));
+  // ADR-0012 §4: publish which shops and numbers this region serves (no-op in one region).
+  runs.push(
+    runRegionDirectorySync(
+      ctx,
+      {
+        region: env.DATA_REGION,
+        peers: env.REGION_PEERS,
+        privateKey: env.REGION_SYNC_PRIVATE_KEY ?? null,
+      },
+      300_000,
+      controller.signal,
+    ),
+  );
+}
 if (role === 'deliveries' || role === 'all')
   runs.push(runDeliveries(ctx, 5_000, controller.signal));
 if (role === 'actions' || role === 'all') runs.push(runActions(ctx, 2_000, controller.signal));

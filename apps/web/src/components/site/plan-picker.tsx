@@ -37,30 +37,32 @@ export function PlanPicker({ families }: { families: readonly FamilyView[] }) {
 
   return (
     <div>
-      <div className="flex justify-center">
-        <div
-          role="tablist"
-          aria-label="Product"
-          className="inline-flex rounded-full border border-line bg-white/60 p-1.5"
-        >
-          {families.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              role="tab"
-              aria-selected={f.key === family.key}
-              onClick={() => {
-                setActive(f.key);
-              }}
-              className={`rounded-full px-6 py-2.5 text-[14.5px] font-semibold transition-colors xl:text-[15.5px] ${
-                f.key === family.key ? 'bg-forest text-cream' : 'text-body hover:text-ink'
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+      {families.length > 1 ? (
+        <div className="flex justify-center">
+          <div
+            role="tablist"
+            aria-label="Product"
+            className="inline-flex rounded-full border border-line bg-white/60 p-1.5"
+          >
+            {families.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                role="tab"
+                aria-selected={f.key === family.key}
+                onClick={() => {
+                  setActive(f.key);
+                }}
+                className={`rounded-full px-6 py-2.5 text-[14.5px] font-semibold transition-colors xl:text-[15.5px] ${
+                  f.key === family.key ? 'bg-forest text-cream' : 'text-body hover:text-ink'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
       <p className="mt-4 text-center text-[14px] text-muted xl:text-[15px]">{family.note}</p>
 
       <div role="tabpanel" className="mt-10 grid gap-6 lg:grid-cols-3">

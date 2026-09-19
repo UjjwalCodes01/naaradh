@@ -39,6 +39,11 @@ jobs:
             key: STAGE
           - env: prod-in
             key: PROD_IN
+          # Phase 6 (ADR-0012): skipped until TF_PLAN_*_PROD_US / _PROD_EU are set.
+          - env: prod-us
+            key: PROD_US
+          - env: prod-eu
+            key: PROD_EU
     env:
       WIF_PROVIDER: ${{ vars[format('TF_PLAN_WIF_PROVIDER_{0}', matrix.key)] }}
       PLANNER_SA: ${{ vars[format('TF_PLAN_SA_{0}', matrix.key)] }}

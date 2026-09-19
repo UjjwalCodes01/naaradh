@@ -43,6 +43,22 @@ const schema = z
           return z.NEVER;
         }
       }),
+    /** Stripe (direct USD merchants, P6-BILL-1): the dashboard can start a Checkout session. */
+    STRIPE_SECRET_KEY: z.string().optional(),
+    STRIPE_PRICE_IDS: z
+      .string()
+      .default('{}')
+      .transform((v, ctx) => {
+        try {
+          return z.record(z.string().regex(/^price_[A-Za-z0-9]+$/)).parse(JSON.parse(v));
+        } catch {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'must be a JSON object of Stripe price ids',
+          });
+          return z.NEVER;
+        }
+      }),
     PHONE_ENC_PRIVATE_KEY: z.string().optional(),
     STAFF_ENC_PRIVATE_KEY: z.string().optional(),
     DATABASE_SERVICE_URL: z.string().optional(),

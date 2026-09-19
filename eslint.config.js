@@ -186,6 +186,26 @@ export default tseslint.config(
     },
   },
 
+  // The engines workspace resolves vendor adapters (the registry imports them), so the vendor
+  // ban above does not apply there; the service-role ban still does.
+  {
+    files: ['packages/engines/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '@naaradh/db/service',
+              message:
+                'createServiceDb() bypasses RLS (invariant 15). Voice engine adapters never touch the database.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // Window and deadline arithmetic must go through luxon in the recipient's IANA zone.
   // `new Date()` maths is how 09:00-21:00 IST and the 30-minute rule get silently broken.
   // Scoped to the DECISION code: adapters (cache TTLs, Redis keys) and tests may use the clock.

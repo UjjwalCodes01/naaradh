@@ -1,5 +1,6 @@
 export {
   DISCLOSURES,
+  RECORDING_CONSENT_QUESTIONS,
   SUPPORTED_LOCALES,
   normaliseForMatch,
   type DisclosurePhrases,
@@ -27,10 +28,18 @@ export {
   VARIABLE_MAX_CHARS,
   type SanitisedVariables,
 } from './variables.js';
-export { renderScript, substitute, GLOBAL_GUARDRAILS, type RenderedScript } from './render.js';
+export {
+  renderScript,
+  substitute,
+  GLOBAL_GUARDRAILS,
+  type RenderedScript,
+  type RenderOptions,
+} from './render.js';
 export {
   EXTRACTION_SCHEMAS,
   parseExtraction,
+  extractionJsonSchema,
+  type ExtractionJsonSchema,
   CodConfirmExtraction,
   AbandonedCartExtraction,
   LeadCallbackExtraction,

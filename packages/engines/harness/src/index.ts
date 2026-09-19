@@ -119,14 +119,18 @@ export function runContractSuite(
   fixtures: ContractFixtures,
   adapterForFetch: () => VoiceEngineAdapter,
 ): void {
+  // What the vendor can do decides which scenarios apply (product code branches the same way):
+  // an engine that cannot report the disclosure has it inferred from the answer time by the
+  // results-consumer, and one without warm transfer is never given a transfer tool.
+  const caps = adapterForFetch().capabilities();
   describe(`engine contract: ${name}`, () => {
-    it('answered-human-confirmed: ringing → answered(human) → disclosed → ended(completed) with a billable duration', async () => {
+    it('answered-human-confirmed: ringing → answered(human) → [disclosed] → ended(completed) with a billable duration', async () => {
       const { events, error } = await fixtures.run('answered-human-confirmed');
       expect(error).toBeNull();
       expect(events.map((e) => e.type)).toEqual([
         'call.ringing',
         'call.answered',
-        'call.disclosed',
+        ...(caps.reportsDisclosure ? ['call.disclosed'] : []),
         'call.ended',
       ]);
       const ended = events.at(-1);
@@ -179,21 +183,27 @@ export function runContractSuite(
       }
     });
 
-    it('transfer-success reports the transfer and ends transfer_completed; the target is masked', async () => {
-      const { events } = await fixtures.run('transfer-success');
-      const t = events.find((e) => e.type === 'call.transferred');
-      expect(t).toMatchObject({ result: 'completed' });
-      if (t?.type === 'call.transferred') expect(t.toMasked).toMatch(/x/);
-      expect(events.at(-1)).toMatchObject({ type: 'call.ended', reason: 'transfer_completed' });
-    });
+    it.skipIf(!caps.warmTransfer)(
+      'transfer-success reports the transfer and ends transfer_completed; the target is masked',
+      async () => {
+        const { events } = await fixtures.run('transfer-success');
+        const t = events.find((e) => e.type === 'call.transferred');
+        expect(t).toMatchObject({ result: 'completed' });
+        if (t?.type === 'call.transferred') expect(t.toMasked).toMatch(/x/);
+        expect(events.at(-1)).toMatchObject({ type: 'call.ended', reason: 'transfer_completed' });
+      },
+    );
 
-    it('transfer-fail returns to the agent and ends transfer_failed (E-30)', async () => {
-      const { events } = await fixtures.run('transfer-fail');
-      expect(events.find((e) => e.type === 'call.transferred')).toMatchObject({
-        result: 'no_answer',
-      });
-      expect(events.at(-1)).toMatchObject({ type: 'call.ended', reason: 'transfer_failed' });
-    });
+    it.skipIf(!caps.warmTransfer)(
+      'transfer-fail returns to the agent and ends transfer_failed (E-30)',
+      async () => {
+        const { events } = await fixtures.run('transfer-fail');
+        expect(events.find((e) => e.type === 'call.transferred')).toMatchObject({
+          result: 'no_answer',
+        });
+        expect(events.at(-1)).toMatchObject({ type: 'call.ended', reason: 'transfer_failed' });
+      },
+    );
 
     it('opt-out mid-call ends immediately with reason opt_out', async () => {
       const { events } = await fixtures.run('opt-out-mid-call');

@@ -4,6 +4,7 @@ import type { Db } from '@naaradh/db';
 import { sha256Hex, verifyShopifyHmac } from '@naaradh/shared';
 import { markFailed, markProcessed, markPublished, recordWebhook } from '../events.js';
 import type { Publisher } from '../pubsub.js';
+import { forwardToPeer, peerForShop, type RegionDeps } from './region.js';
 
 /**
  * POST /shopify/webhooks — every Shopify topic, including the three mandatory compliance
@@ -39,6 +40,8 @@ export interface ShopifyRouteDeps {
   readonly db: Db;
   readonly publisher: Publisher;
   readonly secretForShop: (shopDomain: string) => string;
+  /** Multi-region routing (ADR-0012 §4). Absent = single region. */
+  readonly region?: RegionDeps;
 }
 
 export function registerShopifyRoutes(app: FastifyInstance, deps: ShopifyRouteDeps): void {
@@ -72,6 +75,12 @@ export function registerShopifyRoutes(app: FastifyInstance, deps: ShopifyRouteDe
       return reply.code(401).send({ error: 'invalid signature' });
     }
 
+    // A shop another region serves: its body is that region's data, so it is passed through
+    // before anything is stored here (ADR-0012 §4, E-144).
+    const peer = deps.region === undefined ? null : await peerForShop(deps.region, shop, request);
+    if (peer !== null && deps.region !== undefined)
+      return forwardToPeer(deps.region, peer, request, reply, raw);
+
     let payload: unknown;
     try {
       payload = JSON.parse(raw.toString('utf8'));
@@ -84,6 +93,22 @@ export function registerShopifyRoutes(app: FastifyInstance, deps: ShopifyRouteDe
         sql`select tenant_id, tenant_status, status from resolve_tenant_by_integration('shopify', ${shop})`,
       )
     ).rows;
+
+    // Several regions, and no deployment has claimed this shop yet (a fresh install whose region
+    // has not synced, or a store moving between regions): its body may be another region's
+    // customers' data, so nothing is stored and Shopify is asked to retry. The directory syncs
+    // every 5 minutes and Shopify retries for 48 hours (ADR-0012 amendment 1, E-144).
+    if (
+      tenant === undefined &&
+      deps.region !== undefined &&
+      Object.keys(deps.region.peers).length > 0
+    ) {
+      request.log.warn({ shop, topic }, 'shopify webhook for a shop no region has claimed yet');
+      return reply
+        .code(503)
+        .header('retry-after', '300')
+        .send({ status: 'retry', reason: 'region_unknown' });
+    }
 
     const recorded = await recordWebhook(deps.db, {
       source: 'shopify',

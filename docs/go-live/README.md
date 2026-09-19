@@ -2,7 +2,7 @@
 
 **Audience:** the founder (and anyone helping) turning the built product into live calls.
 **Date:** 13 Sep 2026. **Source of truth for rules:** `docs/NAARADH_BUILD_SPEC.md`; for plan and
-status: `PLAN.md` and `docs/phase-reviews/`. This guide collects, in one place, every account,
+status: `PLAN.md` and `docs/STATUS.md`. This guide collects, in one place, every account,
 registration, number, key and approval the code depends on, in the order to get them.
 
 > The software for Phases 1 and 2 is built and tested on a simulated voice engine. **No real call
@@ -13,7 +13,7 @@ registration, number, key and approval the code depends on, in the order to get 
 
 | Area | State | Blocks live calls? |
 |---|---|---|
-| Call pipeline, compliance gate, inbound agent runtime, billing, dashboards, Shopify app, staff console, Phase 3 hardening (`docs/phase-reviews/phase-3.md`) | Built and tested locally; all 7 services build | — |
+| Call pipeline, compliance gate, inbound agent runtime, billing, dashboards, Shopify app, staff console, Phase 3 hardening | Built and tested locally; all 7 services build | — |
 | Voice engine adapter (Bolna / OmniDimension / Retell) | **Not built** — deliberately waits for the bake-off (ADR-0001). Only the simulator works today | **Yes** |
 | Phone numbers (+91) | None. Needs the entity (KYC) and an answer on the number series (Q-01) | **Yes** |
 | Company (Pvt Ltd), GST, bank account | In progress | **Yes** — needed for numbers, DLT, Razorpay, payouts |
@@ -136,3 +136,4 @@ Answer these in writing before spending on numbers (details in `docs/open-questi
 7. [Secrets and configuration](07-secrets-and-configuration.md) — every key and variable, how to make it, who holds it
 8. [First merchants](08-first-merchants.md) — onboarding Client A and Client B, the pilot, gaps you will hit
 9. [WooCommerce and appointments](09-woocommerce-and-appointments.md) — shipping the Woo plugin (and listing it), Cal.com credentials per merchant, the manual diary, one-click checkouts
+10. [United States and Europe](10-us-eu.md) — counsel on windows and recording consent, Retell account and recorded payloads, the `prod-us`/`prod-eu` projects, attestation, the US/UK do-not-call lists, Stripe, region routing (Phase 6)

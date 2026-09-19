@@ -15,16 +15,17 @@ ujp
 ## 1. The short version
 
 The product is finished to the point where the only thing between it and a real call is
-paperwork and vendors. Phases 1 to 5 are code-complete — Phase 0 (choosing the voice vendor) and
-Phases 6 to 7 are not started. What is built: the AI support line, the
+paperwork and vendors. Phases 1 to 5 are code-complete, and Phase 6 (the US and Europe) is built
+but not live — Phase 0 (choosing the Indian voice vendor) and Phase 7 are not started. What is built: the AI support line, the
 cash-on-delivery confirmation calls, abandoned-cart recovery, post-delivery feedback,
 appointments, the merchant dashboard, the Shopify app, the WooCommerce plugin, billing, the
 staff console, and the compliance layer that decides whether any given call is allowed.
 
 What is missing, in the order it blocks things:
 
-1. **A voice vendor.** No adapter for a real engine exists yet — deliberately, because the choice
-   waits on a side-by-side test of Bolna and OmniDimension on Indian networks.
+1. **A voice vendor for India.** No adapter for an Indian engine exists yet — deliberately,
+   because the choice waits on a side-by-side test of Bolna and OmniDimension on Indian networks.
+   (The US/EU adapter, Retell, is built but has not placed a real call.)
 2. **A company, phone numbers and DLT registration.** Indian telecom rules require a registered
    entity and a registered telemarketer before a single number can be bought.
 3. **Cloud infrastructure switched on.** The infrastructure is written as code and validated;
@@ -132,9 +133,9 @@ These are in dependency order. Nothing below is code.
 | PHP in the build pipeline | The WooCommerce plugin's checks are a written manual matrix |
 | Shopify Flow trigger, dev-store test matrix | Both need the Partner app to exist |
 
-### Phase 6 — United States and Europe (not started)
+### Phase 6 — United States and Europe (code built, nothing live)
 
-The core is ready for this; an audit confirmed it ([pre-Phase-6 audit](phase-reviews/pre-phase-6-audit.md)).
+The core is ready for this; an audit before the phase confirmed it.
 The compliance layer already decides by the *customer's* region: calling hours, what counts as
 consent, which numbers may dial, which engine, which language the disclosure is in.
 
@@ -148,11 +149,22 @@ What Phase 6 must build, largest first:
 2. ~~**Scripts in US English, UK English, German, French and Spanish**~~ **done**: cart-recovery
    and appointment scripts in all five, seeded by the merchant's country. The German, French and
    Spanish wording is a draft and needs a native speaker's review before a merchant approves it.
-3. **The Retell adapter** for US/UK calling, plus numbers with caller-ID attestation.
-4. **A dollar/euro payment path** (Stripe). Prices in those currencies already exist in the plan
-   tables; only the payment integration is missing.
-5. **A US do-not-call screening provider**, the twin of the Indian one.
-6. **Legal review for TCPA, ePrivacy, GDPR and recording-consent states.**
+3. ~~**The Retell adapter**~~ **built** against a stand-in of Retell's published API: outbound
+   calls, tools, signed webhooks. Incoming calls, warm transfer and cancelling a queued call are
+   switched off until they are seen working (Q-31). Calls to +1 numbers go only from numbers a
+   person has recorded as A-attested (Q-28).
+4. ~~**A dollar payment path**~~ **built** with Stripe: checkout from the dashboard or the API,
+   usage on the next invoice, webhooks checked with Stripe before anything changes. Euros and
+   pounds wait on a pricing decision (Q-30). `/pricing/us` shows the dollar prices as early access.
+5. ~~**US and UK do-not-call screening**~~ **built**: the national lists are loaded from their
+   licensed files, and marketing calls stop by themselves if a list is missing or too old.
+6. **Calling hours, holidays and recording consent** per country are **built** as the strictest
+   rules we know of, and wait on a lawyer to confirm (Q-29, Q-32).
+7. **The US and EU deployments** are written as Terraform (and routing between regions is
+   built), but not switched on.
+
+Everything left is outside the code: [go-live 10](go-live/10-us-eu.md) lists it in order —
+counsel, the Retell account, the two cloud projects, numbers, the do-not-call licences, Stripe.
 
 ### Phase 7 — Scale (not started)
 
@@ -164,7 +176,7 @@ SLAs), SOC 2 readiness, and a US parent company only if raising US capital.
 
 ## 6. Decisions waiting on you (or a lawyer)
 
-27 questions are tracked with a conservative default in force for each, so no code is blocked
+33 questions are tracked with a conservative default in force for each, so no code is blocked
 ([full list](open-questions.md)). The ones that matter most:
 
 | Question | What is in force meanwhile |
@@ -205,12 +217,12 @@ SLAs), SOC 2 readiness, and a US parent company only if raising US capital.
 | Phase | Goal | State |
 |---|---|---|
 | 0 | Engine bake-off, decide the India vendor | **Not started** — needs vendor accounts |
-| 1 / 1B | Call pipeline, compliance gate, the inbound agent | **Code complete**, [review](phase-reviews/phase-1.md) |
-| 2 | Shopify app, dashboards, billing, complaints, privacy | **Code complete**, [review](phase-reviews/phase-2.md) |
-| 3 | Hardening, security checklist, legal drafts, App Store prep | **Code complete**; every exit criterion needs a person, [review](phase-reviews/phase-3.md) |
-| 4 | Promotional calling: carts, feedback, A/B, QA sampling | **Code complete**; cannot run without screening + wording, [review](phase-reviews/phase-4.md) |
-| 5 | WooCommerce, other platforms, appointments, automation | **Code complete**; vendor items open, [review](phase-reviews/phase-5.md) |
-| 6 | United States and Europe | **Started**: regional isolation enforced in code (ADR-0012) and scripts in five Western locales; the engine adapter, dollar billing and the legal review remain, [audit](phase-reviews/pre-phase-6-audit.md) |
+| 1 / 1B | Call pipeline, compliance gate, the inbound agent | **Code complete** |
+| 2 | Shopify app, dashboards, billing, complaints, privacy | **Code complete** |
+| 3 | Hardening, security checklist, legal drafts, App Store prep | **Code complete**; every exit criterion needs a person |
+| 4 | Promotional calling: carts, feedback, A/B, QA sampling | **Code complete**; cannot run without screening + wording |
+| 5 | WooCommerce, other platforms, appointments, automation | **Code complete**; vendor items open |
+| 6 | United States and Europe | **Code built, not live**: regional isolation (ADR-0012), Western scripts, Retell adapter, US/EU calling rules, do-not-call lists, Stripe, region routing; accounts, legal review and deployment remain ([go-live 10](go-live/10-us-eu.md)) |
 | 7 | Scale and optionality | **Not started** |
 
 ---
@@ -221,7 +233,6 @@ SLAs), SOC 2 readiness, and a US parent company only if raising US capital.
 |---|---|
 | [go-live/](go-live/README.md) | Every account, registration and approval needed from outside the code, in order |
 | [open-questions.md](open-questions.md) | The 27 unresolved questions and the safe default in force for each |
-| [phase-reviews/](phase-reviews/) | What each phase delivered, what it did not, and the defects found |
 | [decisions/](decisions/README.md) | Why the product works the way it does — 8 written decisions, 3 planned |
 | [runbooks/](runbooks/README.md) | What to do when something breaks, symptom first |
 | [NAARADH_BUILD_SPEC.md](NAARADH_BUILD_SPEC.md) | The full specification, including all 111 edge cases |

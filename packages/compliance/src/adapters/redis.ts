@@ -1,5 +1,5 @@
 import type { Redis } from 'ioredis';
-import { paise, type Money } from '@naaradh/shared';
+import { money, type Money } from '@naaradh/shared';
 import { KILL_SWITCH_CACHE_TTL_SEC } from '../constants.js';
 import type {
   ConcurrencyPort,
@@ -17,8 +17,12 @@ import type {
  *   circuit:{engine}            "open" while the breaker is open     set by dispatcher/results on failure bursts, TTL
  *   conc:tenant:{tenantId}      live call count                      INCR/DECR by gate lease, TTL refreshed
  *   conc:engine:{engine}        live call count
- *   spend:engine:{engine}:{d}   paise spent today (UTC date)         INCRBY by results-consumer
- *   spend:global:{d}            paise spent today (UTC date)
+ *   spend:engine:{engine}:{d}        paise spent today (UTC date)      INCRBY by results-consumer
+ *   spend:global:{d}                 paise spent today (UTC date)
+ *   spend:engine:{engine}:{CUR}:{d}  minor units of any other currency (P6: Retell bills USD)
+ *   spend:global:{CUR}:{d}
+ *
+ * Rupee keys keep their original names so a deploy never resets the day's rupee spend.
  */
 
 export const KEYS = {
@@ -26,8 +30,12 @@ export const KEYS = {
   circuit: (engine: string) => `circuit:${engine}`,
   concTenant: (tenantId: string) => `conc:tenant:${tenantId}`,
   concEngine: (engine: string) => `conc:engine:${engine}`,
-  spendEngine: (engine: string, utcDate: string) => `spend:engine:${engine}:${utcDate}`,
-  spendGlobal: (utcDate: string) => `spend:global:${utcDate}`,
+  spendEngine: (engine: string, utcDate: string, currency = 'INR') =>
+    currency === 'INR'
+      ? `spend:engine:${engine}:${utcDate}`
+      : `spend:engine:${engine}:${currency}:${utcDate}`,
+  spendGlobal: (utcDate: string, currency = 'INR') =>
+    currency === 'INR' ? `spend:global:${utcDate}` : `spend:global:${currency}:${utcDate}`,
 } as const;
 
 /**
@@ -214,42 +222,46 @@ export function utcDate(at: Date): string {
   return at.toISOString().slice(0, 10);
 }
 
+export interface PlatformCaps {
+  /** Per engine, one cap per currency it may bill in. */
+  readonly engineDaily: Readonly<Record<string, readonly Money[]>>;
+  readonly globalDaily: readonly Money[];
+}
+
 /** Engine/global daily spend read side (write side is the results-consumer). */
-export function platformSpend(
-  redis: Redis,
-  caps: { engineDailyPaise: Readonly<Record<string, number>>; globalDailyPaise: number | null },
-  now: () => Date,
-) {
-  const read = async (key: string): Promise<Money> => {
+export function platformSpend(redis: Redis, caps: PlatformCaps, now: () => Date) {
+  const read = async (key: string, currency: string): Promise<Money> => {
     try {
-      return paise(Number((await redis.get(key)) ?? '0'));
+      return money(Number((await redis.get(key)) ?? '0'), currency);
     } catch {
-      return paise(0);
+      return money(0, currency);
     }
   };
   return {
-    engineSpentToday: (engine: string) => read(KEYS.spendEngine(engine, utcDate(now()))),
-    globalSpentToday: () => read(KEYS.spendGlobal(utcDate(now()))),
-    engineDailyCap: (engine: string): Money | null => {
-      const cap = caps.engineDailyPaise[engine];
-      return cap === undefined ? null : paise(cap);
-    },
-    globalDailyCap: (): Money | null =>
-      caps.globalDailyPaise === null ? null : paise(caps.globalDailyPaise),
+    engineSpentToday: (engine: string, currency: string) =>
+      read(KEYS.spendEngine(engine, utcDate(now()), currency), currency),
+    globalSpentToday: (currency: string) =>
+      read(KEYS.spendGlobal(utcDate(now()), currency), currency),
+    engineDailyCaps: (engine: string): readonly Money[] => caps.engineDaily[engine] ?? [],
+    globalDailyCaps: (): readonly Money[] => caps.globalDaily,
   };
 }
 
+/** Adds a call's vendor cost to today's counters, in the currency the vendor billed. */
 export async function recordSpend(
   redis: Redis,
   engine: string,
-  amountPaise: number,
+  cost: Money,
   at: Date,
 ): Promise<void> {
+  if (cost.minor <= 0) return;
   const d = utcDate(at);
+  const engineKey = KEYS.spendEngine(engine, d, cost.currency);
+  const globalKey = KEYS.spendGlobal(d, cost.currency);
   const pipeline = redis.pipeline();
-  pipeline.incrby(KEYS.spendEngine(engine, d), amountPaise);
-  pipeline.expire(KEYS.spendEngine(engine, d), 3 * 86_400);
-  pipeline.incrby(KEYS.spendGlobal(d), amountPaise);
-  pipeline.expire(KEYS.spendGlobal(d), 3 * 86_400);
+  pipeline.incrby(engineKey, cost.minor);
+  pipeline.expire(engineKey, 3 * 86_400);
+  pipeline.incrby(globalKey, cost.minor);
+  pipeline.expire(globalKey, 3 * 86_400);
   await pipeline.exec();
 }

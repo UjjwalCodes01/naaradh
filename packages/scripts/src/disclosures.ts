@@ -67,6 +67,24 @@ export const DISCLOSURES: Readonly<Record<string, DisclosurePhrases>> = {
 
 export const SUPPORTED_LOCALES = Object.keys(DISCLOSURES);
 
+/**
+ * The question asked right after the disclosure where every party must agree to a recording
+ * (P6-CMP-1, `recordingConsentFor()` in packages/compliance). Not merchant-editable: it is
+ * appended to the approved opening at render time, never stored in a script.
+ *
+ * TODO_LEGAL: draft wording, reviewed with the rest of the disclosures. de/fr/es need a native
+ * speaker, like the P6-CMP-2 scripts.
+ */
+export const RECORDING_CONSENT_QUESTIONS: Readonly<Record<string, string>> = {
+  'hi-IN': 'Kya aapko call record hone mein koi aapatti to nahin hai?',
+  'en-IN': 'Is it all right with you that this call is recorded?',
+  'en-US': 'Is it okay with you that this call is recorded?',
+  'en-GB': 'Is it all right with you that this call is recorded?',
+  'de-DE': 'Sind Sie damit einverstanden, dass dieses Gespräch aufgezeichnet wird?',
+  'fr-FR': 'Acceptez-vous que cet appel soit enregistré ?',
+  'es-ES': '¿Está de acuerdo en que esta llamada se grabe?',
+};
+
 export function normaliseForMatch(text: string): string {
   return text.toLowerCase().replace(/\s+/g, ' ').trim();
 }

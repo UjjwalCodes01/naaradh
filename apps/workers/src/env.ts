@@ -7,6 +7,7 @@ import {
   phoneEncryptEnv,
   phoneHashEnv,
   redisEnv,
+  regionPeersEnv,
   serviceDatabaseEnv,
   shopifyTokenEnv,
 } from '@naaradh/shared';
@@ -29,6 +30,14 @@ export const WORKERS = [
 ] as const;
 export type WorkerName = (typeof WORKERS)[number];
 
+/** Roles that dial, receive engine events or poll the engine (dispatcher, results, reconcile). */
+export const ENGINE_ROLES: ReadonlySet<WorkerName> = new Set([
+  'dispatcher',
+  'results',
+  'reconcile',
+  'all',
+]);
+
 /**
  * One binary, one env schema, several roles selected by WORKER. Keys are the exception:
  * the PRIVATE phone key is required only by the dispatcher and results roles (AGENTS §4),
@@ -41,6 +50,7 @@ export const workersEnvSchema = z
     ...serviceDatabaseEnv,
     ...redisEnv,
     ...engineEnv,
+    ...regionPeersEnv,
     ...phoneHashEnv,
     ...phoneEncryptEnv,
     PHONE_ENC_PRIVATE_KEY: phoneDecryptEnv.PHONE_ENC_PRIVATE_KEY.optional(),
@@ -83,9 +93,32 @@ export const workersEnvSchema = z
     /** Razorpay (direct Indian merchants, P2-BILL-3). Unset → Razorpay postings wait. */
     RAZORPAY_KEY_ID: z.string().optional(),
     RAZORPAY_KEY_SECRET: z.string().optional(),
+    /** Stripe (dollar merchants, P6-BILL-1). Unset → Stripe postings and events wait. */
+    STRIPE_SECRET_KEY: z
+      .string()
+      .regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]+$/, 'a Stripe secret or restricted key')
+      .optional(),
     /** Platform-wide daily safety caps, paise. */
     ENGINE_DAILY_CAP_PAISE: z.coerce.number().int().positive().default(50_000_00),
     GLOBAL_DAILY_CAP_PAISE: z.coerce.number().int().positive().default(200_000_00),
+    /** The same caps for engines that bill in dollars (Retell, P6), in cents. */
+    ENGINE_DAILY_CAP_USD_CENTS: z.coerce.number().int().positive().default(600_00),
+    GLOBAL_DAILY_CAP_USD_CENTS: z.coerce.number().int().positive().default(2_400_00),
+    /**
+     * Recipient regions screened against the do-not-call registries loaded by `dnc-load`
+     * (P6-CMP-1): "US,GB". Any other region keeps the fail-closed placeholder, so every
+     * marketing call there is refused until its own screening exists (ADR-0010 §6).
+     */
+    DND_REGISTRY_REGIONS: z
+      .string()
+      .default('')
+      .transform((v) =>
+        v
+          .split(',')
+          .map((r) => r.trim().toUpperCase())
+          .filter((r) => r !== ''),
+      )
+      .refine((rs) => rs.every((r) => r === 'US' || r === 'GB'), 'only US and GB registries exist'),
     ENGINE_MAX_CONCURRENCY: z.coerce.number().int().positive().default(20),
     DISPATCH_BATCH: z.coerce.number().int().positive().max(100).default(10),
     DISPATCH_POLL_MS: z.coerce.number().int().positive().default(1000),
@@ -99,7 +132,9 @@ export const workersEnvSchema = z
     BIGQUERY_LOCATION: z.string().min(1).optional(),
   })
   .superRefine((env, ctx) => {
-    refineEngineEnv(env, ctx);
+    // Only these roles talk to a voice engine, and only they hold its credentials
+    // (infra/locals.tf secret_holders); the others must boot without them.
+    if (ENGINE_ROLES.has(env.WORKER)) refineEngineEnv(env, ctx);
     const needsPrivate =
       env.WORKER === 'dispatcher' ||
       env.WORKER === 'results' ||

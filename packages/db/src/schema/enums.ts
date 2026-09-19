@@ -268,6 +268,16 @@ export const billingKind = pgEnum('billing_kind', [
   'refund',
 ]);
 
+/**
+ * STIR/SHAKEN attestation the originating carrier gives a number's calls (P6-ENG-2). A: the
+ * carrier knows the customer AND that they may use this number. B: knows the customer only.
+ * C: neither. Unattested US calls are widely labelled "Spam Likely" or blocked outright.
+ */
+export const stirShakenAttestation = pgEnum('stir_shaken_attestation', ['A', 'B', 'C']);
+
+/** What the edge routes on (ADR-0012 §4): a shop domain or one of our own phone numbers. */
+export const directoryKind = pgEnum('directory_kind', ['shop', 'number']);
+
 export const billingProvider = pgEnum('billing_provider', [
   'shopify',
   'razorpay',

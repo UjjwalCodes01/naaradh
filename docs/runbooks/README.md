@@ -30,3 +30,5 @@ Written for whoever is on call at 2 a.m. — symptom first, then the exact comma
 | [`appointments.md`](appointments.md) | Calendars, why a reminder was not placed, a booking the provider refused, clinical questions (ADR-0011) | done |
 | [`woocommerce.md`](woocommerce.md) | A Woo store that sends nothing; results not arriving as order notes; the plugin's own diagnostics | done |
 | [`load-test.md`](load-test.md) | k6 scripts against staging, thresholds (SLOs), what a failure means; the chaos test | done |
+| [`dnc-registry.md`](dnc-registry.md) | US National DNC and UK TPS: loading a file, freshness deadlines, `dnd:unknown` refusals (P6-CMP-1) | done |
+| [`region-directory.md`](region-directory.md) | Which region serves a store or number; forwarded Shopify webhooks; peer sync failures (ADR-0012 §4) | done |

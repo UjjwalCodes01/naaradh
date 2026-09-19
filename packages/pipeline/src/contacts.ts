@@ -8,6 +8,7 @@ import {
   normalizePhone,
   dialRejectReason,
   sha256Hex,
+  zoneHintForNumber,
   type ParsedPhone,
   type PhoneRegion,
 } from '@naaradh/shared';
@@ -66,7 +67,8 @@ export async function upsertContact(
       phoneTypeCheckedAt: parsed.phone.type === 'unknown' ? null : input.at,
       name: input.name ?? null,
       localeHint: input.localeHint ?? null,
-      timezone: input.timezone ?? null,
+      // The shipping address knows best; failing that, the area code (Hawaii, Alaska, Atlantic Canada).
+      timezone: input.timezone ?? zoneHintForNumber(parsed.phone),
       source: input.source,
       skip: input.skip ?? false,
     })

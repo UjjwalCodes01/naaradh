@@ -8,6 +8,7 @@ export default defineConfig({
     'rotate-shopify-token-key': 'src/maintenance/rotate-shopify-token-key.ts',
     'rotate-phone-enc-key': 'src/maintenance/rotate-phone-enc-key.ts',
     'rotate-staff-enc-key': 'src/maintenance/rotate-staff-enc-key.ts',
+    'dnc-load': 'src/maintenance/dnc-load.ts',
   },
   format: ['esm'],
   target: 'node22',

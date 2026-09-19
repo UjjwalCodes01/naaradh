@@ -19,6 +19,7 @@ import {
   MERCHANT_EVENTS,
   PLANS,
   ProfileInput,
+  StripeCheckoutInput,
   SubscribeInput,
   TransferTargetInput,
   type MerchantEventType,
@@ -1042,7 +1043,7 @@ const billingOps: Record<string, PathItemObject> = {
       id: 'subscribeRazorpay',
       tag: 'Billing',
       summary: 'Start a Razorpay subscription (direct INR merchants)',
-      description: `Creates a Razorpay subscription for the chosen plan combination and returns the mandate authorisation URL; the subscription becomes active when Razorpay's webhook is confirmed by a re-fetch. Outbound plan codes: ${outboundPlanCodes.map((c) => `\`${c}\``).join(', ')}. Support-line plan codes: ${inboundPlanCodes.map((c) => `\`${c}\``).join(', ')}. At least one of the two is required. 403 when the account is a Shopify install (billed through Shopify only); 422 when the combination is not offered; 503 when Razorpay is not configured or unavailable.`,
+      description: `Creates a Razorpay subscription for the chosen plan combination and returns the mandate authorisation URL; the subscription becomes active when Razorpay's webhook is confirmed by a re-fetch. Outbound plan codes: ${outboundPlanCodes.map((c) => `\`${c}\``).join(', ')}. Support-line plan codes: ${inboundPlanCodes.map((c) => `\`${c}\``).join(', ')}. At least one of the two is required. 403 when the account is a Shopify install (billed through Shopify only); 409 when it already has an active subscription; 422 when the combination is not offered; 503 when Razorpay is not configured or unavailable.`,
       scope: 'billing:write',
       body: fromZod(SubscribeInput),
       responses: {
@@ -1052,6 +1053,27 @@ const billingOps: Record<string, PathItemObject> = {
             subscription_id: str(ID_ULID),
             status: constOf('pending'),
             authorize_url: str(undefined, { format: 'uri' }),
+          }),
+        ),
+      },
+      errors: ['EngineUnavailable'],
+    }),
+  },
+  '/v1/billing/stripe/checkout': {
+    post: operation('post', {
+      id: 'createStripeCheckout',
+      tag: 'Billing',
+      summary: 'Start a Stripe subscription (direct USD merchants)',
+      description: `Creates a Stripe Checkout session for the chosen plans and returns its URL; the subscription becomes active when Stripe's webhook is confirmed by a re-fetch of the session and subscription. Only accounts billed in USD. Outbound plan codes: ${outboundPlanCodes.map((c) => `\`${c}\``).join(', ')}. Support-line plan codes: ${inboundPlanCodes.map((c) => `\`${c}\``).join(', ')}. At least one of the two is required; \`success_url\` and \`cancel_url\` must be https. 403 when the account is a Shopify install (billed through Shopify only); 409 when it already has an active subscription; 422 when the account's currency or the plan is not offered through Stripe; 503 when Stripe is not configured or unavailable.`,
+      scope: 'billing:write',
+      body: fromZod(StripeCheckoutInput),
+      responses: {
+        '201': jsonResponse(
+          'Created; send the merchant to `checkout_url`.',
+          obj({
+            subscription_id: str(ID_ULID),
+            status: constOf('pending'),
+            checkout_url: str(undefined, { format: 'uri' }),
           }),
         ),
       },

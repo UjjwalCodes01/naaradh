@@ -1,9 +1,12 @@
+import { RECORDING_CONSENT_QUESTIONS } from './disclosures.js';
 import type { ScriptTemplate } from './template.js';
 
 /**
  * Turns an approved template + sanitised variables into what the engine needs:
  *
  *   firstUtterance   opening + purpose line with variables substituted — SPOKEN text
+ *   firstUtteranceTemplate  the same line with `{{slot}}` placeholders kept, for an engine
+ *                    agent reused across calls (it fills the slots per call)
  *   systemPrompt     static instructions: guardrails, branches, facts. Contains NO variables.
  *
  * The model never sees a customer field as an instruction. Where a branch says
@@ -31,6 +34,7 @@ export const GLOBAL_GUARDRAILS = [
 
 export interface RenderedScript {
   readonly firstUtterance: string;
+  readonly firstUtteranceTemplate: string;
   readonly closing: string;
   readonly systemPrompt: string;
   /** Slots the engine may reference by name; the same sanitised values, never raw input. */
@@ -45,12 +49,28 @@ export function substitute(text: string, variables: Readonly<Record<string, stri
     .trim();
 }
 
+export interface RenderOptions {
+  /**
+   * 'ask' where every party must consent to a recording (P6-CMP-1): the opening ends with the
+   * question, and the purpose line waits for a clear yes. Default 'notice'.
+   */
+  readonly recordingConsent?: 'notice' | 'ask';
+}
+
 export function renderScript(
   template: ScriptTemplate,
   variables: Readonly<Record<string, string>>,
+  options: RenderOptions = {},
 ): RenderedScript {
+  const ask = options.recordingConsent === 'ask';
+  const question = RECORDING_CONSENT_QUESTIONS[template.locale];
+  if (ask && question === undefined)
+    throw new Error(`no recording-consent question for locale ${template.locale}`);
+  // In 'ask' mode nothing about the customer's order is said before they agree to the recording.
+  const second = ask ? (question ?? '') : template.purpose_line;
   const firstUtterance =
-    `${substitute(template.opening, variables)} ${substitute(template.purpose_line, variables)}`.trim();
+    `${substitute(template.opening, variables)} ${substitute(second, variables)}`.trim();
+  const firstUtteranceTemplate = `${template.opening} ${second}`.replace(/\s{2,}/g, ' ').trim();
   const closing = substitute(template.closing, variables);
 
   // System prompt: describes slots by NAME, never by value.
@@ -64,8 +84,16 @@ export function renderScript(
     })
     .join('\n');
 
+  const consentRules = ask
+    ? [
+        "This call needs the customer's agreement to the recording. Your opening ends by asking for it. Continue only after a clear yes. If they say no, hesitate, or do not answer clearly after one repeat of the question, apologise, end the call and record recording_refused. Do not mention their order or anything about them before they agree.",
+        `Once they agree, say: "${describeSlots(template.purpose_line)}"`,
+      ]
+    : [];
+
   const systemPrompt = [
     ...GLOBAL_GUARDRAILS,
+    ...consentRules,
     '',
     `Use case: ${template.use_case}. Language: ${template.locale}. Maximum call length: ${String(template.max_duration_sec)} seconds.`,
     `Forbidden topics (refuse and move on): ${template.forbidden_topics.join(', ')}.`,
@@ -88,7 +116,7 @@ export function renderScript(
     .filter((line) => line.length > 0)
     .join('\n');
 
-  return { firstUtterance, closing, systemPrompt, slots: variables };
+  return { firstUtterance, firstUtteranceTemplate, closing, systemPrompt, slots: variables };
 }
 
 /** In the system prompt a slot stays a slot: {{customer_name}} → <slot customer_name>. */

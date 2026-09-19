@@ -129,6 +129,10 @@ export interface FakeState {
   spent: { tenantDay: number; tenantMonth: number; engineDay: number; globalDay: number };
   engineCapPaise: number | null;
   globalCapPaise: number | null;
+  /** Dollar spend and caps (P6): engines that bill in USD count separately from rupees. */
+  spentUsd: { engineDay: number; globalDay: number };
+  engineCapUsdCents: number | null;
+  globalCapUsdCents: number | null;
   suppressions: SuppressionHit[];
   consents: ConsentHit[];
   flags: Map<string, unknown>;
@@ -153,6 +157,7 @@ export function poolNumber(overrides: Partial<NumberCandidate> = {}): NumberCand
     status: 'active',
     answerRate7d: 0.41,
     ownedByTenant: false,
+    attestation: null,
     ...overrides,
   };
 }
@@ -179,6 +184,9 @@ export function fakeState(overrides: Partial<FakeState> = {}): FakeState {
     spent: { tenantDay: 0, tenantMonth: 0, engineDay: 0, globalDay: 0 },
     engineCapPaise: 50_000_00,
     globalCapPaise: 200_000_00,
+    spentUsd: { engineDay: 0, globalDay: 0 },
+    engineCapUsdCents: 600_00,
+    globalCapUsdCents: 2_400_00,
     suppressions: [],
     consents: [],
     flags: new Map(),
@@ -211,12 +219,18 @@ export function fakeDeps(state: FakeState): GateDeps {
     spend: {
       tenantSpentToday: async () => paise(state.spent.tenantDay),
       tenantSpentThisMonth: async () => paise(state.spent.tenantMonth),
-      engineSpentToday: async () => paise(state.spent.engineDay),
-      globalSpentToday: async () => paise(state.spent.globalDay),
-      engineDailyCap: () =>
-        state.engineCapPaise === null ? null : money(state.engineCapPaise, 'INR'),
-      globalDailyCap: () =>
-        state.globalCapPaise === null ? null : money(state.globalCapPaise, 'INR'),
+      engineSpentToday: async (_engine, currency) =>
+        money(currency === 'USD' ? state.spentUsd.engineDay : state.spent.engineDay, currency),
+      globalSpentToday: async (currency) =>
+        money(currency === 'USD' ? state.spentUsd.globalDay : state.spent.globalDay, currency),
+      engineDailyCaps: () => [
+        ...(state.engineCapPaise === null ? [] : [money(state.engineCapPaise, 'INR')]),
+        ...(state.engineCapUsdCents === null ? [] : [money(state.engineCapUsdCents, 'USD')]),
+      ],
+      globalDailyCaps: () => [
+        ...(state.globalCapPaise === null ? [] : [money(state.globalCapPaise, 'INR')]),
+        ...(state.globalCapUsdCents === null ? [] : [money(state.globalCapUsdCents, 'USD')]),
+      ],
     },
     suppressions: {
       findActive: async (_tenantId, phoneHash, now) =>

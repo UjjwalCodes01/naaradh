@@ -10,7 +10,12 @@ export function loadEnv<T>(
   schema: z.ZodType<T, z.ZodTypeDef, unknown>,
   source: NodeJS.ProcessEnv = process.env,
 ): T {
-  const result = schema.safeParse(source);
+  // `KEY=` in an env file means "not set", as dotenv treats it: an empty string would otherwise
+  // fail every optional-but-formatted variable (keys, secrets, JSON) copied from .env.example.
+  const cleaned = Object.fromEntries(
+    Object.entries(source).filter(([, v]) => v !== undefined && v.trim() !== ''),
+  );
+  const result = schema.safeParse(cleaned);
   if (result.success) return result.data;
   const problems = result.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`);
   throw new Error(`Environment is invalid:\n  ${problems.join('\n  ')}`);
@@ -83,6 +88,66 @@ export const staffEncryptEnv = {
 
 export const staffDecryptEnv = {
   STAFF_ENC_PRIVATE_KEY: z.string().includes('BEGIN PRIVATE KEY'),
+};
+
+/**
+ * Peer deployments (ADR-0012 §4, P6-INF-2). `REGION_PEERS` maps each OTHER region to its hooks
+ * base URL: {"us":"https://hooks.us.naaradh.com"}. Directory snapshots are signed with
+ * Ed25519, one key pair per region (`generateRegionKeyPair()`): `REGION_SYNC_PRIVATE_KEY` is this
+ * region's private key (Secret Manager, reconcile worker only) and `REGION_PEER_KEYS` maps each
+ * other region to its PUBLIC key (not secret; hooks verifies with it). All unset = a
+ * single-region deployment (every edge rule is a no-op).
+ */
+export const regionPeersEnv = {
+  REGION_PEERS: z
+    .string()
+    .optional()
+    .transform((s, ctx) => {
+      if (s === undefined || s.length === 0) return {};
+      try {
+        return JSON.parse(s) as unknown;
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'REGION_PEERS must be JSON' });
+        return z.NEVER;
+      }
+    })
+    .pipe(
+      z.record(
+        z.enum(['in', 'us', 'eu']),
+        z
+          .string()
+          .url()
+          .refine((u) => u.startsWith('https://') || u.startsWith('http://localhost'), {
+            message: 'peer URLs must be https',
+          }),
+      ),
+    ),
+  /** Base64 PKCS#8 DER Ed25519 private key of THIS region. */
+  REGION_SYNC_PRIVATE_KEY: z
+    .string()
+    .regex(/^[A-Za-z0-9+/=]{40,}$/)
+    .optional(),
+  /** {"us":"<base64 32-byte Ed25519 public key>", …} for every peer. */
+  REGION_PEER_KEYS: z
+    .string()
+    .optional()
+    .transform((s, ctx) => {
+      if (s === undefined || s.length === 0) return {};
+      try {
+        return JSON.parse(s) as unknown;
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'REGION_PEER_KEYS must be JSON' });
+        return z.NEVER;
+      }
+    })
+    .pipe(
+      z.record(
+        z.enum(['in', 'us', 'eu']),
+        z
+          .string()
+          .refine((k) => Buffer.from(k, 'base64').length === 32, 'a 32-byte Ed25519 public key'),
+      ),
+    ),
 };
 
 /**

@@ -3,8 +3,10 @@ import {
   boolean,
   check,
   index,
+  integer,
   jsonb,
   pgTable,
+  primaryKey,
   smallint,
   text,
   uniqueIndex,
@@ -155,6 +157,55 @@ export const dndScrubCache = pgTable(
     expiresAt: ts('expires_at').notNull(),
   },
   (t) => [index('dnd_scrub_expires_idx').on(t.expiresAt)],
+);
+
+/**
+ * National do-not-call registries loaded from their licensed data files (P6-CMP-1): the US
+ * National DNC Registry (a SAN subscription; federal law requires a scrub at least every 31
+ * days) and the UK Telephone Preference Service (TPS and CTPS; licensees screen at least every
+ * 28 days). One row per list; `active_version` is the last COMPLETE load — a half-loaded
+ * version is never read, so a failed load leaves the previous one in force until it goes stale.
+ *
+ * Global, not per tenant: these are public registries, identical for everyone.
+ */
+export const dncRegistryLists = pgTable(
+  'dnc_registry_lists',
+  {
+    /** us_national · us_state_<xx> · uk_tps · uk_ctps */
+    list: text('list').primaryKey(),
+    /** ISO country the list covers — a number from another country is never looked up in it. */
+    region: text('region').notNull(),
+    /** Required lists fail closed when missing or stale; optional ones only when stale. */
+    required: boolean('required').notNull().default(false),
+    activeVersion: text('active_version'),
+    loadedAt: ts('loaded_at'),
+    rowCount: integer('row_count'),
+    /** US only: the area codes the subscription covers. Null = the whole list. */
+    areaCodes: text('area_codes').array(),
+    /** A load older than this is not trusted: screening returns 'unknown' and the gate refuses. */
+    maxAgeDays: smallint('max_age_days').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [check('dnc_registry_lists_max_age', sql`${t.maxAgeDays} between 1 and 31`)],
+);
+
+/**
+ * One row per registered number per list version, by HASH only (invariant 8): the registry
+ * files hold numbers in the clear, and none of them is ever written to this database.
+ */
+export const dncRegistryEntries = pgTable(
+  'dnc_registry_entries',
+  {
+    phoneHash: phoneHash().notNull(),
+    list: text('list')
+      .notNull()
+      .references(() => dncRegistryLists.list),
+    version: text('version').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.phoneHash, t.list, t.version] }),
+    index('dnc_registry_entries_version_idx').on(t.list, t.version),
+  ],
 );
 
 /** Number-type lookup cache, 30 days (gate step 4, E-27). Global for the same reason. */

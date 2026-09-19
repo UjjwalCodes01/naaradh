@@ -10,6 +10,8 @@
  *
  *   +1  212 555 0100-0199   GENUINELY RESERVED. NANP reserves line numbers 555-0100 to
  *                           555-0199 for fictitious use (any area code; 212 chosen here).
+ *   +1  808/907/902 555 0100-0199  The same reserved lines in Hawaii, Alaska and Nova Scotia,
+ *                           for the area-code time-zone hint (P6-CMP-1).
  *   +44 7700 900000-900999  GENUINELY RESERVED. Ofcom's drama range for UK mobiles.
  *   +91 6000 000 000-999    A CONVENTION OF THIS REPO, NOT a regulator-reserved range.
  *                           India has no published fictitious-number range (see Q-14 in
@@ -25,7 +27,14 @@
  */
 
 /** Prefixes mirrored in tools/eslint-plugin-naaradh/index.js and scripts/lint-pii.mjs. */
-export const FAKE_PHONE_PREFIXES = ['+916000000', '+121255501', '+447700900'] as const;
+export const FAKE_PHONE_PREFIXES = [
+  '+916000000',
+  '+121255501',
+  '+180855501',
+  '+190755501',
+  '+190255501',
+  '+447700900',
+] as const;
 
 /** India (+91). Passes the Indian mobile regex; used for window, consent and CLI tests. */
 export const FAKE_IN = {
@@ -53,6 +62,15 @@ export const FAKE_US = {
   /** No written consent on file; marketing must be gated (E-07). */
   noWrittenConsent: '+12125550101',
   transferTarget: '+12125550190',
+  /** Area code 808: Hawaii, outside the New York–Los Angeles intersection. */
+  hawaii: '+18085550100',
+  /** Area code 907: Alaska. */
+  alaska: '+19075550100',
+} as const;
+
+/** Canada (+1). Area code 902, Nova Scotia — Atlantic time, east of Toronto. */
+export const FAKE_CA = {
+  halifax: '+19025550100',
 } as const;
 
 /** United Kingdom (+44). Ofcom drama range, for PECR/TPS tests. */

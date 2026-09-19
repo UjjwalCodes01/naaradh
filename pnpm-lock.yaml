@@ -163,6 +163,9 @@ importers:
       '@naaradh/payments':
         specifier: workspace:*
         version: link:../../packages/payments
+      '@naaradh/pipeline':
+        specifier: workspace:*
+        version: link:../../packages/pipeline
       '@naaradh/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -560,6 +563,9 @@ importers:
 
   packages/engines/registry:
     dependencies:
+      '@naaradh/engine-retell':
+        specifier: workspace:*
+        version: link:../retell
       '@naaradh/engine-simulator':
         specifier: workspace:*
         version: link:../simulator
@@ -572,6 +578,19 @@ importers:
       zod:
         specifier: 3.24.1
         version: 3.24.1
+
+  packages/engines/retell:
+    dependencies:
+      '@naaradh/engines-core':
+        specifier: workspace:*
+        version: link:../core
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      '@naaradh/engine-harness':
+        specifier: workspace:*
+        version: link:../harness
 
   packages/engines/simulator:
     dependencies:

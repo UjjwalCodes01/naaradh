@@ -1,0 +1,17 @@
+{
+  "name": "@naaradh/engine-retell",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "Retell AI adapter for US/UK/EU calling (P6-ENG-1). HTTP over fetch, no vendor SDK. Everything marked [VERIFY] is written from Retell's published API reference and must be confirmed against recorded payloads on the first live call (docs/go-live/10-us-eu.md).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@naaradh/engines-core": "workspace:*",
+    "@naaradh/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@naaradh/engine-harness": "workspace:*"
+  }
+}

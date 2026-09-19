@@ -158,7 +158,7 @@ jobs:
             workers-intents:workers workers-dispatcher:workers workers-results:workers
             workers-reconcile:workers workers-deliveries:workers workers-actions:workers
             workers-writebacks:workers workers-complaints:workers workers-retention:workers
-            workers-billing:workers workers-notifications:workers
+            workers-billing:workers workers-notifications:workers workers-analytics:workers
             hooks:hooks api:api console:console shopify:shopify web:web voice:voice
           )
           for entry in "${services[@]}"; do

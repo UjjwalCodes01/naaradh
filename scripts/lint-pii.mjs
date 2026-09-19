@@ -19,7 +19,14 @@ import { join, relative, extname } from 'node:path';
 const ROOT = process.cwd();
 
 /** Must stay in sync with tools/eslint-plugin-naaradh and packages/shared/test/fake-phones.ts. */
-const FAKE_PREFIXES = ['+916000000', '+121255501', '+447700900'];
+const FAKE_PREFIXES = [
+  '+916000000',
+  '+121255501',
+  '+180855501',
+  '+190755501',
+  '+190255501',
+  '+447700900',
+];
 
 const PATTERNS = [
   { name: 'e164', re: /\+\d{10,15}/g },

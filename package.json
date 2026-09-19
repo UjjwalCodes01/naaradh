@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "turbo dev",
-    "dev:shopify": "turbo dev --filter=@naaradh/shopify-app",
+    "dev:shopify": "cd apps/shopify && shopify app dev",
     "build": "turbo build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p apps/web && pnpm --filter @naaradh/shopify-app typecheck",
     "lint": "eslint .",

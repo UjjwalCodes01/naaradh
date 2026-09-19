@@ -7,7 +7,7 @@ import type { DndProvider, GateDepsConfig } from '@naaradh/compliance';
 import type { DataRegion, PhoneKeys } from '@naaradh/pipeline';
 import type { RecordingStore } from './results/recordings.js';
 import type { ShopifyWriteback } from './results/writeback.js';
-import type { RazorpayClient } from '@naaradh/payments';
+import type { RazorpayClient, StripeClient } from '@naaradh/payments';
 import type { Mailer } from '@naaradh/notify';
 import type { SecretResolver } from './deliveries/secrets.js';
 
@@ -36,6 +36,8 @@ export interface WorkerContext {
   readonly shopifyAdmin: { readonly apiVersion: string; readonly fetchImpl?: typeof fetch };
   /** Null when Razorpay is not configured in this environment. */
   readonly razorpay: RazorpayClient | null;
+  /** Stripe (P6-BILL-1, dollar merchants). Null → Stripe postings and events wait. */
+  readonly stripe: StripeClient | null;
   /** Merchant email (P2-WEB-4): Postmark in production, in-memory elsewhere. */
   readonly mailer: Mailer;
   /** Links in emails point here (apps/web). */

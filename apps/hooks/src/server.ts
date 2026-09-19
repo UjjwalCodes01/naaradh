@@ -6,6 +6,8 @@ import type { EngineRegistry } from '@naaradh/engines-registry';
 import type { Publisher } from './pubsub.js';
 import { registerEngineRoutes } from './routes/engine.js';
 import { registerRazorpayRoutes } from './routes/razorpay.js';
+import { registerStripeRoutes } from './routes/stripe.js';
+import { registerRegionRoutes, type RegionDeps } from './routes/region.js';
 import { registerShopifyRoutes } from './routes/shopify.js';
 
 /**
@@ -25,6 +27,12 @@ export interface HooksDeps {
   readonly engineWebhookKey: string;
   /** Null → the Razorpay route answers 404 (not configured in this environment). */
   readonly razorpayWebhookSecret?: string | null;
+  /** Null → the Stripe route answers 404 (not configured in this environment). */
+  readonly stripeWebhookSecret?: string | null;
+  /** Tests walk the clock past Stripe's replay window. */
+  readonly nowUnix?: () => number;
+  /** DATA_REGION, peers and the directory sync key (ADR-0012 §4). Absent = single region. */
+  readonly region?: Omit<RegionDeps, 'db'>;
   readonly rateLimitPerMinute: number;
   /** TRUST_PROXY_HOPS — trailing X-Forwarded-For entries that are ours (see @naaradh/shared baseEnv). */
   readonly trustProxyHops?: number;
@@ -72,7 +80,9 @@ export async function buildServer(deps: HooksDeps): Promise<FastifyInstance> {
     db: deps.db,
     publisher: deps.publisher,
     secretForShop: deps.shopifySecretFor,
+    ...(deps.region === undefined ? {} : { region: { ...deps.region, db: deps.db } }),
   });
+  if (deps.region !== undefined) registerRegionRoutes(app, { ...deps.region, db: deps.db });
   registerEngineRoutes(app, {
     db: deps.db,
     publisher: deps.publisher,
@@ -84,6 +94,12 @@ export async function buildServer(deps: HooksDeps): Promise<FastifyInstance> {
     db: deps.db,
     publisher: deps.publisher,
     webhookSecret: deps.razorpayWebhookSecret ?? null,
+  });
+  registerStripeRoutes(app, {
+    db: deps.db,
+    publisher: deps.publisher,
+    webhookSecret: deps.stripeWebhookSecret ?? null,
+    ...(deps.nowUnix === undefined ? {} : { nowUnix: deps.nowUnix }),
   });
 
   return app;

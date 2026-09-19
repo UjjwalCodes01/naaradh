@@ -35,6 +35,19 @@ export const apiEnvSchema = z.object({
       s === undefined || s.length === 0 ? {} : (JSON.parse(s) as Record<string, string>),
     )
     .pipe(z.record(z.string().regex(/^plan_[A-Za-z0-9]+$/))),
+  /** Stripe direct billing in USD (P6-BILL-1). Unset → /v1/billing/stripe/checkout answers 503. */
+  STRIPE_SECRET_KEY: z
+    .string()
+    .regex(/^(sk|rk)_(test|live)_[A-Za-z0-9]+$/)
+    .optional(),
+  /** JSON: {"growth": "price_…", "inbound_growth": "price_…"} — one USD price per plan code. */
+  STRIPE_PRICE_IDS: z
+    .string()
+    .optional()
+    .transform((s) =>
+      s === undefined || s.length === 0 ? {} : (JSON.parse(s) as Record<string, string>),
+    )
+    .pipe(z.record(z.string().regex(/^price_[A-Za-z0-9]+$/))),
   /** Per secret key: requests per minute (burst). AGENTS §8: 60 rpm, burst 120. */
   RATE_LIMIT_KEY_PER_MINUTE: z.coerce.number().int().positive().default(120),
   /** Per public site key, per IP. */

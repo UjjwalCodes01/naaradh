@@ -24,6 +24,7 @@ import {
   OUTBOUND_TOOLS,
   TOOL_RULES,
   renderScript,
+  extractionJsonSchema,
   toolDefinitions,
   validateScript,
 } from '@naaradh/scripts';
@@ -307,7 +308,9 @@ async function prepareDial(
     .where(eq(schema.tenants.id, tenantId))
     .limit(1);
   const slots = { brand: tenant?.name ?? 'the store', ...variables };
-  const rendered = renderScript(validated.template, slots);
+  const rendered = renderScript(validated.template, slots, {
+    recordingConsent: pass.recordingConsent,
+  });
 
   // ADR-0006: the outbound agent carries the same mid-call tools as the support line (order
   // lookup, cancellation, tickets, transfer) when the tenant runs one — settings come from it.
@@ -326,8 +329,16 @@ async function prepareDial(
     )
     .orderBy(desc(schema.inboundProfiles.updatedAt))
     .limit(1);
+  // Product code branches on capabilities, never on vendor: an engine that cannot put a call
+  // through to a number we choose must not be told it can (the agent would promise a transfer).
+  const caps = ctx.registry.get(pass.engine).capabilities();
   const toolNames =
-    profile === undefined ? [] : OUTBOUND_TOOLS.filter((t) => profile.toolsEnabled.includes(t));
+    profile === undefined
+      ? []
+      : OUTBOUND_TOOLS.filter(
+          (t) =>
+            profile.toolsEnabled.includes(t) && (t !== 'transfer_to_human' || caps.warmTransfer),
+        );
   const tools = toolDefinitions({
     tools: toolNames,
     locale: loaded.intent.locale,
@@ -420,15 +431,23 @@ async function prepareDial(
       name: `${tenantId}:${loaded.intent.useCase}:${pass.script.locale}:v${String(pass.script.version)}`,
       locale: loaded.intent.locale as Locale,
       systemPrompt,
-      firstUtterance: rendered.firstUtterance,
+      // The template, not this customer's rendering: the agent is reused across calls.
+      firstUtterance: rendered.firstUtteranceTemplate,
       voiceId: 'default',
       maxDurationSec: pass.maxDurationSec,
       ...(tools.length === 0 ? {} : { tools }),
+      webhookUrl: `${ctx.hooksBaseUrl}${engineWebhookPath(ctx.engineWebhookKey, pass.engine, tenantId)}`,
+      extraction: {
+        name: validated.template.extraction,
+        schema: extractionJsonSchema(validated.template.extraction),
+      },
     },
-    agentKey:
+    // The opening differs by recording-consent mode, so the cached agent must too.
+    agentKey: `${
       profile === undefined || toolNames.length === 0
         ? 'notools'
-        : `${profile.id}.v${String(profile.version)}`,
+        : `${profile.id}.v${String(profile.version)}`
+    }.rec-${pass.recordingConsent}`,
     externalRefs: intentRow?.externalRefs ?? [loaded.intent.externalRef],
     notAfter: loaded.intent.notAfter,
   };

@@ -22,6 +22,12 @@ const app = await buildServer({
   shopifySecretFor: (shop) => env.SHOPIFY_WEBHOOK_SECRETS[shop] ?? env.SHOPIFY_API_SECRET,
   engineWebhookKey: env.ENGINE_WEBHOOK_KEY,
   razorpayWebhookSecret: env.RAZORPAY_WEBHOOK_SECRET ?? null,
+  stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET ?? null,
+  region: {
+    region: env.DATA_REGION,
+    peers: env.REGION_PEERS,
+    peerKeys: env.REGION_PEER_KEYS,
+  },
   rateLimitPerMinute: env.RATE_LIMIT_PER_MINUTE,
   logLevel: env.LOG_LEVEL,
   trustProxyHops: env.TRUST_PROXY_HOPS,

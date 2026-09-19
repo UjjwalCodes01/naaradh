@@ -46,6 +46,8 @@ shred -u phone_enc_private.pem   # after the offline backup is made
 | `SHOPIFY_WEBHOOK_SECRETS` *(optional)* | Per-shop secrets for custom apps (Client A until migrated) | [04](04-shopify-app.md#9-moving-client-a-from-the-custom-app-to-the-public-app) |
 | `POSTMARK_TOKEN` | Postmark server API token | [06](06-email-and-payments.md#2-postmark-transactional-email) |
 | `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET` *(optional)* | Razorpay dashboard | [06](06-email-and-payments.md#3-razorpay) |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` *(optional, US/EU)* | Stripe dashboard (restricted key; webhook endpoint signing secret) | [10](10-us-eu.md#6-stripe-p6-bill-1) |
+| `REGION_SYNC_PRIVATE_KEY` *(optional, multi-region only)* | `generateRegionKeyPair()` — one per region | [runbook](../runbooks/region-directory.md#keys) |
 | `BOLNA_API_KEY`, `OMNIDIM_API_KEY`, `RETELL_API_KEY` *(optional)* | Engine dashboards | [03](03-voice-engine.md) |
 | `SIMULATOR_WEBHOOK_SECRET` *(optional, stage/dev only)* | `openssl rand -hex 32` | Signs the simulator's webhooks and tool calls; listed in `enabled_optional_secrets` |
 
@@ -54,9 +56,13 @@ shred -u phone_enc_private.pem   # after the offline backup is made
 value before their services can start** — including the Shopify credentials for the four workers
 that call Shopify, so create the staging Shopify app before the first stage deploy.
 
-Reserved names with no code behind them yet: `WEBHOOK_SIGNING_KEY` (merchant webhooks use one
-secret per endpoint instead), `STRIPE_SECRET_KEY` (Phase 6), `KILL_SWITCH_GLOBAL` (use the kill
-switch in the console or Redis instead).
+Reserved names with no code behind them: `WEBHOOK_SIGNING_KEY` (merchant webhooks use one
+secret per endpoint instead — do not list it in `enabled_optional_secrets`), `KILL_SWITCH_GLOBAL`
+(use the kill switch in the console or Redis instead).
+
+Engine keys (`*_API_KEY`, `SIMULATOR_WEBHOOK_SECRET`) are held only by hooks, voice and the
+dispatcher/results/reconcile workers; only those roles check engine configuration at boot, so
+the other worker roles start without them.
 
 ## 3. Who holds what (production)
 
@@ -112,6 +118,6 @@ sets `NODE_ENV`, region, `PUBSUB_TOPIC_PREFIX`, `RECORDINGS_BUCKET`, `WORKER`, t
 - [ ] Keys generated per environment; private keys backed up offline; nothing in chat, email or git
 - [ ] Every non-optional secret has a version before its services are enabled
 - [ ] Optional secrets listed in `enabled_optional_secrets` only after a version exists
-- [ ] `ENGINE_DEFAULT_IN` left on `simulator` until an adapter is merged and tested
+- [ ] Stage runs the simulator (`SIMULATOR_ALLOWED=true`). **prod-in cannot boot on the simulator** — hooks, voice and the engine workers refuse it — so prod-in is deployed only after the ADR-0001 adapter is merged and `ENGINE_DEFAULT_IN` names it (an engine with no adapter is refused at boot too)
 - [ ] Paging channel keys passed as `TF_VAR_pagerduty_service_key` / `TF_VAR_alert_webhook_url` at apply time, never written to tfvars
 - [ ] First secret rotation done on staging (`docs/runbooks/secret-rotation.md`, P3-INF-2 table)

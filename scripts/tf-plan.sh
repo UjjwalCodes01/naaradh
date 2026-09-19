@@ -4,7 +4,7 @@
 # Plan only, never apply. AGENTS.md section 1: agents produce plans; a human applies them
 # (docs/runbooks/deploy.md). Uses your own gcloud application-default credentials.
 #
-#   ENV              dev | stage | prod-in            (required)
+#   ENV              dev | stage | prod-in | prod-us | prod-eu   (required)
 #   TF_STATE_BUCKET  state bucket (default: naaradh-tfstate-<ENV>)
 set -euo pipefail
 
@@ -16,7 +16,7 @@ for arg in "$@"; do
 done
 
 if [[ -z "$ENV_NAME" ]]; then
-  echo "usage: pnpm tf:plan ENV=<dev|stage|prod-in>" >&2
+  echo "usage: pnpm tf:plan ENV=<dev|stage|prod-in|prod-us|prod-eu>" >&2
   exit 2
 fi
 

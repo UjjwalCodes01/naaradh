@@ -16,6 +16,7 @@
     "@naaradh/engines-core": "workspace:*",
     "@naaradh/engines-registry": "workspace:*",
     "@naaradh/payments": "workspace:*",
+    "@naaradh/pipeline": "workspace:*",
     "@naaradh/shared": "workspace:*",
     "drizzle-orm": "0.44.7",
     "fastify": "5.2.1",

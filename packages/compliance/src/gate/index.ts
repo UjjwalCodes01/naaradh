@@ -10,6 +10,8 @@ import {
   MIN_MINUTES_BETWEEN_ATTEMPTS,
   PROMOTIONAL_COOLDOWN_DAYS,
   WINDOW_CLOSE_BUFFER_MINUTES,
+  ATTESTED_CLI_REGIONS,
+  recordingConsentFor,
 } from '../constants.js';
 import { consentRequirement, isSourceAcceptable } from '../consent.js';
 import type { GateReason } from './reasons.js';
@@ -221,17 +223,25 @@ export async function gateIntent(input: GateInput, deps: GateDeps): Promise<Gate
         };
       }
     }
-    const engineCap = deps.spend.engineDailyCap(selectedEngine);
-    if (engineCap !== null) {
-      const spent = await deps.spend.engineSpentToday(selectedEngine);
-      if (spent.minor >= engineCap.minor)
-        return { ok: false, reason: 'cap:engine_daily', retryAt: nextUtcDay(now) };
+    for (const cap of deps.spend.engineDailyCaps(selectedEngine)) {
+      const spent = await deps.spend.engineSpentToday(selectedEngine, cap.currency);
+      if (spent.minor >= cap.minor)
+        return {
+          ok: false,
+          reason: 'cap:engine_daily',
+          retryAt: nextUtcDay(now),
+          detail: { currency: cap.currency, spent: spent.minor, cap: cap.minor },
+        };
     }
-    const globalCap = deps.spend.globalDailyCap();
-    if (globalCap !== null) {
-      const spent = await deps.spend.globalSpentToday();
-      if (spent.minor >= globalCap.minor)
-        return { ok: false, reason: 'cap:global_daily', retryAt: nextUtcDay(now) };
+    for (const cap of deps.spend.globalDailyCaps()) {
+      const spent = await deps.spend.globalSpentToday(cap.currency);
+      if (spent.minor >= cap.minor)
+        return {
+          ok: false,
+          reason: 'cap:global_daily',
+          retryAt: nextUtcDay(now),
+          detail: { currency: cap.currency, spent: spent.minor, cap: cap.minor },
+        };
     }
     return { ok: true };
   });
@@ -330,7 +340,7 @@ export async function gateIntent(input: GateInput, deps: GateDeps): Promise<Gate
   if (!s6.ok) return fail(s6.reason, s6.retryAt ?? null);
 
   // ---- 7. calling window in the recipient's zone (invariants 2 & 3, E-01, E-02, E-51) ------
-  const window = windowFor(intent.recipientRegion, contact.timezone);
+  const window = windowFor(intent.recipientRegion, contact.timezone, intent.purpose);
   let dialDeadline: Date = intent.notAfter;
   const s7 = await step(7, 'window', () => {
     if (window === null) return { ok: false, reason: 'window:unknown_region' };
@@ -478,7 +488,8 @@ export async function gateIntent(input: GateInput, deps: GateDeps): Promise<Gate
     intent.recipientRegion,
     selectedEngine,
   );
-  const eligible = candidates.filter(
+  const needsAttestation = ATTESTED_CLI_REGIONS.has(intent.recipientRegion);
+  const usable = candidates.filter(
     (n) =>
       n.region === intent.recipientRegion &&
       n.engine === selectedEngine &&
@@ -486,6 +497,8 @@ export async function gateIntent(input: GateInput, deps: GateDeps): Promise<Gate
       n.purposeAllowed.includes(intent.purpose) &&
       (n.answerRate7d === null || n.answerRate7d >= CLI_MIN_ANSWER_RATE_7D),
   );
+  // P6-ENG-2: North American recipients only from a number recorded as A-attested.
+  const eligible = needsAttestation ? usable.filter((n) => n.attestation === 'A') : usable;
   const cli = eligible[0];
   const s11 = await step(11, 'cli', () =>
     cli === undefined
@@ -493,7 +506,12 @@ export async function gateIntent(input: GateInput, deps: GateDeps): Promise<Gate
           ok: false,
           reason: 'cli:none_available',
           retryAt: addMinutes(now, 15),
-          detail: { candidates: candidates.length },
+          detail: {
+            candidates: candidates.length,
+            ...(needsAttestation
+              ? { attestation_required: 'A', unattested: usable.length - eligible.length }
+              : {}),
+          },
         }
       : {
           ok: true,
@@ -535,6 +553,7 @@ export async function gateIntent(input: GateInput, deps: GateDeps): Promise<Gate
       intent.purpose === 'promotional' ? tenant.amdModePromotional : tenant.amdModeTransactional,
     maxDurationSec: MAX_DURATION_SEC_BY_USE_CASE[intent.useCase],
     dialDeadline,
+    recordingConsent: recordingConsentFor(intent.recipientRegion),
     lease,
     trace: trace(),
   };

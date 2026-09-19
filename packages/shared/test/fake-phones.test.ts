@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   FAKE_IN,
@@ -71,8 +73,23 @@ describe('fake phone ranges', () => {
   });
 
   it('keeps the prefix list in sync with the linters', () => {
-    // tools/eslint-plugin-naaradh/index.js and scripts/lint-pii.mjs hard-code these.
-    // If this fails, update all three together.
-    expect([...FAKE_PHONE_PREFIXES]).toEqual(['+916000000', '+121255501', '+447700900']);
+    // tools/eslint-plugin-naaradh/index.js and scripts/lint-pii.mjs hard-code these; read both
+    // and compare, so the three can never drift apart. If this fails, update all three together.
+    const root = fileURLToPath(new URL('../../../', import.meta.url));
+    for (const file of ['tools/eslint-plugin-naaradh/index.js', 'scripts/lint-pii.mjs']) {
+      const src = readFileSync(`${root}${file}`, 'utf8');
+      const list = /const FAKE_PREFIXES = \[([\s\S]*?)\];/.exec(src)?.[1] ?? '';
+      const prefixes = [...list.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+      expect(prefixes, file).toEqual([...FAKE_PHONE_PREFIXES]);
+    }
+    // Every prefix sits inside a reserved or conventional range (see the header comment).
+    expect([...FAKE_PHONE_PREFIXES]).toEqual([
+      '+916000000',
+      '+121255501',
+      '+180855501',
+      '+190755501',
+      '+190255501',
+      '+447700900',
+    ]);
   });
 });

@@ -97,6 +97,9 @@ locals {
     "RAZORPAY_KEY_ID", # direct INR billing (P2-BILL-3); unset → routes answer 503 / postings wait
     "RAZORPAY_KEY_SECRET",
     "RAZORPAY_WEBHOOK_SECRET",
+    "STRIPE_SECRET_KEY", # direct USD billing (P6-BILL-1); unset → routes answer 503 / postings wait
+    "STRIPE_WEBHOOK_SECRET",
+    "REGION_SYNC_PRIVATE_KEY", # this region's directory signing key (ADR-0012 am. 1); unset → single region
     "WEBHOOK_SIGNING_KEY",
     # Staging only (SIMULATOR_ALLOWED=true there): signs the simulator engine's webhooks and tool
     # calls. Production refuses the simulator, so this secret never exists there.
@@ -152,6 +155,12 @@ locals {
     RAZORPAY_KEY_ID         = ["api", "web", "workers-billing"]
     RAZORPAY_KEY_SECRET     = ["api", "web", "workers-billing"]
     RAZORPAY_WEBHOOK_SECRET = ["hooks"]
+    STRIPE_SECRET_KEY       = ["api", "web", "workers-billing"]
+    STRIPE_WEBHOOK_SECRET   = ["hooks"]
+
+    # This region's Ed25519 key for directory snapshots. Only the reconcile worker signs; hooks
+    # verifies peers with their PUBLIC keys (REGION_PEER_KEYS, plain env — not a secret).
+    REGION_SYNC_PRIVATE_KEY = ["workers-reconcile"]
 
     POSTMARK_TOKEN      = ["web", "workers-notifications"]
     WEBHOOK_SIGNING_KEY = ["workers-deliveries"]
@@ -187,6 +196,7 @@ locals {
     LOG_LEVEL           = "info"
     GCP_PROJECT         = var.project_id
     GCP_REGION          = var.region
+    DATA_REGION         = var.data_region
     PUBSUB_TOPIC_PREFIX = "naaradh"
   }
 

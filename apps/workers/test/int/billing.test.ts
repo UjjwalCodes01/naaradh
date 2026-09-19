@@ -4,8 +4,20 @@ import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redi
 import { Redis } from 'ioredis';
 import { createDb, withTenant, type Db } from '@naaradh/db';
 import { RoleClient, startTestPostgres, type TestPostgres } from '@naaradh/db/testing';
-import { meterOutcome, openDispute, resolveDispute } from '@naaradh/pipeline';
-import type { RazorpayClient, RazorpaySubscription } from '@naaradh/payments';
+import {
+  meterOutcome,
+  openDispute,
+  recordStripeCheckout,
+  resolveDispute,
+  stripePricesFor,
+} from '@naaradh/pipeline';
+import type {
+  RazorpayClient,
+  RazorpaySubscription,
+  StripeCheckoutSession,
+  StripeClient,
+  StripeSubscription,
+} from '@naaradh/payments';
 import { addDays, createLogger, generatePhoneKeyPair, hashPhone, newId } from '@naaradh/shared';
 import { FAKE_IN } from '@naaradh/shared/test/fake-phones';
 import { EngineRegistry } from '@naaradh/engines-registry';
@@ -31,6 +43,7 @@ import { recordingWriteback } from '../../src/results/writeback.js';
 
 const TS = newId('tenant'); // Shopify-billed
 const TR = newId('tenant'); // Razorpay-billed
+const TU = newId('tenant'); // Stripe-billed (USD, P6-BILL-1)
 const SHOP = 'client-s.myshopify.com';
 const HASH_KEY = 'h'.repeat(32);
 const keyPair = generatePhoneKeyPair();
@@ -89,6 +102,78 @@ function fakeRazorpay() {
 }
 const razorpay = fakeRazorpay();
 
+/** In-memory Stripe with the same contract as the real client. */
+function fakeStripe() {
+  const sessions = new Map<string, StripeCheckoutSession>();
+  const subs = new Map<string, StripeSubscription>();
+  const items: { customer: string; sub: string; amount: number; currency: string; key: string }[] =
+    [];
+  const client: StripeClient = {
+    async createCheckoutSession(input) {
+      const s: StripeCheckoutSession = {
+        id: `cs_test_${String(sessions.size + 1)}`,
+        url: 'https://checkout.stripe.test/c',
+        status: 'open',
+        subscriptionId: null,
+        customerId: null,
+        tenantId: input.tenantId,
+      };
+      sessions.set(s.id, s);
+      return s;
+    },
+    async retrieveCheckoutSession(id) {
+      const s = sessions.get(id);
+      if (s === undefined) throw new Error('not found');
+      return s;
+    },
+    async retrieveSubscription(id) {
+      const s = subs.get(id);
+      if (s === undefined) throw new Error('not found');
+      return s;
+    },
+    async createInvoiceItem(input) {
+      items.push({
+        customer: input.customerId,
+        sub: input.subscriptionId,
+        amount: input.amountMinor,
+        currency: input.currency,
+        key: input.idempotencyKey,
+      });
+      return { id: `ii_${String(items.length)}` };
+    },
+    async cancelSubscription(id) {
+      const s = subs.get(id);
+      if (s === undefined) throw new Error('not found');
+      const c = { ...s, status: 'canceled' as const };
+      subs.set(id, c);
+      return c;
+    },
+  };
+  /** The merchant pays: Stripe completes the session and creates the subscription. */
+  const pay = (sessionId: string, tenantId: string) => {
+    const s = sessions.get(sessionId);
+    if (s === undefined) throw new Error('not found');
+    const subId = `sub_U${String(subs.size + 1)}`;
+    sessions.set(sessionId, {
+      ...s,
+      status: 'complete',
+      subscriptionId: subId,
+      customerId: 'cus_U1',
+    });
+    subs.set(subId, {
+      id: subId,
+      status: 'active',
+      customerId: 'cus_U1',
+      currentPeriodEnd: new Date('2026-10-01T00:00:00Z'),
+      currency: 'USD',
+      tenantId,
+    });
+    return subId;
+  };
+  return { client, sessions, subs, items, pay };
+}
+const stripe = fakeStripe();
+
 const q = async <R extends Record<string, unknown>>(text: string, params: unknown[] = []) =>
   (await service.query<R>(text, params)).rows;
 const tenantBilling = async (id: string) =>
@@ -124,6 +209,11 @@ beforeAll(async () => {
      values ($1, 'Shopify merchant', 'IN', 'in', 'active', 'active', 'shopify', 'growth', '{"outcome_included": 1}'),
             ($2, 'Razorpay merchant', 'IN', 'in', 'active', 'active', 'razorpay', 'starter', '{"outcome_included": 0}')`,
     [TS, TR],
+  );
+  await q(
+    `insert into tenants (id, name, country, data_region, status, currency, billing_overrides)
+     values ($1, 'Dollar merchant', 'US', 'us', 'active', 'USD', '{"outcome_included": 0}')`,
+    [TU],
   );
   await q(
     `insert into integrations (id, tenant_id, kind, external_id, credentials_secret_ref) values ($1, $2, 'shopify', $3, 'inline:shpat_test')`,
@@ -200,6 +290,7 @@ beforeAll(async () => {
     secrets: inlineSecretResolver(),
     shopifyAdmin: { apiVersion: '2026-07', fetchImpl: shopify.fetch },
     razorpay: razorpay.client,
+    stripe: stripe.client,
     mailer: memoryMailer(),
     dashboardUrl: 'https://app.naaradh.test',
     workerId: 'billing-int',
@@ -374,6 +465,141 @@ describe('Razorpay add-ons (P2-BILL-3)', () => {
       [eventId],
     );
     expect(ev).toEqual({ status: 'processed', error: 'razorpay:halted:frozen' });
+  });
+});
+
+describe('Stripe (P6-BILL-1)', () => {
+  const stripeEvent = async (
+    topic: string,
+    payload: { subscription_id: string | null; checkout_session_id: string | null },
+  ) => {
+    const eventId = newId('webhookEvent');
+    await q(
+      `insert into webhook_events (id, source, external_event_id, topic, tenant_id, external_account, status, signature_valid, payload, payload_sha256)
+       values ($1, 'stripe', $2, $3, $4, $5, 'published', true, $6, 'x')`,
+      [
+        eventId,
+        `evt_${eventId}`,
+        topic,
+        TU,
+        payload.subscription_id ?? payload.checkout_session_id,
+        JSON.stringify({ type: topic, ...payload }),
+      ],
+    );
+    await handleBillingEvent(ctx, {
+      webhook_event_id: eventId,
+      source: 'stripe',
+      topic,
+      tenant_id: TU,
+      external_account: payload.subscription_id ?? payload.checkout_session_id ?? '',
+      received_at: clock.now().toISOString(),
+    });
+    return (
+      await q<{ status: string; error: string | null }>(
+        `select status, error from webhook_events where id = $1`,
+        [eventId],
+      )
+    )[0];
+  };
+  const actor = { tenantId: TU, type: 'user' as const, id: 'usr_test' };
+  const input = { plan_code: 'starter', inbound_plan_code: null };
+
+  it('a rupee account is refused; a dollar account gets a pending row keyed by the session', async () => {
+    await expect(
+      withTenant(app, TR, (tx) => stripePricesFor(tx, TR, { starter: 'price_S' }, input, 'INR')),
+    ).rejects.toMatchObject({ code: 'VALIDATION_FAILED' });
+    const prices = await withTenant(app, TU, (tx) =>
+      stripePricesFor(tx, TU, { starter: 'price_S' }, input, 'USD'),
+    );
+    expect(prices).toEqual(['price_S']);
+    const session = await stripe.client.createCheckoutSession({
+      priceIds: prices,
+      tenantId: TU,
+      successUrl: 'https://app.test/ok',
+      cancelUrl: 'https://app.test/no',
+      idempotencyKey: 'k',
+    });
+    await withTenant(app, TU, (tx) => recordStripeCheckout(tx, actor, input, session, 'USD'));
+    const [row] = await q<{ status: string; provider_subscription_id: string; currency: string }>(
+      `select status, provider_subscription_id, currency from billing_subscriptions where tenant_id = $1`,
+      [TU],
+    );
+    expect(row).toEqual({
+      status: 'pending',
+      provider_subscription_id: session.id,
+      currency: 'USD',
+    });
+  });
+
+  it('an open session changes nothing; once paid, the fetched subscription activates the tenant', async () => {
+    const [row] = await q<{ provider_subscription_id: string }>(
+      `select provider_subscription_id from billing_subscriptions where tenant_id = $1`,
+      [TU],
+    );
+    const sessionId = row?.provider_subscription_id ?? '';
+    expect(
+      await stripeEvent('checkout.session.completed', {
+        subscription_id: null,
+        checkout_session_id: sessionId,
+      }),
+    ).toEqual({ status: 'processed', error: 'stripe:checkout_open' });
+    expect((await tenantBilling(TU))?.billing_status).not.toBe('active');
+
+    const subId = stripe.pay(sessionId, TU);
+    expect(
+      await stripeEvent('checkout.session.completed', {
+        subscription_id: subId,
+        checkout_session_id: sessionId,
+      }),
+    ).toMatchObject({ status: 'processed', error: expect.stringMatching(/^stripe:active:/) });
+    expect((await tenantBilling(TU))?.billing_status).toBe('active');
+    const [sub] = await q<{ provider_subscription_id: string; provider_customer_id: string }>(
+      `select provider_subscription_id, provider_customer_id from billing_subscriptions where tenant_id = $1`,
+      [TU],
+    );
+    expect(sub).toEqual({ provider_subscription_id: subId, provider_customer_id: 'cus_U1' });
+  });
+
+  it('an active subscriber cannot open a second checkout (no double plan fee)', async () => {
+    await expect(
+      withTenant(app, TU, (tx) => stripePricesFor(tx, TU, { starter: 'price_S' }, input, 'USD')),
+    ).rejects.toMatchObject({ code: 'CONFLICT' });
+  });
+
+  it('usage for a closed period is one invoice item in cents, never re-posted', async () => {
+    const august = new Date('2026-08-20T06:30:00Z');
+    await meter(TU, august);
+    await meter(TU, august);
+    const r = await runBillingOnce(ctx);
+    expect(r.created.stripe).toBe(1);
+    expect(stripe.items).toEqual([
+      {
+        customer: 'cus_U1',
+        sub: expect.stringMatching(/^sub_U/),
+        amount: expect.any(Number),
+        currency: 'USD',
+        key: `stripe:${TU}:2026-08`,
+      },
+    ]);
+    expect(stripe.items[0]?.amount).toBeGreaterThan(0);
+    expect((await runBillingOnce(ctx)).created.stripe).toBe(0);
+    expect(stripe.items).toHaveLength(1);
+  });
+
+  it('the webhook is a hint: past_due fetched from Stripe freezes the tenant with grace (E-50)', async () => {
+    const [sub] = await q<{ provider_subscription_id: string }>(
+      `select provider_subscription_id from billing_subscriptions where tenant_id = $1`,
+      [TU],
+    );
+    const id = sub?.provider_subscription_id ?? '';
+    const existing = stripe.subs.get(id);
+    if (existing !== undefined) stripe.subs.set(id, { ...existing, status: 'past_due' });
+    expect(
+      await stripeEvent('invoice.paid', { subscription_id: id, checkout_session_id: null }),
+    ).toEqual({ status: 'processed', error: 'stripe:past_due:frozen' });
+    const t = await tenantBilling(TU);
+    expect(t?.billing_status).toBe('frozen');
+    expect(t?.billing_grace_until).not.toBeNull();
   });
 });
 

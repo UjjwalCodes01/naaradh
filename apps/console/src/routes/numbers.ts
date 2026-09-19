@@ -7,12 +7,14 @@ import {
   NumberInput,
   NumberPurposesInput,
   NumberStatusInput,
+  NumberAttestationInput,
   PURPOSES,
   assignNumber,
   listNumbers,
   registerNumber,
   setNumberPurposes,
   setNumberStatus,
+  setNumberAttestation,
   type NumberView,
 } from '@naaradh/pipeline';
 import { badge, h, when, type Raw } from '../html.js';
@@ -34,6 +36,14 @@ const ratePct = (n: NumberView): Raw => {
   if (n.answerRate7d === null) return h`<span class="muted">no data</span>`;
   const pct = `${(n.answerRate7d * 100).toFixed(0)}%`;
   return n.answerRate7d < CLI_MIN_ANSWER_RATE ? badge(pct, 'bad') : h`${pct}`;
+};
+
+/** North America dials only from A (P6-ENG-2); elsewhere attestation is informational. */
+const attestationBadge = (n: NumberView): Raw => {
+  const needed = n.region === 'US' || n.region === 'CA';
+  if (n.attestation === null)
+    return needed ? badge('unchecked', 'bad') : h`<span class="muted">—</span>`;
+  return badge(n.attestation, n.attestation === 'A' ? 'good' : needed ? 'bad' : 'warn');
 };
 
 const statusTone = (s: NumberView['status']) =>
@@ -72,12 +82,12 @@ export function registerNumberRoutes(app: FastifyInstance, deps: ConsoleDeps): v
           ? ''
           : h`<div class="flash err">${low.length} active number(s) below the 25% answer rate — the gate is skipping them (E-28). Retire or rest them: cli-health.md.</div>`
       }
-      <table><tr><th>Number</th><th>Region / series</th><th>Provider → engine</th><th>Purposes</th><th>Status</th><th>Answer rate (7 d)</th><th>Calls (7 d)</th><th>Owner</th><th>Inbound</th><th>Last used</th></tr>
+      <table><tr><th>Number</th><th>Region / series</th><th>Provider → engine</th><th>Purposes</th><th>Status</th><th>Attestation</th><th>Answer rate (7 d)</th><th>Calls (7 d)</th><th>Owner</th><th>Inbound</th><th>Last used</th></tr>
       ${rows.map(
         (n) => h`<tr><td><a href="/numbers/${n.id}"><code>${n.e164}</code></a></td>
         <td>${n.region} · ${n.series}</td><td>${n.provider} → ${n.engine}</td>
         <td>${n.purposeAllowed.length === 0 ? h`<span class="muted">none</span>` : n.purposeAllowed.join(', ')}</td>
-        <td>${badge(n.status, statusTone(n.status))}</td><td>${ratePct(n)}</td><td>${n.attempts7d}</td>
+        <td>${badge(n.status, statusTone(n.status))}</td><td>${attestationBadge(n)}</td><td>${ratePct(n)}</td><td>${n.attempts7d}</td>
         <td>${n.tenantId === null ? h`<span class="muted">pool</span>` : h`<a href="/tenants/${n.tenantId}">${n.tenantName ?? n.tenantId}</a>`}</td>
         <td>${n.inboundEnabled ? (n.inboundProfileName ?? n.inboundProfileId ?? 'yes') : '—'}</td>
         <td>${when(n.lastUsedAt)}</td></tr>`,
@@ -153,6 +163,14 @@ export function registerNumberRoutes(app: FastifyInstance, deps: ConsoleDeps): v
         <input name="reason" size="60" required minlength="10" placeholder="Why (carrier flagged, answer rate, rested 2 weeks, …)">
         <button>Change status</button></form>
         <p class="muted">warming → active · active → retired / suspended · suspended → active / retired · retired → warming (rest, then reintroduce; the rate resets).</p></div>
+      <h2>STIR/SHAKEN attestation</h2>
+      <div class="card"><form method="post" action="/numbers/${n.id}/attestation">
+        <p>Currently ${attestationBadge(n)}${n.attestationCheckedAt === null ? '' : h` · checked ${when(n.attestationCheckedAt)}`}.
+        ${n.region === 'US' || n.region === 'CA' ? h`<b>US and Canadian customers are called only from numbers recorded as A.</b>` : ''}</p>
+        <p><select name="attestation">${(['A', 'B', 'C'] as const).map((a) => h`<option value="${a}" ${a === n.attestation ? 'selected' : ''}>${a}</option>`)}<option value="">not checked</option></select>
+        <input name="evidence" size="60" required minlength="10" placeholder="Test call 2026-09-xx to a handset showing A; or carrier report ref"></p>
+        <button>Record attestation</button></form>
+        <p class="muted">Record what a test call or the carrier's report shows — never what a vendor's documentation promises (docs/go-live/10-us-eu.md).</p></div>
       <h2>Allowed purposes</h2>
       <div class="card"><form method="post" action="/numbers/${n.id}/purposes">
         <p>${purposeBoxes(n.purposeAllowed)}</p>
@@ -190,6 +208,27 @@ export function registerNumberRoutes(app: FastifyInstance, deps: ConsoleDeps): v
         input,
       );
       return await done(reply, back, true, `${r.from} → ${r.to}.`);
+    } catch (error) {
+      return await done(reply, back, false, problem(error));
+    }
+  });
+
+  app.post<{ Params: { id: string } }>('/numbers/:id/attestation', async (request, reply) => {
+    const back = `/numbers/${encodeURIComponent(request.params.id)}`;
+    try {
+      const b = body(request);
+      const input = NumberAttestationInput.parse({
+        attestation: opt(b['attestation'] ?? '') ?? null,
+        evidence: b['evidence'],
+      });
+      await setNumberAttestation(
+        deps.db,
+        { email: request.staff ?? '' },
+        request.params.id,
+        input,
+        deps.clock(),
+      );
+      return await done(reply, back, true, 'Attestation recorded.');
     } catch (error) {
       return await done(reply, back, false, problem(error));
     }

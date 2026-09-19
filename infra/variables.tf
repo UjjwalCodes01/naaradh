@@ -10,18 +10,44 @@ variable "env" {
   description = "Environment name; also the tfvars file name."
   type        = string
   validation {
-    condition     = contains(["dev", "stage", "prod-in"], var.env)
-    error_message = "env must be one of dev, stage, prod-in."
+    condition     = contains(["dev", "stage", "prod-in", "prod-us", "prod-eu"], var.env)
+    error_message = "env must be one of dev, stage, prod-in, prod-us, prod-eu."
+  }
+}
+
+variable "data_region" {
+  description = <<-EOT
+    The data region this deployment serves (ADR-0012): DATA_REGION for every service. One
+    project, one region — prod-us serves only US tenants, prod-eu only EU tenants. dev, stage and
+    prod-in are "in".
+  EOT
+  type        = string
+  default     = "in"
+  validation {
+    condition = (
+      (var.data_region == "in" && contains(["dev", "stage", "prod-in"], var.env)) ||
+      (var.data_region == "us" && var.env == "prod-us") ||
+      (var.data_region == "eu" && var.env == "prod-eu")
+    )
+    error_message = "data_region must match env: dev/stage/prod-in → in, prod-us → us, prod-eu → eu."
   }
 }
 
 variable "region" {
-  description = "Primary region. Org policy restricts resource locations to asia-south1/asia-south2 (AGENTS.md §2.3)."
+  description = <<-EOT
+    Primary Google Cloud region; every resource of the deployment lives here (ADR-0012). India
+    projects' org policy restricts locations to asia-south1/asia-south2 (AGENTS.md §2.3); the US
+    and EU projects have their own policies, restricted to their own locations.
+  EOT
   type        = string
   default     = "asia-south1"
   validation {
-    condition     = contains(["asia-south1", "asia-south2"], var.region)
-    error_message = "India projects run in asia-south1 (primary) or asia-south2."
+    condition = (
+      (var.data_region == "in" && contains(["asia-south1", "asia-south2"], var.region)) ||
+      (var.data_region == "us" && contains(["us-central1", "us-east4"], var.region)) ||
+      (var.data_region == "eu" && contains(["europe-west1", "europe-west3"], var.region))
+    )
+    error_message = "region must be inside the data region: in → asia-south1/2, us → us-central1/us-east4, eu → europe-west1/europe-west3."
   }
 }
 

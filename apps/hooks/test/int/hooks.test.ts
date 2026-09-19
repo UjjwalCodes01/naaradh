@@ -7,6 +7,7 @@ import { engineWebhookPath, newId } from '@naaradh/shared';
 import { FAKE_IN } from '@naaradh/shared/test/fake-phones';
 import { EngineRegistry } from '@naaradh/engines-registry';
 import { SimulatorAdapter } from '@naaradh/engine-simulator';
+import { signStripePayload } from '@naaradh/payments';
 import { buildServer } from '../../src/server.js';
 import { memoryPublisher } from '../../src/pubsub.js';
 
@@ -17,6 +18,10 @@ const SHOP = 'client-a-test.myshopify.com';
 const TENANT = newId('tenant');
 const RZP_SECRET = 'rzp_webhook_secret_test';
 const RZP_SUB = 'sub_TESTRZP1';
+const STRIPE_SECRET = 'whsec_test_stripe_hooks';
+const STRIPE_SESSION = 'cs_test_HOOKS1';
+const STRIPE_SUB = 'sub_TESTSTRIPE1';
+const NOW_UNIX = 1_790_000_000;
 
 let pg: TestPostgres;
 let service: RoleClient;
@@ -56,6 +61,11 @@ beforeAll(async () => {
     `insert into billing_subscriptions (id, tenant_id, provider, provider_subscription_id, status, currency, recurring_minor) values ($1, $2, 'razorpay', $3, 'active', 'INR', 199900)`,
     [newId('billingSubscription'), TENANT, RZP_SUB],
   );
+  // A dollar checkout still pending: its row is keyed by the Checkout Session (P6-BILL-1).
+  await service.query(
+    `insert into billing_subscriptions (id, tenant_id, provider, provider_subscription_id, status, currency, recurring_minor) values ($1, $2, 'stripe', $3, 'pending', 'USD', 0)`,
+    [newId('billingSubscription'), TENANT, STRIPE_SESSION],
+  );
   const conn = createDb({ url: pg.urls.service, max: 2 });
   db = conn.db;
   closeDb = conn.close;
@@ -73,6 +83,8 @@ beforeAll(async () => {
     shopifySecretFor: () => SHOPIFY_SECRET,
     engineWebhookKey: ENGINE_KEY,
     razorpayWebhookSecret: RZP_SECRET,
+    stripeWebhookSecret: STRIPE_SECRET,
+    nowUnix: () => NOW_UNIX,
     rateLimitPerMinute: 10_000,
     logLevel: 'silent',
   });
@@ -379,5 +391,82 @@ describe('Razorpay webhooks (P2-BILL-3, invariant 9)', () => {
     expect(
       (await post(event('subscription.activated', RZP_SUB, newId('tenant')))).json(),
     ).toMatchObject({ status: 'ignored' });
+  });
+});
+
+describe('Stripe webhooks (P6-BILL-1, invariant 9)', () => {
+  const event = (id: string, type: string, object: Record<string, unknown>) =>
+    JSON.stringify({ id, type, data: { object } });
+  const post = (
+    body: string,
+    header = signStripePayload(STRIPE_SECRET, Buffer.from(body), NOW_UNIX),
+  ) =>
+    app.inject({
+      method: 'POST',
+      url: '/stripe/webhooks',
+      payload: body,
+      headers: { 'content-type': 'application/json', 'stripe-signature': header },
+    });
+  const completed = event('evt_hooks_1', 'checkout.session.completed', {
+    id: STRIPE_SESSION,
+    object: 'checkout.session',
+    subscription: STRIPE_SUB,
+    // Checkout carries the payer's details — they must never be stored.
+    customer_details: { email: 'payer@example.test', name: 'Test Payer' },
+  });
+
+  it('a bad, foreign or replayed signature is 401 and nothing is published', async () => {
+    const before = publisher.messages.length;
+    const body = Buffer.from(completed);
+    for (const header of [
+      signStripePayload('whsec_someone_else', body, NOW_UNIX),
+      signStripePayload(STRIPE_SECRET, body, NOW_UNIX - 600),
+      't=1,v1=' + 'f'.repeat(64),
+    ])
+      expect((await post(completed, header)).statusCode).toBe(401);
+    expect(publisher.messages.length).toBe(before);
+  });
+
+  it('a completed checkout finds the pending row by session, stores ids only, publishes once', async () => {
+    const r = await post(completed);
+    expect(r.json()).toMatchObject({ status: 'published' });
+    const msg = publisher.messages.at(-1);
+    expect(msg).toMatchObject({
+      topic: 'billing.events',
+      message: { source: 'stripe', tenant_id: TENANT, external_account: STRIPE_SUB },
+    });
+    const [row] = (
+      await service.query<{ payload: unknown }>(
+        `select payload from webhook_events where id = $1`,
+        [msg?.message.webhook_event_id],
+      )
+    ).rows;
+    expect(row?.payload).toEqual({
+      type: 'checkout.session.completed',
+      subscription_id: STRIPE_SUB,
+      checkout_session_id: STRIPE_SESSION,
+    });
+    expect(JSON.stringify(row)).not.toContain('payer@example.test');
+    expect((await post(completed)).json()).toMatchObject({ status: 'duplicate' });
+  });
+
+  it('events for subscriptions we never created, or for no subscription, are recorded and ignored', async () => {
+    const before = publisher.messages.length;
+    expect(
+      (
+        await post(
+          event('evt_hooks_2', 'customer.subscription.updated', {
+            id: 'sub_NOTOURS1',
+            object: 'subscription',
+          }),
+        )
+      ).json(),
+    ).toMatchObject({ status: 'ignored' });
+    expect(
+      (
+        await post(event('evt_hooks_3', 'charge.succeeded', { id: 'ch_1', object: 'charge' }))
+      ).json(),
+    ).toMatchObject({ status: 'ignored' });
+    expect(publisher.messages.length).toBe(before);
   });
 });

@@ -36,6 +36,7 @@ import {
   profileStatus,
   purpose,
   scriptStatus,
+  stirShakenAttestation,
   tenantStatus,
   useCaseKind,
   userRole,
@@ -381,6 +382,13 @@ export const numbers = pgTable(
     lastUsedAt: ts('last_used_at'),
     /** Evidence for the series decision — TSP letter reference (Q-01). */
     provisioningNote: text('provisioning_note'),
+    /**
+     * STIR/SHAKEN attestation this number's calls carry (P6-ENG-2). The gate dials North
+     * American recipients only from numbers recorded as A, checked by a person from a test call
+     * or the carrier's report — never assumed from a vendor's documentation.
+     */
+    attestation: stirShakenAttestation('attestation'),
+    attestationCheckedAt: ts('attestation_checked_at'),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

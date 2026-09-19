@@ -11,7 +11,20 @@ export * from './constants.js';
 
 export { gateIntent } from './gate/index.js';
 export { GATE_REASONS, reasonInfo, type GateReason, type GateReasonInfo } from './gate/reasons.js';
-export { windowFor, isOpen, closesAt, nextOpen, type RecipientWindow } from './gate/windows.js';
+export {
+  windowFor,
+  isOpen,
+  closesAt,
+  nextOpen,
+  zoneBelongsTo,
+  type RecipientWindow,
+} from './gate/windows.js';
+export {
+  isHoliday,
+  isUsFederalHoliday,
+  isFrenchPublicHoliday,
+  type HolidayCalendar,
+} from './gate/holidays.js';
 export type * from './gate/types.js';
 export * from './adapters/index.js';
 export {

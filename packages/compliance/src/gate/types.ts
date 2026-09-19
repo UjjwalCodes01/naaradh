@@ -100,10 +100,16 @@ export interface KillSwitchPort {
 export interface SpendPort {
   tenantSpentToday(tenantId: string): Promise<Money>;
   tenantSpentThisMonth(tenantId: string): Promise<Money>;
-  engineSpentToday(engine: string): Promise<Money>;
-  globalSpentToday(): Promise<Money>;
-  engineDailyCap(engine: string): Money | null;
-  globalDailyCap(): Money | null;
+  /**
+   * Platform safety caps are kept PER CURRENCY: an engine bills in its own currency (Retell in
+   * dollars, Indian engines in rupees), and one deployment may use both — an Indian merchant
+   * calling a US customer. Adding cents to paise would make both caps meaningless.
+   */
+  engineSpentToday(engine: string, currency: string): Promise<Money>;
+  globalSpentToday(currency: string): Promise<Money>;
+  /** One cap per currency; an empty list means uncapped. */
+  engineDailyCaps(engine: string): readonly Money[];
+  globalDailyCaps(): readonly Money[];
 }
 
 export interface SuppressionHit {
@@ -192,6 +198,8 @@ export interface NumberCandidate {
   readonly status: string;
   readonly answerRate7d: number | null;
   readonly ownedByTenant: boolean;
+  /** STIR/SHAKEN attestation recorded for the number (P6-ENG-2); null = never checked. */
+  readonly attestation: 'A' | 'B' | 'C' | null;
 }
 
 export interface NumberPort {
@@ -266,6 +274,8 @@ export interface GatePass {
   readonly maxDurationSec: number;
   /** Dial no later than this: min(not_after, window close − buffer). */
   readonly dialDeadline: Date;
+  /** Whether the opening must ASK for recording consent in the recipient's region (P6-CMP-1). */
+  readonly recordingConsent: 'notice' | 'ask';
   readonly lease: ConcurrencyLease;
   readonly trace: GateTrace;
 }

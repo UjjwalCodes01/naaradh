@@ -322,6 +322,7 @@ beforeAll(async () => {
     secrets: inlineSecretResolver(),
     shopifyAdmin: { apiVersion: '2026-07' },
     razorpay: null,
+    stripe: null,
     mailer: memoryMailer(),
     dashboardUrl: 'https://app.naaradh.test',
     workerId: 'promo',

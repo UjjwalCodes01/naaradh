@@ -211,7 +211,7 @@ describe('gate: recipient region wins (invariant 2, E-07)', () => {
 
   it('a US number with no zone hint uses the coast-to-coast intersection', async () => {
     // 09:30 in New York (13:30Z on 2026-09-14) is 06:30 in Los Angeles: open on one coast,
-    // closed on the other → closed, and rescheduled to 08:00 PT = 15:00Z.
+    // closed on the other → closed, and rescheduled to 09:00 PT = 16:00Z (P6-CMP-1 hours).
     const now = new Date('2026-09-14T13:30:00Z');
     const intent = leadIntent(addMinutes(now, -5), {
       recipientRegion: 'US',
@@ -226,7 +226,7 @@ describe('gate: recipient region wins (invariant 2, E-07)', () => {
       fakeDeps(state),
     );
     expect(r).toMatchObject({ ok: false, reason: 'window:closed' });
-    if (!r.ok) expect(r.retryAt?.toISOString()).toBe('2026-09-14T15:00:00.000Z');
+    if (!r.ok) expect(r.retryAt?.toISOString()).toBe('2026-09-14T16:00:00.000Z');
     expect(r.trace.steps.at(-1)?.detail).toMatchObject({ basis: 'country_intersection' });
   });
 });

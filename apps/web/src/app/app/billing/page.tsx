@@ -21,7 +21,7 @@ import { formatDate, humanise } from '@/lib/format';
 import { now } from '@/lib/server';
 import { inTenant, requireSession } from '@/lib/session';
 import { tenantSettings } from '@/lib/tenant';
-import { subscribeRazorpay } from './actions';
+import { subscribeRazorpay, subscribeStripe } from './actions';
 
 export default async function Billing() {
   const s = await requireSession();
@@ -94,47 +94,7 @@ export default async function Billing() {
             ]}
           />
         )}
-        {canSubscribe ? (
-          <ActionForm
-            action={subscribeRazorpay}
-            submit="Subscribe with Razorpay"
-            className="mt-4 border-t border-slate-100 pt-4"
-          >
-            <div className="grid gap-3 sm:grid-cols-2">
-              <select
-                name="plan_code"
-                defaultValue="growth"
-                className={inputClass}
-                aria-label="Order-call plan"
-              >
-                <option value="">No order-call plan</option>
-                {['starter', 'growth', 'scale'].map((c) => (
-                  <option key={c} value={c}>
-                    {PLANS[c]?.name} — {formatMinor(PLANS[c]?.prices.INR.feeMinor ?? 0, 'INR')}
-                    /month
-                  </option>
-                ))}
-              </select>
-              <select
-                name="inbound_plan_code"
-                defaultValue=""
-                className={inputClass}
-                aria-label="Support-line plan"
-              >
-                <option value="">No support-line plan</option>
-                {['inbound_starter', 'inbound_growth', 'inbound_scale'].map((c) => (
-                  <option key={c} value={c}>
-                    {PLANS[c]?.name} — {formatMinor(PLANS[c]?.prices.INR.feeMinor ?? 0, 'INR')}
-                    /month
-                  </option>
-                ))}
-              </select>
-            </div>
-            <p className="text-xs text-slate-500">
-              Prices exclude GST. Razorpay issues GST invoices.
-            </p>
-          </ActionForm>
-        ) : null}
+        {canSubscribe ? <SubscribeForm currency={u.currency} /> : null}
       </Card>
       <Card title="Disputes">
         {disputes.length === 0 ? (
@@ -161,6 +121,54 @@ export default async function Billing() {
         )}
       </Card>
     </div>
+  );
+}
+
+/** Rupee accounts subscribe through Razorpay; dollar accounts through Stripe Checkout (P6-BILL-1). */
+function SubscribeForm({ currency }: { currency: 'INR' | 'USD' }) {
+  const inr = currency === 'INR';
+  const price = (code: string) =>
+    `${formatMinor(PLANS[code]?.prices[currency].feeMinor ?? 0, currency)}/month`;
+  return (
+    <ActionForm
+      action={inr ? subscribeRazorpay : subscribeStripe}
+      submit={inr ? 'Subscribe with Razorpay' : 'Continue to Stripe checkout'}
+      className="mt-4 border-t border-slate-100 pt-4"
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        <select
+          name="plan_code"
+          defaultValue="growth"
+          className={inputClass}
+          aria-label="Order-call plan"
+        >
+          <option value="">No order-call plan</option>
+          {['starter', 'growth', 'scale'].map((c) => (
+            <option key={c} value={c}>
+              {PLANS[c]?.name} — {price(c)}
+            </option>
+          ))}
+        </select>
+        <select
+          name="inbound_plan_code"
+          defaultValue=""
+          className={inputClass}
+          aria-label="Support-line plan"
+        >
+          <option value="">No support-line plan</option>
+          {['inbound_starter', 'inbound_growth', 'inbound_scale'].map((c) => (
+            <option key={c} value={c}>
+              {PLANS[c]?.name} — {price(c)}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="text-xs text-slate-500">
+        {inr
+          ? 'Prices exclude GST. Razorpay issues GST invoices.'
+          : 'Prices are in US dollars. Stripe issues the invoices.'}
+      </p>
+    </ActionForm>
   );
 }
 

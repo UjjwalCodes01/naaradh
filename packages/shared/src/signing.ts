@@ -1,4 +1,14 @@
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  createHash,
+  createHmac,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  randomBytes,
+  sign as cryptoSign,
+  timingSafeEqual,
+  verify as cryptoVerify,
+} from 'node:crypto';
 
 /**
  * Signature helpers for every boundary (invariant 9). All comparisons are constant-time.
@@ -144,4 +154,74 @@ export function voiceToolPath(key: string, vendor: string, tenantId: string, too
 
 export function verifyVoiceToolTag(key: string, vendor: string, tenantTag: string): string | null {
   return verifyEngineWebhookTag(key, `voice:${vendor}`, tenantTag);
+}
+
+// ---------------------------------------------------------------------------
+// Region directory snapshots (ADR-0012 amendment 1): Ed25519, one key pair per region.
+//   X-Naaradh-Region:    the sender's region
+//   X-Naaradh-Signature: t=<unix>,sig=<base64url(ed25519(t + '.' + body))>
+// Each region holds only its own private key and its peers' PUBLIC keys, so no peer (and no
+// holder of a peer's config) can sign as another region — a shared HMAC key could not do that.
+// ---------------------------------------------------------------------------
+
+/** A new region key pair: the private key as base64 PKCS#8 DER, the public key as base64 raw. */
+export function generateRegionKeyPair(): { privateKey: string; publicKey: string } {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
+  const jwk = publicKey.export({ format: 'jwk' });
+  return {
+    privateKey: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64'),
+    publicKey: Buffer.from(jwk.x ?? '', 'base64url').toString('base64'),
+  };
+}
+
+export function signRegionSnapshot(
+  privateKeyB64: string,
+  body: string,
+  unixSeconds: number,
+): string {
+  const key = createPrivateKey({
+    key: Buffer.from(privateKeyB64, 'base64'),
+    format: 'der',
+    type: 'pkcs8',
+  });
+  const sig = cryptoSign(null, Buffer.from(`${String(unixSeconds)}.${body}`), key);
+  return `t=${String(unixSeconds)},sig=${sig.toString('base64url')}`;
+}
+
+export function verifyRegionSnapshot(
+  publicKeyB64: string,
+  header: string | undefined,
+  body: string,
+  nowUnix: number,
+  toleranceSec = WEBHOOK_REPLAY_WINDOW_SEC,
+): VerifyResult {
+  if (header === undefined) return { ok: false, reason: 'malformed' };
+  const parts = Object.fromEntries(
+    header.split(',').map((kv) => kv.split('=', 2) as [string, string]),
+  );
+  const t = Number(parts['t']);
+  const sig = parts['sig'];
+  if (!Number.isInteger(t) || sig === undefined || !/^[A-Za-z0-9_-]+$/.test(sig))
+    return { ok: false, reason: 'malformed' };
+  if (Math.abs(nowUnix - t) > toleranceSec) return { ok: false, reason: 'expired' };
+  let key;
+  try {
+    key = createPublicKey({
+      key: {
+        kty: 'OKP',
+        crv: 'Ed25519',
+        x: Buffer.from(publicKeyB64, 'base64').toString('base64url'),
+      },
+      format: 'jwk',
+    });
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  }
+  const ok = cryptoVerify(
+    null,
+    Buffer.from(`${String(t)}.${body}`),
+    key,
+    Buffer.from(sig, 'base64url'),
+  );
+  return ok ? { ok: true } : { ok: false, reason: 'mismatch' };
 }

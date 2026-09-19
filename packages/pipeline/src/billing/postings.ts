@@ -8,6 +8,7 @@ import { billingCurrencyOf, effectivePlan, planTenantOf, type BillingCurrency } 
  *
  *   shopify   one posting per chargeable ledger row (total > 0), keyed by the ledger id
  *   razorpay  one posting per tenant per CLOSED period — an add-on for the period's overage
+ *   stripe    the same, as an invoice item on the subscription's next invoice (P6-BILL-1)
  *   manual    nothing; finance invoices from the ledger
  *
  * A posting is created only while the tenant has an ACTIVE subscription at that provider; rows
@@ -28,7 +29,7 @@ interface ChargeableRow {
 
 async function unpostedRows(
   tx: Tx,
-  provider: 'shopify' | 'razorpay',
+  provider: DirectProvider | 'shopify',
   limit: number,
   periodFilter: 'current' | 'closed',
   period: string,
@@ -47,8 +48,8 @@ async function unpostedRows(
     from billing_ledger l
     join tenants t on t.id = l.tenant_id
     where (l.total_minor > 0 and l.kind in ('outcome', 'minute')
-           -- credits (accepted disputes) net out of a Razorpay period; Shopify refunds are manual
-           or (${provider} = 'razorpay' and l.kind = 'credit'))
+           -- credits (accepted disputes) net out of a Razorpay/Stripe period; Shopify refunds are manual
+           or (${provider} in ('razorpay', 'stripe') and l.kind = 'credit'))
       and t.billing_provider = ${provider}
       and ${periodFilter === 'current' ? sql`l.period = ${period}` : sql`l.period < ${period}`}
       and not exists (select 1 from billing_postings p where p.ledger_ids @> array[l.id])
@@ -67,7 +68,10 @@ async function unpostedRows(
   }));
 }
 
-async function activeSubscription(tx: Tx, tenantId: string, provider: 'shopify' | 'razorpay') {
+/** Providers billed once per closed period (an add-on / invoice item), not per ledger row. */
+type DirectProvider = 'razorpay' | 'stripe';
+
+async function activeSubscription(tx: Tx, tenantId: string, provider: DirectProvider | 'shopify') {
   const [sub] = await tx
     .select({
       id: schema.billingSubscriptions.id,
@@ -125,6 +129,7 @@ function describe(row: ChargeableRow): string {
 export interface PostingsCreated {
   readonly shopify: number;
   readonly razorpay: number;
+  readonly stripe: number;
 }
 
 export async function createPostings(tx: Tx, now: Date, limit = 500): Promise<PostingsCreated> {
@@ -158,9 +163,24 @@ export async function createPostings(tx: Tx, now: Date, limit = 500): Promise<Po
     shopify += inserted.length;
   }
 
-  // Razorpay: aggregate each closed period per tenant into one add-on.
-  let razorpay = 0;
-  const closed = await unpostedRows(tx, 'razorpay', 5_000, 'closed', period);
+  const razorpay = await periodPostings(tx, 'razorpay', period, now);
+  const stripe = await periodPostings(tx, 'stripe', period, now);
+  return { shopify, razorpay, stripe };
+}
+
+/**
+ * Razorpay and Stripe: each closed period per tenant becomes one charge for its overage, in the
+ * subscription's currency, net of accepted-dispute credits in that currency. Rows in another
+ * currency are left for a person (they mean the tenant's currency changed mid-period).
+ */
+async function periodPostings(
+  tx: Tx,
+  provider: DirectProvider,
+  period: string,
+  now: Date,
+): Promise<number> {
+  let created = 0;
+  const closed = await unpostedRows(tx, provider, 5_000, 'closed', period);
   const groups = new Map<string, ChargeableRow[]>();
   for (const r of closed) {
     const k = `${r.tenantId}|${r.period}`;
@@ -168,42 +188,44 @@ export async function createPostings(tx: Tx, now: Date, limit = 500): Promise<Po
   }
   for (const [key, rows] of groups) {
     const [tenantId, rowPeriod] = key.split('|') as [string, string];
-    const sub = await activeSubscription(tx, tenantId, 'razorpay');
+    const sub = await activeSubscription(tx, tenantId, provider);
     if (sub === null) continue;
-    const inr = rows.filter((r) => r.currency === 'INR');
-    const amount = inr.reduce((a, r) => a + r.totalMinor, 0);
+    const currency = provider === 'razorpay' ? 'INR' : sub.currency;
+    const same = rows.filter((r) => r.currency === currency);
+    const amount = same.reduce((a, r) => a + r.totalMinor, 0);
     if (amount <= 0) continue;
-    const credits = inr.filter((r) => r.kind === 'credit').reduce((a, r) => a - r.totalMinor, 0);
-    const outcomes = inr.filter((r) => r.kind === 'outcome').reduce((a, r) => a + r.qty, 0);
-    const minutes = inr.filter((r) => r.kind === 'minute').reduce((a, r) => a + r.qty, 0);
+    const credits = same.filter((r) => r.kind === 'credit').reduce((a, r) => a - r.totalMinor, 0);
+    const outcomes = same.filter((r) => r.kind === 'outcome').reduce((a, r) => a + r.qty, 0);
+    const minutes = same.filter((r) => r.kind === 'minute').reduce((a, r) => a + r.qty, 0);
+    const symbol = currency === 'INR' ? '₹' : currency === 'USD' ? '$' : `${currency} `;
     const inserted = await tx
       .insert(schema.billingPostings)
       .values({
         id: newId('billingPosting'),
         tenantId,
-        provider: 'razorpay',
+        provider,
         kind: 'addon',
         subscriptionId: sub.id,
         period: rowPeriod,
-        ledgerIds: inr.map((r) => r.id),
+        ledgerIds: same.map((r) => r.id),
         amountMinor: amount,
-        currency: 'INR',
-        description: `Naaradh usage ${rowPeriod}: ${String(outcomes)} extra outcomes, ${String(minutes)} extra minutes${credits > 0 ? `, less ₹${(credits / 100).toFixed(2)} credit` : ''}`,
-        idempotencyKey: `rzp:${tenantId}:${rowPeriod}`,
+        currency,
+        description: `Naaradh usage ${rowPeriod}: ${String(outcomes)} extra outcomes, ${String(minutes)} extra minutes${credits > 0 ? `, less ${symbol}${(credits / 100).toFixed(2)} credit` : ''}`,
+        idempotencyKey: `${provider === 'razorpay' ? 'rzp' : 'stripe'}:${tenantId}:${rowPeriod}`,
         status: 'pending',
         nextAttemptAt: now,
       })
       .onConflictDoNothing()
       .returning({ id: schema.billingPostings.id });
-    razorpay += inserted.length;
+    created += inserted.length;
   }
-  return { shopify, razorpay };
+  return created;
 }
 
 export interface ClaimedPosting {
   readonly id: string;
   readonly tenantId: string;
-  readonly provider: 'shopify' | 'razorpay';
+  readonly provider: 'shopify' | DirectProvider;
   readonly subscriptionId: string | null;
   readonly amountMinor: number;
   readonly currency: string;
@@ -222,7 +244,7 @@ export async function claimPostings(
   const rows = await tx.execute<{
     id: string;
     tenant_id: string;
-    provider: 'shopify' | 'razorpay';
+    provider: 'shopify' | DirectProvider;
     subscription_id: string | null;
     amount_minor: string;
     currency: string;

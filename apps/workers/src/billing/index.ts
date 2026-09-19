@@ -7,15 +7,17 @@ import {
   createPostings,
   effectivePlan,
   emitMerchantEvent,
+  attachStripeSubscription,
   fromRazorpayStatus,
   fromShopifyStatus,
+  fromStripeStatus,
   markTenantCapped,
   planTenantOf,
   settlePosting,
   type ClaimedPosting,
   type FetchedSubscription,
 } from '@naaradh/pipeline';
-import { RazorpayRetryableError } from '@naaradh/payments';
+import { RazorpayRetryableError, StripeRetryableError } from '@naaradh/payments';
 import { ShopifyUserError, createUsageRecord, fetchSubscription } from '@naaradh/shopify-sdk';
 import { addDays, addMinutes, newId } from '@naaradh/shared';
 import type { EventMessage } from '../bus.js';
@@ -28,7 +30,8 @@ import { loadWebhookEvent, markWebhookFailed, markWebhookProcessed } from '../we
 /**
  * billing worker (P2-BILL-1, P2-SHOP-3, ADR-0008):
  *
- *   postings      ledger rows → billing_postings → provider (Shopify usage records, Razorpay add-ons)
+ *   postings      ledger rows → billing_postings → provider (Shopify usage records, Razorpay add-ons,
+ *                 Stripe invoice items)
  *   subscriptions provider webhooks are HINTS: re-fetch, then update subscription + tenant status
  *   reconcile     nightly: posted totals vs the provider's own balance; margin per tenant (E-33)
  *
@@ -39,7 +42,7 @@ const MAX_POSTING_ATTEMPTS = 8;
 const GROSS_MARGIN_ALERT = 0.4;
 
 export interface BillingReport {
-  readonly created: { shopify: number; razorpay: number };
+  readonly created: { shopify: number; razorpay: number; stripe: number };
   readonly posted: number;
   readonly capped: number;
   readonly failed: number;
@@ -71,6 +74,7 @@ async function executePosting(
         id: schema.billingSubscriptions.id,
         providerSubscriptionId: schema.billingSubscriptions.providerSubscriptionId,
         lineItemId: schema.billingSubscriptions.providerLineItemId,
+        customerId: schema.billingSubscriptions.providerCustomerId,
         status: schema.billingSubscriptions.status,
       })
       .from(schema.billingSubscriptions)
@@ -140,6 +144,20 @@ async function executePosting(
         }
         throw error;
       }
+    } else if (p.provider === 'stripe') {
+      if (ctx.stripe === null) throw new Error('Stripe is not configured');
+      if (sub.customerId === null) throw new Error('stripe subscription has no customer yet');
+      const item = await ctx.stripe.createInvoiceItem({
+        customerId: sub.customerId,
+        subscriptionId: sub.providerSubscriptionId,
+        amountMinor: p.amountMinor,
+        currency: p.currency,
+        description: p.description,
+        // Stripe keeps idempotency keys for 24 hours; the posting's own key is stable forever,
+        // and a posting is only retried while it is failed, so a second charge cannot happen.
+        idempotencyKey: p.idempotencyKey,
+      });
+      providerRef = item.id;
     } else {
       if (ctx.razorpay === null) throw new Error('Razorpay is not configured');
       const addon = await ctx.razorpay.createAddon(sub.providerSubscriptionId, {
@@ -174,6 +192,7 @@ async function executePosting(
     ).slice(0, 500);
     const retryable =
       (error instanceof RazorpayRetryableError ||
+        error instanceof StripeRetryableError ||
         (p.provider === 'shopify' && isRetryableWritebackError(error))) &&
       p.attempts < MAX_POSTING_ATTEMPTS;
     await ctx.service.transaction((tx) =>
@@ -272,10 +291,11 @@ export async function notifyApproachingCap(
   return 'approaching_cap_notified';
 }
 
-/** billing.events (Razorpay webhooks, verified by hooks): re-fetch and apply. */
+/** billing.events (Razorpay and Stripe webhooks, verified by hooks): re-fetch and apply. */
 export async function handleBillingEvent(ctx: WorkerContext, message: EventMessage): Promise<void> {
   const event = await loadWebhookEvent(ctx.service, message.webhook_event_id);
   if (event === null || event.status === 'processed') return;
+  if (event.source === 'stripe') return handleStripeEvent(ctx, event);
   try {
     const payload = event.payload as { subscription_id?: unknown } | null;
     const subId = typeof payload?.subscription_id === 'string' ? payload.subscription_id : null;
@@ -319,6 +339,100 @@ export async function handleBillingEvent(ctx: WorkerContext, message: EventMessa
       ctx.service,
       event.id,
       `razorpay:${fetched.status}:${t?.after ?? '-'}`,
+    );
+  } catch (error) {
+    await markWebhookFailed(
+      ctx.service,
+      event.id,
+      error instanceof Error ? error.message : String(error),
+    );
+    throw error;
+  }
+}
+
+/**
+ * Stripe (P6-BILL-1). The webhook says only WHICH object changed; the state comes from Stripe:
+ *
+ *   checkout.session.completed  → fetch the session; the pending row takes the subscription and
+ *                                 customer ids; then the subscription's state is applied
+ *   customer.subscription.*,    → fetch the subscription and apply it (activation, past_due →
+ *   invoice.*                     frozen with the E-50 grace, cancellation)
+ */
+async function handleStripeEvent(
+  ctx: WorkerContext,
+  event: NonNullable<Awaited<ReturnType<typeof loadWebhookEvent>>>,
+): Promise<void> {
+  try {
+    const payload = event.payload as {
+      subscription_id?: unknown;
+      checkout_session_id?: unknown;
+    } | null;
+    const sessionId =
+      typeof payload?.checkout_session_id === 'string' ? payload.checkout_session_id : null;
+    let subId = typeof payload?.subscription_id === 'string' ? payload.subscription_id : null;
+    if (ctx.stripe === null || (sessionId === null && subId === null)) {
+      await markWebhookProcessed(
+        ctx.service,
+        event.id,
+        ctx.stripe === null ? 'stripe_not_configured' : 'not_a_subscription_event',
+      );
+      return;
+    }
+    if (sessionId !== null) {
+      const session = await ctx.stripe.retrieveCheckoutSession(sessionId);
+      if (
+        session.status !== 'complete' ||
+        session.subscriptionId === null ||
+        session.customerId === null
+      ) {
+        await markWebhookProcessed(ctx.service, event.id, `stripe:checkout_${session.status}`);
+        return;
+      }
+      const attached = await ctx.service.transaction((tx) =>
+        attachStripeSubscription(tx, {
+          checkoutSessionId: sessionId,
+          subscriptionId: session.subscriptionId ?? '',
+          customerId: session.customerId ?? '',
+        }),
+      );
+      if (attached === null) {
+        await markWebhookProcessed(ctx.service, event.id, 'unknown_checkout_session');
+        return;
+      }
+      subId = session.subscriptionId;
+    }
+    const [row] = await ctx.service
+      .select({ id: schema.billingSubscriptions.id })
+      .from(schema.billingSubscriptions)
+      .where(
+        and(
+          eq(schema.billingSubscriptions.provider, 'stripe'),
+          eq(schema.billingSubscriptions.providerSubscriptionId, subId ?? ''),
+        ),
+      )
+      .limit(1);
+    if (row === undefined) {
+      await markWebhookProcessed(ctx.service, event.id, 'unknown_subscription');
+      return;
+    }
+    const fetched = await ctx.stripe.retrieveSubscription(subId ?? '');
+    const now = ctx.clock.now();
+    const t = await ctx.service.transaction((tx) =>
+      applySubscriptionState(tx, {
+        subscriptionRowId: row.id,
+        fetched: {
+          status: fromStripeStatus(fetched.status),
+          providerStatus: fetched.status,
+          currentPeriodEnd: fetched.currentPeriodEnd,
+        },
+        at: now,
+        actor: ctx.workerId,
+      }),
+    );
+    await markWebhookProcessed(
+      ctx.service,
+      event.id,
+      `stripe:${fetched.status}:${t?.after ?? '-'}`,
     );
   } catch (error) {
     await markWebhookFailed(
@@ -470,7 +584,10 @@ export async function runBilling(
     signal,
     async tick() {
       const r = await runBillingOnce(ctx);
-      if (r.created.shopify + r.created.razorpay + r.posted + r.capped + r.failed > 0)
+      if (
+        r.created.shopify + r.created.razorpay + r.created.stripe + r.posted + r.capped + r.failed >
+        0
+      )
         ctx.log.info(r, 'billing pass');
       // Once a day, after 02:00 IST (20:30 UTC), when merchants are asleep.
       const now = ctx.clock.now();

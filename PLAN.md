@@ -197,7 +197,7 @@ Calls answered, resolution rate (no human), transfer rate, ticket rate, abandon 
 
 **Entry criteria:** Phase 1 exit; DLT telemarketer application submitted (P2-LEG-1 starts immediately if GST is ready).
 
-**Status (13 Sep 2026):** built under the founder sequencing note (code first, entity and DLT after — `docs/phase-reviews/phase-1.md`). Everything a developer can finish without a live Partner app, dev store, engine or registration is done and tested: compliance layer, billing (Shopify + Razorpay), dashboard, staff console, embedded app, notifications, infra-as-code. Open: the live exit criteria, the human steps (P2-LEG-1/2, P2-SHOP-6 submission, P2-SHOP-8), the Flow trigger (P2-SHOP-7) and the BigQuery export job (P2-WEB-2 / P2-INF-2). Review: `docs/phase-reviews/phase-2.md`.
+**Status (13 Sep 2026):** built under the founder sequencing note (code first, entity and DLT after). Everything a developer can finish without a live Partner app, dev store, engine or registration is done and tested: compliance layer, billing (Shopify + Razorpay), dashboard, staff console, embedded app, notifications, infra-as-code. Open: the live exit criteria, the human steps (P2-LEG-1/2, P2-SHOP-6 submission, P2-SHOP-8), the Flow trigger (P2-SHOP-7) and the BigQuery export job (P2-WEB-2 / P2-INF-2).
 
 ### Workstreams
 
@@ -308,7 +308,7 @@ Checklist completion, SLO attainment in load tests, review turnaround.
 ### Workstreams
 
 **GTM**
-- P4-GTM-1 Case study: Client A RTO before/after, ₹ saved, answer/confirm rates; permission signed. Query pack ready: `docs/gtm/case-study-data.md`.
+- P4-GTM-1 Case study: Client A RTO before/after, ₹ saved, answer/confirm rates; permission signed.
 - P4-GTM-2 Outreach list: 100 Indian D2C brands with high COD share (fashion, beauty, home); founder-led demos; target 10 paying by week 13.
 - P4-GTM-3 Pricing validation: measure conversion at ₹8 vs ₹10 per confirmed order; adjust plan tiers; record ADR-0003 pricing.
 - P4-GTM-4 Partnerships outreach: 3PL/RTO-scoring providers and one-click-checkout providers (leads into Phase 5).
@@ -331,7 +331,7 @@ Checklist completion, SLO attainment in load tests, review turnaround.
 
 Terms addendum draft for counsel: `docs/legal/promotional-terms-addendum.md`.
 
-Code status (16 Sep 2026, `docs/phase-reviews/phase-4.md`, ADR-0010): SHOP-1 extension + cart block built, wording `TODO_LEGAL` (Q-08, Q-22), deploy is a human step; SHOP-2 built — DND waits for a TSP scrub provider (Q-02) and fails closed; SHOP-3 script + extraction built, the outcome is `will_complete` and the link is sent by the merchant (Q-21); BILL-1 attribution measured, not billed (Q-24).
+Code status (16 Sep 2026, ADR-0010): SHOP-1 extension + cart block built, wording `TODO_LEGAL` (Q-08, Q-22), deploy is a human step; SHOP-2 built — DND waits for a TSP scrub provider (Q-02) and fails closed; SHOP-3 script + extraction built, the outcome is `will_complete` and the link is sent by the merchant (Q-21); BILL-1 attribution measured, not billed (Q-24).
 
 ### Exit criteria
 - ≥ 10 paying merchants; ≥ 5,000 billable outcomes/month across tenants; gross margin per outcome ≥ 50%.
@@ -374,7 +374,7 @@ MRR, merchants, outcomes/month, GM per outcome, RTO delta per merchant, recovery
 **Vertical: appointments**
 - P5-GTM-1 Pilot with 3 diagnostic labs/clinics/salons; outcome pricing per booked/confirmed appointment; case study.
 
-Code status (16 Sep 2026, `docs/phase-reviews/phase-5.md`, ADR-0011): one cart-ingestion
+Code status (16 Sep 2026, ADR-0011): one cart-ingestion
 contract (`PUT /v1/carts/{ref}`) serves WooCommerce, one-click checkouts and bespoke stores, so
 WOO-1 is built and OCC-2 needs no per-vendor parser until partner access exists (Q-09); the Woo
 plugin is written but PHP is not linted or tested in this repo's CI (manual matrix in go-live 09);
@@ -399,7 +399,7 @@ Installs by channel, share of intents by source, appointment confirm/booking rat
 
 **Entry criteria:** Phase 4 exit (stable core); legal budget for US/EU; Retell account.
 
-Core audit before starting: `docs/phase-reviews/pre-phase-6-audit.md` (16 Sep 2026) — the
+Core audit before starting (16 Sep 2026): the
 calling core already decides by recipient region (windows, consent, CLI pool, engine, disclosure
 locale) and every gate is green; six defects were found and fixed. What Phase 6 must build, in
 order of size: regional data isolation (one database and one recordings bucket today — needs an
@@ -414,23 +414,27 @@ deployment, refused in the gate (`tenant:other_region`), in inbound admission
 scripts for en-US, en-GB, de-DE, fr-FR, es-ES seeded by the merchant's country (non-English
 wording needs a native review before approval).
 
+Code for every remaining workstream landed 19 Sep 2026 — built and tested against stand-ins, no
+account, no apply; what each still needs from outside the code is in
+`docs/go-live/10-us-eu.md`, and the rules chosen pending counsel are Q-28–Q-33.
+
 **INF**
-- ◐ P6-INF-1 New GCP projects `naaradh-prod-us` (`us-central1`) and `naaradh-prod-eu` (`europe-west1`) from the same Terraform modules; tenant `data_region` routing; no cross-region PII.
-- P6-INF-2 Separate Pub/Sub, Cloud SQL, GCS, Redis per region; shared DNS/LB with region-aware routing; status page per region.
+- ◐ P6-INF-1 New GCP projects `naaradh-prod-us` (`us-central1`) and `naaradh-prod-eu` (`europe-west1`) from the same Terraform modules; tenant `data_region` routing; no cross-region PII. *Code done:* `infra/envs/prod-us.tfvars`, `prod-eu.tfvars`; `data_region` variable (drives `DATA_REGION`) validated against env and location; Stripe and region-sync secrets in the key-holder map; plan workflow matrix. Not applied.
+- ◐ P6-INF-2 Separate Pub/Sub, Cloud SQL, GCS, Redis per region; shared DNS/LB with region-aware routing; status page per region. *Code done:* `region_directory` (no PII) published by each region's reconcile worker and pushed to peers, signed with each region's own Ed25519 key; hooks passes a verified Shopify webhook for another region's store through to that region before storing anything (ADR-0012 amendment 1). Status page per region not started.
 
 **ENG**
-- P6-ENG-1 `packages/engines/retell` adapter (warm transfer with summary, Cal.com tools, HIPAA BAA where required); contract tests; capabilities flags.
-- P6-ENG-2 US/UK numbers via Retell (Twilio/Telnyx) with STIR/SHAKEN A-attestation `[VERIFY]`; CLI pools by region and purpose.
+- ◐ P6-ENG-1 `packages/engines/retell` adapter (warm transfer with summary, Cal.com tools, HIPAA BAA where required); contract tests; capabilities flags. *Code done:* outbound calls, agents with our webhook and extraction fields, mid-call tools, signed webhooks, idempotency lookup; contract suite green on a stand-in (capability-aware harness). Declared off until verified (Q-31): inbound, warm transfer, cancel. Recorded payloads pending.
+- ◐ P6-ENG-2 US/UK numbers via Retell (Twilio/Telnyx) with STIR/SHAKEN A-attestation `[VERIFY]`; CLI pools by region and purpose. *Code done:* `numbers.attestation` recorded by staff (audited); gate step 11 dials +1 recipients only from A. Numbers not bought (Q-28).
 
 **CMP / LEG**
 - P6-LEG-1 US: TCPA design review — prior express consent (transactional) vs prior express **written** consent (marketing); DNC scrubbing + SAN; state disclosure laws (e.g., California AB 2905); two-party recording states list; HIPAA BAA path for healthcare. `[LEGAL]`
 - P6-LEG-2 EU/UK: ePrivacy Art. 13(3) opt-in for all automated calls; GDPR DPA (Art. 28) + DPIA; AI Act Art. 50 disclosure (already in scripts, verify wording per language); Germany all-party recording consent; UK PECR/TPS. `[LEGAL]`
-- P6-CMP-1 Gate rules per region: consent source requirements, windows (state/country variants), DNC/TPS scrub providers, recording-consent question flow for two-party states/DE.
+- ◐ P6-CMP-1 Gate rules per region: consent source requirements, windows (state/country variants), DNC/TPS scrub providers, recording-consent question flow for two-party states/DE. *Code done:* per-purpose windows with day and holiday rules (US federal, French public holidays), explicit zone lists and area-code zone hints, recording-consent question in the first utterance (US, DE, AT, CH; nothing kept on refusal), US National DNC + UK TPS loaded from licensed files and failing closed when stale, spend caps per currency. `[LEGAL]` sign-off pending (Q-29, Q-32).
 - ✅ P6-CMP-2 Scripts per locale (en-US, en-GB, de-DE, fr-FR, es-ES) with disclosure lines; extraction schemas unchanged. Cart recovery + appointment confirmation shipped; `[VERIFY: native review]` on de/fr/es.
 
 **BILL / GTM**
-- P6-BILL-1 Stripe subscriptions (USD/EUR/GBP), per-minute plans (SPEC §2.2); Shopify Billing already region-agnostic.
-- P6-GTM-1 App Store listing localisation; US pricing page; outreach to Shopify Plus agencies; COD is rare in the US — lead with abandoned-cart recovery, appointment confirmation, and order-issue callbacks.
+- ◐ P6-BILL-1 Stripe subscriptions (USD/EUR/GBP), per-minute plans (SPEC §2.2); Shopify Billing already region-agnostic. *Code done (USD):* Checkout from the API (`POST /v1/billing/stripe/checkout`) and the dashboard, signed webhooks re-fetched before any change, usage as one invoice item per closed period. EUR/GBP wait on Q-30.
+- ◐ P6-GTM-1 App Store listing localisation; US pricing page; outreach to Shopify Plus agencies; COD is rare in the US — lead with abandoned-cart recovery, appointment confirmation, and order-issue callbacks. *Code done:* `/pricing/us` from the catalogue's USD prices, marked early access, confirmation calls only.
 
 ### Exit criteria
 - ≥ 5 US merchants live with consent-compliant flows; zero marketing calls without written consent (audit).
@@ -507,6 +511,6 @@ Per-minute gross margin (target ≥ 60%), US answer rates, compliance audit resu
 
 ## Definition of "phase complete"
 
-A phase is complete only when every exit criterion has linked evidence (query, screenshot, document, or test run) in `docs/phase-reviews/phase-<n>.md`, kill criteria were evaluated and recorded, and the next phase's entry criteria are confirmed. Skipping a gate requires a written founder decision in the same file.
+A phase is complete only when every exit criterion has linked evidence (query, screenshot, document, or test run) in `docs/STATUS.md`, kill criteria were evaluated and recorded, and the next phase's entry criteria are confirmed. Skipping a gate requires a written founder decision in the same file.
 
 *Not legal advice. Timelines assume no material regulatory surprises; `[OPEN]` and `[LEGAL]` items are sequenced deliberately early so they cannot silently block later phases.*

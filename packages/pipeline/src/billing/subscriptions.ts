@@ -53,6 +53,25 @@ export function fromRazorpayStatus(status: string): SubscriptionStatus {
   }
 }
 
+/** Stripe (P6-BILL-1). past_due / unpaid keep the E-50 grace; paused is frozen. */
+export function fromStripeStatus(status: string): SubscriptionStatus {
+  switch (status) {
+    case 'active':
+    case 'trialing':
+      return 'active';
+    case 'past_due':
+    case 'unpaid':
+    case 'paused':
+      return 'frozen';
+    case 'canceled':
+      return 'cancelled';
+    case 'incomplete_expired':
+      return 'expired';
+    default:
+      return 'pending';
+  }
+}
+
 export interface FetchedSubscription {
   readonly status: SubscriptionStatus;
   readonly providerStatus: string;

@@ -7,6 +7,7 @@ import {
   jsonb,
   numeric,
   pgTable,
+  primaryKey,
   smallint,
   text,
   uniqueIndex,
@@ -22,7 +23,9 @@ import {
   complaintReportStatus,
   complaintSource,
   complaintStatus,
+  dataRegion,
   deliveryStatus,
+  directoryKind,
   killSwitchScope,
   purpose,
   useCaseKind,
@@ -363,6 +366,8 @@ export const billingSubscriptions = pgTable(
     providerSubscriptionId: text('provider_subscription_id').notNull(),
     /** Shopify: the usage line item usage records are posted against. */
     providerLineItemId: text('provider_line_item_id'),
+    /** Stripe: the customer overage invoice items are added to (`cus_…`). */
+    providerCustomerId: text('provider_customer_id'),
     planCode: text('plan_code'),
     inboundPlanCode: text('inbound_plan_code'),
     status: billingSubscriptionStatus('status').notNull().default('pending'),
@@ -430,3 +435,29 @@ export const billingPostings = pgTable(
     index('billing_postings_tenant_idx').on(t.tenantId, t.period),
   ],
 ).enableRLS();
+
+/**
+ * Which deployment serves a shop or one of our phone numbers (ADR-0012 §4). The edge — the hooks
+ * service of the deployment that receives a request — forwards anything whose region is not its
+ * own. It holds a domain or OUR number and a region: no personal data, so it may be replicated to
+ * every region. Each deployment writes the rows for its own tenants and pushes them to its peers.
+ */
+export const regionDirectory = pgTable(
+  'region_directory',
+  {
+    kind: directoryKind('kind').notNull(),
+    /** A shop's myshopify domain, or one of our numbers in E.164 — never a customer's. */
+    key: text('key').notNull(),
+    dataRegion: dataRegion('data_region').notNull(),
+    /** The deployment that wrote it (`in`, `us`, `eu`): only the owner may change a row. */
+    source: dataRegion('source').notNull(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.kind, t.key] }),
+    check(
+      'region_directory_key_format',
+      sql`(${t.kind} = 'shop' and ${t.key} ~ '^[a-z0-9][a-z0-9-]*\\.myshopify\\.com$') or (${t.kind} = 'number' and ${t.key} ~ '^\\+[1-9][0-9]{7,14}$')`,
+    ),
+  ],
+);

@@ -12,7 +12,14 @@
  * E.164 prefixes of the reserved/fictitious ranges this repo uses for test data.
  * Must stay in sync with packages/shared/test/fake-phones.ts and scripts/lint-pii.mjs.
  */
-const FAKE_PREFIXES = ['+916000000', '+121255501', '+447700900'];
+const FAKE_PREFIXES = [
+  '+916000000',
+  '+121255501',
+  '+180855501',
+  '+190755501',
+  '+190255501',
+  '+447700900',
+];
 
 /** A real-looking international number, or a bare Indian mobile (starts 6-9, 10 digits). */
 const PHONE_PATTERNS = [/\+\d{10,15}/g, /\b[6-9]\d{9}\b/g];

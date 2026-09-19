@@ -183,7 +183,9 @@ export async function finalizeInbound(
 
   // --- side effects ----------------------------------------------------------------------------------------
   await releaseConcurrency(ctx.redis, inboundConcurrencyKey(tenantId), attempt.engine);
-  if (s.costInr !== null) await recordSpend(ctx.redis, attempt.engine, s.costInr, now);
+  // Every currency counts toward its own cap (P6): Retell's dollars, an Indian engine's rupees.
+  if (ev.vendorCost !== null && /^[A-Z]{3}$/.test(ev.vendorCost.currency))
+    await recordSpend(ctx.redis, attempt.engine, ev.vendorCost, now);
 
   const sup =
     outcome === 'opt_out' || outcome === 'minor_answered' ? suppressionFor(outcome) : null;

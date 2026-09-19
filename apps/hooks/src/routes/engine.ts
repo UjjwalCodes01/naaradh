@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { Db } from '@naaradh/db';
 import { SignatureInvalidError, sha256Hex, verifyEngineWebhookTag } from '@naaradh/shared';
+import { withoutRefusedMedia } from '@naaradh/engines-core';
 import { isVendor, type EngineRegistry } from '@naaradh/engines-registry';
 import { markFailed, markPublished, recordWebhook } from '../events.js';
 import type { Publisher } from '../pubsub.js';
@@ -70,7 +71,8 @@ export function registerEngineRoutes(app: FastifyInstance, deps: EngineRouteDeps
         tenantId,
         externalAccount: vendor,
         signatureValid: adapter.capabilities().signedWebhooks,
-        payload: event,
+        // A refused recording is stripped here, before storage — not later in the worker.
+        payload: withoutRefusedMedia(event),
         payloadSha256: sha256Hex(raw),
         headers,
       });

@@ -50,6 +50,12 @@ export async function razorpayPlanFor(
     throw new NaaradhError('VALIDATION_FAILED', 'this plan combination is not offered', {
       context: { key },
     });
+  await assertBilledDirectly(tx, tenantId);
+  return planId;
+}
+
+/** Shopify stores are billed only through Shopify (App Store rule) — never Razorpay or Stripe. */
+export async function assertBilledDirectly(tx: Tx, tenantId: string): Promise<void> {
   const shopify = await tx
     .select({ id: schema.integrations.id })
     .from(schema.integrations)
@@ -66,7 +72,23 @@ export async function razorpayPlanFor(
       'FORBIDDEN',
       'this store is billed through Shopify — use the Naaradh app in Shopify admin',
     );
-  return planId;
+  // A second subscription would charge the plan fee twice while usage lands on only one of them.
+  // Plan changes go through staff until self-serve changes exist.
+  const active = await tx
+    .select({ id: schema.billingSubscriptions.id })
+    .from(schema.billingSubscriptions)
+    .where(
+      and(
+        eq(schema.billingSubscriptions.tenantId, tenantId),
+        eq(schema.billingSubscriptions.status, 'active'),
+      ),
+    )
+    .limit(1);
+  if (active.length > 0)
+    throw new NaaradhError(
+      'CONFLICT',
+      'this account already has an active subscription — write to billing@naaradh.com to change plans',
+    );
 }
 
 export async function recordRazorpaySubscription(

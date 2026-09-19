@@ -40,11 +40,32 @@ export interface AgentSpec {
   readonly locale: Locale;
   /** Rendered from an approved, immutable script version in packages/scripts. */
   readonly systemPrompt: string;
+  /**
+   * The opening line as a TEMPLATE: `{{slot}}` placeholders stay in, and the engine fills them
+   * per call from `PlaceCallRequest.variables`. An agent is created once per script version and
+   * reused for every call on it, so a greeting with one customer's values baked in would be
+   * spoken to the next customer too.
+   */
   readonly firstUtterance: string;
   readonly voiceId: string;
   readonly maxDurationSec: number;
   /** Mid-call tools (ADR-0006) — the same definitions inbound calls get, with tenant-bound URLs. */
   readonly tools?: readonly ToolDefinition[];
+  /**
+   * The tenant-tagged events URL. Engines that bind webhooks to an agent rather than to each
+   * call (Retell) set it here; per-call engines use `PlaceCallRequest.webhookUrl` and ignore
+   * it. Agents are per tenant (scripts are tenant-owned), so one URL per agent is exact.
+   */
+  readonly webhookUrl?: string;
+  /**
+   * The structured result the call must end with (packages/scripts extraction schemas), as flat
+   * JSON Schema. Engines that collect it themselves (Retell's post-call analysis) build their
+   * fields from it; the result is validated against the schema again on our side regardless.
+   */
+  readonly extraction?: {
+    readonly name: string;
+    readonly schema: Readonly<Record<string, unknown>>;
+  };
 }
 
 export interface PlaceCallRequest {
@@ -135,6 +156,23 @@ export type EngineEvent =
       readonly message: string;
       readonly retryable: boolean;
     });
+
+/**
+ * The customer refused the recording (P6-CMP-1) — said by the end reason, or only by the
+ * extraction when an engine cannot end the call with a reason of its own.
+ */
+export function recordingRefused(ev: {
+  readonly reason: EndReason;
+  readonly extracted: Readonly<Record<string, unknown>> | null;
+}): boolean {
+  return ev.reason === 'recording_refused' || ev.extracted?.['outcome'] === 'recording_refused';
+}
+
+/** A refused call keeps neither the audio link nor the words, from the first byte we store. */
+export function withoutRefusedMedia<E extends EngineEvent>(ev: E): E {
+  if (ev.type !== 'call.ended' || !recordingRefused(ev)) return ev;
+  return { ...ev, recordingUrl: null, transcript: null };
+}
 
 export type EndReason =
   | 'completed'
