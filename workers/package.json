@@ -15,8 +15,8 @@
     "lint": "eslint src test"
   },
   "dependencies": {
-    "@google-cloud/bigquery": "9.0.3",
-    "@google-cloud/pubsub": "6.0.1",
+    "@google-cloud/bigquery": "9.1.0",
+    "@google-cloud/pubsub": "6.1.0",
     "@google-cloud/secret-manager": "6.1.1",
     "@google-cloud/storage": "8.1.0",
     "@naaradh/calendar": "workspace:*",
@@ -30,7 +30,7 @@
     "@naaradh/call-scripts": "workspace:*",
     "@naaradh/shared": "workspace:*",
     "@naaradh/shopify-sdk": "workspace:*",
-    "drizzle-orm": "0.44.7",
+    "drizzle-orm": "0.45.2",
     "ioredis": "5.6.1",
     "luxon": "3.7.2",
     "zod": "3.24.1"
@@ -39,7 +39,7 @@
     "@naaradh/engine-simulator": "workspace:*",
     "@testcontainers/redis": "12.1.0",
     "@types/luxon": "3.7.5",
-    "tsup": "8.3.5",
-    "tsx": "4.19.2"
+    "tsup": "8.5.1",
+    "tsx": "4.23.13"
   }
 }

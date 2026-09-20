@@ -21,8 +21,8 @@
     "@naaradh/pipeline": "workspace:*",
     "@naaradh/call-scripts": "workspace:*",
     "@naaradh/shared": "workspace:*",
-    "drizzle-orm": "0.44.7",
-    "fastify": "5.2.1",
+    "drizzle-orm": "0.45.2",
+    "fastify": "5.12.5",
     "ioredis": "5.6.1",
     "zod": "3.24.1"
   },
@@ -30,7 +30,7 @@
     "@naaradh/engine-simulator": "workspace:*",
     "@naaradh/notify": "workspace:*",
     "@testcontainers/redis": "12.1.0",
-    "tsup": "8.3.5",
-    "tsx": "4.19.2"
+    "tsup": "8.5.1",
+    "tsx": "4.23.13"
   }
 }
