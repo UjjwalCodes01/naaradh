@@ -315,7 +315,7 @@ Everything above has a compliance regression test in `compliance/test/regression
 - Every new inbound endpoint: signature verification + schema validation + rate limit + dedupe, or it does not merge.
 - Every new table: RLS policy; every new column that may hold PII: added to logger redaction and to the erasure job.
 - Every new outbound integration: secret via Secret Manager, egress via Cloud NAT static IP, timeout + retry + circuit breaker.
-- Dependencies: pin exact versions; review licences; no packages that phone home.
+- Dependencies: pin exact versions; review licences; no packages that phone home. Build and test tooling stays in `devDependencies` and never in `peerDependencies` — `auto-install-peers=true` makes a peer an ordinary dependency, and a service image installs the production dependencies of every workspace package it reaches (`shared/test/image-prod-deps.test.ts`).
 - Prompt-injection surface: any string from merchants/customers is data, never instruction; sanitise and slot.
 - Access to recordings and transcripts is role-gated (operator+) and audited before it is served; merchants see it in their access log. Staff reach evidence only through the IAP console, audited as `staff:<email>`. ("Reveal number": deferred, ADR-0009.)
 

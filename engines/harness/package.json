@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "comment": "The shared engine-adapter contract suite. Test-only: nothing in any service's src/ may import it (pnpm lint:context). vitest is a devDependency pinned to the root version, NOT a peer — `auto-install-peers=true` (.npmrc) turns a peer into a real dependency, which dragged the whole vitest closure into the hooks/voice/workers production images and failed their trivy scan (shared/test/image-prod-deps.test.ts). Same exact version as the root runner, so pnpm links one physical copy and describe/expect share the runner's context.",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -10,7 +11,7 @@
     "@naaradh/engines-core": "workspace:*",
     "@naaradh/shared": "workspace:*"
   },
-  "peerDependencies": {
-    "vitest": "*"
+  "devDependencies": {
+    "vitest": "2.1.8"
   }
 }

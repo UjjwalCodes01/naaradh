@@ -241,8 +241,9 @@ importers:
       '@naaradh/shared':
         specifier: workspace:*
         version: link:../../shared
+    devDependencies:
       vitest:
-        specifier: '*'
+        specifier: 2.1.8
         version: 2.1.8(@types/node@22.10.2)(lightningcss@1.32.0)
 
   engines/omnidim:
