@@ -18,7 +18,7 @@ variable "prefix" {
 }
 
 variable "topics" {
-  description = "Topic suffixes (apps/hooks/src/pubsub.ts TopicName)."
+  description = "Topic suffixes (hooks/src/pubsub.ts TopicName)."
   type        = list(string)
 }
 

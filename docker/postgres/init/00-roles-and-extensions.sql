@@ -27,7 +27,7 @@ CREATE ROLE naaradh_app WITH
 COMMENT ON ROLE naaradh_app IS
   'Application connection role. Non-owner, NOBYPASSRLS: every tenant query is subject to RLS. Workers set app.tenant_id per transaction.';
 
--- The cross-tenant door (ADR-0004, packages/db/src/service.ts). BYPASSRLS, but still bound
+-- The cross-tenant door (ADR-0004, db/src/service.ts). BYPASSRLS, but still bound
 -- by table grants, so it cannot mutate append-only tables either. Used only by the hooks
 -- service and the workers that genuinely scan every tenant.
 CREATE ROLE naaradh_service WITH

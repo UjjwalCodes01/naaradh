@@ -52,7 +52,7 @@ resource "google_bigquery_table" "daily_call_facts" {
 }
 
 # The exporter identity is the workers-analytics runtime service account (modules/iam): it
-# loads one partition a night with load jobs (apps/workers/src/analytics/sink.ts), which need
+# loads one partition a night with load jobs (workers/src/analytics/sink.ts), which need
 # dataEditor on the dataset and jobUser on the project — nothing else, and nobody else writes.
 resource "google_bigquery_dataset_iam_member" "exporter" {
   project    = var.project_id

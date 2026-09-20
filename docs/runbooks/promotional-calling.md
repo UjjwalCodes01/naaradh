@@ -17,7 +17,7 @@ In order — the gate reason names the first one missing:
 | Approved script with its DLT content template id | dashboard → Call scripts | `script:dlt_template_missing` |
 | 09:00–21:00 in the recipient's zone | automatic | `window:closed` (waits for 09:00 if still inside the deadline) |
 
-**No DND provider is wired yet (Q-02).** Until one is, every promotional call is refused `dnd:unknown`. That is deliberate (ADR-0010 §6). Plugging one in: implement `DndProvider` (`packages/compliance/src/adapters/dnd.ts`) and pass it as `dnd` in the workers' context (`apps/workers/src/index.ts`). The dispatcher scrubs just before the gate, because it is the only place the number can be decrypted.
+**No DND provider is wired yet (Q-02).** Until one is, every promotional call is refused `dnd:unknown`. That is deliberate (ADR-0010 §6). Plugging one in: implement `DndProvider` (`compliance/src/adapters/dnd.ts`) and pass it as `dnd` in the workers' context (`workers/src/index.ts`). The dispatcher scrubs just before the gate, because it is the only place the number can be decrypted.
 
 ## "This checkout was not called"
 
@@ -53,7 +53,7 @@ from call_attempts a join call_intents i on i.id = a.intent_id
 where a.tenant_id = '<ten_…>' and a.phone_hash = '<hash>' order by a.created_at;
 ```
 
-The gate trace on the intent records every step that passed. The wording text for a version is in `packages/pipeline/src/promotional/consent-wording.ts` (versions are never deleted). **Audit query for the exit criterion "zero non-consented promotional calls":**
+The gate trace on the intent records every step that passed. The wording text for a version is in `pipeline/src/promotional/consent-wording.ts` (versions are never deleted). **Audit query for the exit criterion "zero non-consented promotional calls":**
 
 ```sql
 select a.id from call_attempts a

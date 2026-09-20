@@ -9,10 +9,10 @@ now reaches `shopify_sessions` through SECURITY DEFINER functions instead (below
 
 ## Context
 
-Phase 2 adds three surfaces people log into: the merchant dashboard (`apps/web`), the embedded
-Shopify app (`apps/shopify`) and a staff console. Each needs to act before a tenant is known
+Phase 2 adds three surfaces people log into: the merchant dashboard (`web`), the embedded
+Shopify app (`shopify`) and a staff console. Each needs to act before a tenant is known
 (sign-in, loading a Shopify session, provisioning a new store) and then act within one tenant.
-`packages/db/src/service.ts` and the lint rule already say the BYPASSRLS role never serves a
+`db/src/service.ts` and the lint rule already say the BYPASSRLS role never serves a
 merchant request. AGENTS §4 lists who may hold the customer private key (dispatcher, results,
 reconcile) and AGENTS §3 promised a dashboard "reveal number" action.
 
@@ -55,7 +55,7 @@ reconcile) and AGENTS §3 promised a dashboard "reveal number" action.
    (`<audio preload="none">` so nothing is fetched until play). Merchants see these rows on the
    access log page (E-74).
 
-7. **Staff console = its own small service** (`apps/console`): Fastify, server-rendered HTML with
+7. **Staff console = its own small service** (`console`): Fastify, server-rendered HTML with
    no client script, behind Identity-Aware Proxy. The IAP JWT is verified in-process (ES256, `aud`
    = the backend service, issuer, expiry) and the email checked against a staff domain/allow-list.
    It holds the service role (cross-tenant is its job) and nothing else sensitive; every POST must
@@ -82,7 +82,7 @@ reconcile) and AGENTS §3 promised a dashboard "reveal number" action.
   the functions validate their inputs and write audit rows.
 - The console is a second codebase for internal UI, deliberately plain; it does not share the
   dashboard's components.
-- The dashboard uses a small Tailwind component set (`apps/web/src/components/ui.tsx`) instead of
+- The dashboard uses a small Tailwind component set (`web/src/components/ui.tsx`) instead of
   shadcn/ui (CLAUDE.md stack table): server components need no client UI library, and the only
   client component is the form wrapper. Adopt shadcn/ui if the dashboard grows interactive
   widgets (date pickers, command menus).

@@ -33,26 +33,26 @@ const read = (p) => readFileSync(join(ROOT, p), 'utf8');
 
 /** Every deployed surface, its schema, and where it runs. */
 const SERVICES = {
-  api: { module: 'apps/api/src/env.ts', schema: 'apiEnvSchema', where: 'Cloud Run (GCP)' },
-  hooks: { module: 'apps/hooks/src/env.ts', schema: 'hooksEnvSchema', where: 'Cloud Run (GCP)' },
-  voice: { module: 'apps/voice/src/env.ts', schema: 'voiceEnvSchema', where: 'Cloud Run (GCP)' },
+  api: { module: 'api/src/env.ts', schema: 'apiEnvSchema', where: 'Cloud Run (GCP)' },
+  hooks: { module: 'hooks/src/env.ts', schema: 'hooksEnvSchema', where: 'Cloud Run (GCP)' },
+  voice: { module: 'voice/src/env.ts', schema: 'voiceEnvSchema', where: 'Cloud Run (GCP)' },
   workers: {
-    module: 'apps/workers/src/env.ts',
+    module: 'workers/src/env.ts',
     schema: 'workersEnvSchema',
     where: 'Cloud Run (GCP), one service per WORKER role',
   },
   console: {
-    module: 'apps/console/src/env.ts',
+    module: 'console/src/env.ts',
     schema: 'consoleEnvSchema',
     where: 'Cloud Run (GCP), behind IAP',
   },
   web: {
-    module: 'apps/web/src/lib/env.ts',
+    module: 'web/src/lib/env.ts',
     schema: 'webEnvSchema',
     where: 'Cloud Run (GCP) for the dashboard; Vercel serves the marketing pages only',
   },
   shopify: {
-    module: 'apps/shopify/app/lib/env.server.ts',
+    module: 'shopify/app/lib/env.server.ts',
     schema: 'shopifyAppEnvSchema',
     where: 'Cloud Run (GCP)',
   },
@@ -64,7 +64,7 @@ const SERVICES = {
  */
 const EXTRA_CONSUMERS = {
   DATABASE_MIGRATOR_URL: {
-    reader: 'the migrate job (packages/db/src/migrate-cli.ts)',
+    reader: 'the migrate job (db/src/migrate-cli.ts)',
     principal: 'migrate',
   },
 };
@@ -302,13 +302,13 @@ function printService(name, service, infra) {
 
 function printVercel() {
   return [
-    'vercel — the marketing site (apps/web, NAARADH_SURFACE=marketing)',
+    'vercel — the marketing site (web, NAARADH_SURFACE=marketing)',
     '',
     'Project → Settings → Environment Variables, for Production and Preview:',
     '',
     ...VERCEL.flatMap((v) => [`  ${v.name}=${v.value}`, `    ${v.note}`, '']),
     'Nothing else. The marketing pages read no database, no Redis and no key, which is why',
-    'this deployment can hold no credential at all. The template lives in apps/web/.env.example.',
+    'this deployment can hold no credential at all. The template lives in web/.env.example.',
     '',
   ].join('\n');
 }
@@ -360,9 +360,9 @@ function check(services, infra) {
     if (!all.has(name) && !PLATFORM_PROVIDED.has(name))
       problems.push(`.env.example sets ${name}, which no service's schema accepts`);
   // The Vercel template and this script must agree.
-  const vercel = templateKeys('apps/web/.env.example');
+  const vercel = templateKeys('web/.env.example');
   for (const v of VERCEL)
-    if (!vercel.has(v.name)) problems.push(`apps/web/.env.example does not mention ${v.name}`);
+    if (!vercel.has(v.name)) problems.push(`web/.env.example does not mention ${v.name}`);
   // A committed template must never carry a real credential. The docker-compose URLs and the
   // simulator's public development secret are not credentials: they work only on localhost and
   // production refuses them.
@@ -374,7 +374,7 @@ function check(services, infra) {
     /^(true|false|off|on|\d+)$/.test(value) ||
     value.includes('local_dev_only') ||
     /(localhost|127\.0\.0\.1)/.test(value);
-  for (const path of ['.env.example', 'apps/web/.env.example'])
+  for (const path of ['.env.example', 'web/.env.example'])
     for (const line of read(path).split('\n')) {
       const m = /^\s*([A-Z][A-Z0-9_]+)=(.*)$/.exec(line);
       if (m !== null && secretNames.has(m[1]) && !devSafe(m[2].trim()))

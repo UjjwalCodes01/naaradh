@@ -25,7 +25,7 @@ Enforce **2-step verification** for every account (it also protects the staff co
 
 The dashboard sends sign-in links and invites; the `notifications` worker sends alerts (complaint,
 pause, spending cap, payment problem, erasure done) and the daily summary. No email ever contains
-customer data. Code: `packages/notify` (Postmark over HTTPS, open/link tracking **off**).
+customer data. Code: `notify` (Postmark over HTTPS, open/link tracking **off**).
 
 1. Create a Postmark account; create one **Server** per environment (staging, production).
 2. Add the sending domain **mail.naaradh.com** and publish the DKIM TXT record and the
@@ -49,7 +49,7 @@ as an add-on, net of dispute credits.
 1. **Account and KYC** with the company: PAN, GSTIN, CoI, current account (3–7 days).
    Add the GSTIN so Razorpay issues GST invoices. Enable **Subscriptions**.
 2. **Create plans** (monthly) for each combination you offer, with the platform fee from the plan
-   catalogue (`packages/pipeline/src/billing/plans.ts`; public pricing page). How GST is added to
+   catalogue (`pipeline/src/billing/plans.ts`; public pricing page). How GST is added to
    the plan amount — confirm with the CA.
 3. Map them in the secret-free env var **`RAZORPAY_PLAN_IDS`** (JSON). Key format:
    `<outbound plan or ->+<support-line plan or ->`:

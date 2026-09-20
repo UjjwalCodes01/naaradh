@@ -1,8 +1,8 @@
 # Protected customer data — Level 2 request (P2-SHOP-6)
 
 The text and evidence for the Partner Dashboard request. A human submits it (CLAUDE.md: no
-Partner Dashboard changes by agents). Keep it in step with `packages/shopify-sdk/src/scopes.ts`
-and `apps/shopify/shopify.app.toml`.
+Partner Dashboard changes by agents). Keep it in step with `shopify-sdk/src/scopes.ts`
+and `shopify/shopify.app.toml`.
 
 ## Fields requested and why
 
@@ -22,14 +22,14 @@ are never read — consent for a call comes only from Naaradh's own checkbox (E-
 ## Scopes (minimum)
 
 `read_orders, write_orders, read_customers, read_checkouts, read_fulfillments, read_locales` —
-reasons per scope in `packages/shopify-sdk/src/scopes.ts`. `write_customers` is deliberately
+reasons per scope in `shopify-sdk/src/scopes.ts`. `write_customers` is deliberately
 not requested (no code writes a customer; Q-07).
 
 ## Level 1 and Level 2 requirements — how Naaradh meets them
 
 | Requirement | Evidence |
 |---|---|
-| Process only the minimum personal data | Webhook parsers keep phone, name, pincode, order ref, amount, gateway; everything else is dropped (`packages/shopify-sdk/src/webhooks.ts`). |
+| Process only the minimum personal data | Webhook parsers keep phone, name, pincode, order ref, amount, gateway; everything else is dropped (`shopify-sdk/src/webhooks.ts`). |
 | Tell merchants what is processed and why | Privacy policy and DPA (naaradh.com/privacy, /dpa); in-app setup screen. |
 | Limit use to the stated purpose | Calls only for use cases the merchant enabled; every call passes the compliance gate (invariant 1). |
 | Respect consent decisions | Promotional calls need a recorded consent row from Naaradh's own checkbox, under 7 days old in India, revoked the moment the box is unticked; opt-outs are absolute suppressions (invariants 5, 6; ADR-0010). |
@@ -42,7 +42,7 @@ not requested (no code writes a customer; Q-07).
 | Strong passwords / MFA for staff | Google Workspace accounts with enforced 2-step verification gate IAP. |
 | Audit logs | `audit_log` (append-only, trigger-enforced) for every state change and data access. |
 | Security incident response policy | `docs/runbooks/` (incident response plan: SPEC §13, [LEGAL] draft pending). |
-| Mandatory compliance webhooks | `customers/data_request`, `customers/redact`, `shop/redact` → apps/hooks (401 on bad HMAC) → erasure workflow (P2-CMP-3). |
+| Mandatory compliance webhooks | `customers/data_request`, `customers/redact`, `shop/redact` → hooks (401 on bad HMAC) → erasure workflow (P2-CMP-3). |
 
 ## Before submitting
 

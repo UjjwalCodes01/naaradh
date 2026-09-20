@@ -4,7 +4,7 @@
 
 **Mechanism (invariant 12):** the dispatcher checks four switches, in order, on every dispatch — global → engine → tenant → campaign — reading Redis with a 5-second in-process cache. A switch that is ON makes the gate refuse at step 2 with `kill:<scope>`; intents are deferred five minutes and re-evaluated, so nothing is lost. The durable record is the `kill_switches` table; Redis is the hot copy.
 
-Redis keys (`packages/compliance/src/adapters/redis.ts`): `ks:global:*`, `ks:engine:<vendor>`, `ks:tenant:<ten_…>`, `ks:campaign:<cmp_…>`.
+Redis keys (`compliance/src/adapters/redis.ts`): `ks:global:*`, `ks:engine:<vendor>`, `ks:tenant:<ten_…>`, `ks:campaign:<cmp_…>`.
 
 ## Flip ON (≤ 5 s to take effect)
 

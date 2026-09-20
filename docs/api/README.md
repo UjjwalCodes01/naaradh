@@ -1,14 +1,14 @@
 # Naaradh API reference
 
 `openapi.json` in this folder is the OpenAPI 3.1 description of `api.naaradh.com`. It is
-**generated** from the Zod schemas the routes validate with (`apps/api/src/openapi.ts`), so the
+**generated** from the Zod schemas the routes validate with (`api/src/openapi.ts`), so the
 request shapes here are the request shapes the server accepts. The live copy is served at
 `GET https://api.naaradh.com/v1/openapi.json` (no API key).
 
 - Regenerate after changing a route: `pnpm openapi` (writes this file). CI fails on drift.
 - View it: paste into any OpenAPI viewer (Swagger UI, Redocly, Stoplight) or open
   `docs.naaradh.com` once that host exists (Phase 5).
-- A route that exists but is not documented fails `apps/api/test/unit/openapi.test.ts`.
+- A route that exists but is not documented fails `api/test/unit/openapi.test.ts`.
 - [`automation.md`](automation.md) — Zapier / Make / n8n and CRM recipes on this API (ADR-0011 §9).
 - [`sdks.md`](sdks.md) — generating a client from the document, and webhook signature verification in Node, Python and PHP.
 

@@ -41,9 +41,9 @@ If Redis is higher than Postgres, wait one reconcile interval; if reconcile is n
 
 ## The fallback itself is wrong
 
-- **Forward goes nowhere:** the fallback number is encrypted with the **staff** key. If `STAFF_ENC_PRIVATE_KEY` on apps/voice does not match the key the number was stored with, decryption fails and the caller gets the closed message instead. Re-enter the number via `PUT /v1/inbound-profiles/:id`.
+- **Forward goes nowhere:** the fallback number is encrypted with the **staff** key. If `STAFF_ENC_PRIVATE_KEY` on voice does not match the key the number was stored with, decryption fails and the caller gets the closed message instead. Re-enter the number via `PUT /v1/inbound-profiles/:id`.
 - **Closed message says "business hours":** the profile's `business_hours` did not validate. Fix it through the API; the closed message and the transfer rule both depend on it.
 
 ## Engine-side timeout
 
-If apps/voice is down entirely, the engine's own timeout fallback plays (configure it on every inbound number at provisioning). `/readyz` on voice reports `db` and `redis`; Cloud Run min-instances ≥ 1 in production so a cold start never eats the 2 s engine budget.
+If voice is down entirely, the engine's own timeout fallback plays (configure it on every inbound number at provisioning). `/readyz` on voice reports `db` and `redis`; Cloud Run min-instances ≥ 1 in production so a cold start never eats the 2 s engine budget.

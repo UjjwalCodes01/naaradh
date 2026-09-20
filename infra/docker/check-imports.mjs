@@ -1,4 +1,4 @@
-// Build-time guard for the service images (apps/*/Dockerfile).
+// Build-time guard for the service images (*/Dockerfile).
 //
 // The tsup bundles inline every `@naaradh/*` workspace package but leave third-party packages as
 // runtime imports. Those imports are resolved from /app/node_modules, which is a *flattened*

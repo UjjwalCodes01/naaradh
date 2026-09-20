@@ -18,10 +18,10 @@ registration, number, key and approval the code depends on, in the order to get 
 | Phone numbers (+91) | None. Needs the entity (KYC) and an answer on the number series (Q-01) | **Yes** |
 | Company (Pvt Ltd), GST, bank account | In progress | **Yes** — needed for numbers, DLT, Razorpay, payouts |
 | DLT telemarketer registration | Not started (needs GST) | Yes for promotional; ask TSPs about transactional (Q-01/Q-02) |
-| Shopify apps (staging + production) | Code ready (`apps/shopify`); no app created in Shopify yet | Yes for Shopify merchants |
+| Shopify apps (staging + production) | Code ready (`shopify`); no app created in Shopify yet | Yes for Shopify merchants |
 | Google Cloud + Terraform | Terraform written and validated; **nothing applied** | Yes |
 | Database (Neon), Redis, email (Postmark), Razorpay | Accounts not created | Yes |
-| Legal pages (privacy, terms, DPA…) | Drafts live in `apps/web`, marked "pending counsel" | Yes for App Store / Level 2 |
+| Legal pages (privacy, terms, DPA…) | Drafts live in `web`, marked "pending counsel" | Yes for App Store / Level 2 |
 
 Gaps found while checking the implementation, and what Phase 3 closed (see
 [08-first-merchants.md](08-first-merchants.md#gaps-you-will-hit)): numbers, direct merchants and

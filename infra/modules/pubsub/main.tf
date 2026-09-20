@@ -1,6 +1,6 @@
 # Pub/Sub topics and subscriptions for the hooks → workers event bus.
 #
-# Names match the code exactly (apps/hooks/src/pubsub.ts topicId, apps/workers/src/bus.ts
+# Names match the code exactly (hooks/src/pubsub.ts topicId, workers/src/bus.ts
 # subscriptionId): topic `<prefix>.<topic>`, subscription `<prefix>.<topic>.<worker>`.
 # Messages carry only a webhook_events id and routing attributes — never PII (hooks pubsub.ts).
 #

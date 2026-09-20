@@ -6691,7 +6691,7 @@
       "url": "https://api.naaradh.com"
     },
     {
-      "description": "Local development (apps/api default PORT)",
+      "description": "Local development (api default PORT)",
       "url": "http://localhost:3001"
     }
   ],

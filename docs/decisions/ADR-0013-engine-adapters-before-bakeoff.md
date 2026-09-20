@@ -20,7 +20,7 @@ agent per number.
 
 ## Decisions
 
-1. **`packages/engines/bolna` and `packages/engines/omnidim` exist now**, written from the
+1. **`engines/bolna` and `engines/omnidim` exist now**, written from the
    published APIs with every assumption marked `[VERIFY]` and stand-in fixtures. An adapter is
    "verified" only when recorded, sanitised payloads replace the stand-ins (go-live 03 §5).
 2. **For an unsigned vendor the webhook is only a doorbell.** `EngineCallSnapshot.result`

@@ -208,7 +208,7 @@ Dubai/other entities: not needed until GCC contracts justify it.
 | Auto-dialer disclosure | Must disclose auto-dialer/robocall at start of every call | First utterance template includes disclosure; logged as `ai_disclosed=true` with timestamp |
 | DND/NCPR scrubbing | Before every promotional call | Scrub via TSP/DLT API per campaign; never for transactional? `[VERIFY — some TSPs scrub all]` |
 | Templates | Registered content templates for promotional traffic | Template registry with DLT template IDs; map to CDRs |
-| Penalties | ₹2L / ₹5L / ₹10L per successive violation; **5 valid complaints in a rolling 10-day window** can blacklist all telecom resources for up to a year across all TSPs | Per-merchant complaint counter: tenant auto-pause at **3**, global kill switch at **5** (E-05). These two numbers are the single source of truth; `packages/compliance` implements them as named constants. |
+| Penalties | ₹2L / ₹5L / ₹10L per successive violation; **5 valid complaints in a rolling 10-day window** can blacklist all telecom resources for up to a year across all TSPs | Per-merchant complaint counter: tenant auto-pause at **3**, global kill switch at **5** (E-05). These two numbers are the single source of truth; `compliance` implements them as named constants. |
 | Digital Consent Acquisition (DCA) | Consent capture via DLT DCA framework | `[VERIFY]` whether DCA is required for voice or SMS-only; integrate if required |
 
 #### 4.1.2 DoT / licensing `[VERIFIED]`
@@ -350,7 +350,7 @@ type EngineEvent =
   | { type: 'call.failed'; code; message };
 ```
 
-Every vendor gets its own implementation in `packages/engines/<vendor>/`. Product code never imports a vendor SDK directly.
+Every vendor gets its own implementation in `engines/<vendor>/`. Product code never imports a vendor SDK directly.
 
 ---
 

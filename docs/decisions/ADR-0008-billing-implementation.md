@@ -20,7 +20,7 @@ invoice, with no idempotency key.
 
 ## Decision
 
-1. **One plan catalogue** (`packages/pipeline/src/billing/plans.ts`) — outbound and inbound plans,
+1. **One plan catalogue** (`pipeline/src/billing/plans.ts`) — outbound and inbound plans,
    each with fee, included units and per-extra price **in INR and USD**. Tenant `settings` may
    override included units and unit prices (enterprise). USD prices for Indian plans are
    `[DECISION — founder]` derived at ≈ ₹84/$ and rounded.

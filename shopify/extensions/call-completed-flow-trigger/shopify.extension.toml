@@ -1,0 +1,38 @@
+# Shopify Flow trigger "Naaradh call completed" (P2-SHOP-7). Lets a merchant build Flow
+# automations on a call's result — tag, notify, hold fulfilment — without touching our API.
+# Fired by the write-back worker with `flowTriggerReceive` AFTER the order has its tags and
+# metafields (shopify-sdk/src/flow.ts); enable with SHOPIFY_FLOW_TRIGGER=true on the
+# workers once this extension has been released with `shopify app deploy`.
+#
+# Carries the order and the outcome only: no phone number, no transcript, no recording.
+# [VERIFY] the field types against the Flow trigger reference at deploy time.
+[[extensions]]
+name = "Naaradh call completed"
+type = "flow_trigger"
+handle = "naaradh-call-completed"
+description = "Starts when a Naaradh call about an order reaches a final result (confirmed, cancelled, no answer…)."
+
+[settings]
+
+  [[settings.fields]]
+  type = "order_reference"
+
+  [[settings.fields]]
+  type = "single_line_text_field"
+  key = "outcome"
+  description = "confirmed, confirmed_with_changes, cancelled, rescheduled, no_answer, busy, voicemail, wrong_number, opt_out, callback_requested, needs_merchant_action, inconclusive…"
+
+  [[settings.fields]]
+  type = "number_decimal"
+  key = "confidence"
+  description = "How sure the agent was of the outcome, 0–1. Automations that change an order should require 0.9 or more."
+
+  [[settings.fields]]
+  type = "number_integer"
+  key = "attempts"
+  description = "How many calls were placed for this order so far."
+
+  [[settings.fields]]
+  type = "boolean"
+  key = "needs_review"
+  description = "True when a person should look at the order (a requested address change, or a cancellation that was not applied automatically)."

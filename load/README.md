@@ -42,6 +42,6 @@ is enabled.
 - `api` intents not `scheduled`: outside 09:00–21:00 IST, or the tenant's use case is off, or
   the gate refused (the response says why).
 
-The chaos side of P3-INF-4 (`apps/workers/test/int/chaos.test.ts`) proves the worker loops
+The chaos side of P3-INF-4 (`workers/test/int/chaos.test.ts`) proves the worker loops
 survive a Postgres and a Redis restart; the engine failure modes are in `e2e.test.ts`.
 Runbook: `docs/runbooks/load-test.md`.

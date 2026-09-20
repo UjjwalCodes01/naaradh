@@ -1,4 +1,4 @@
-# Build context for apps/{api,hooks,voice,workers,console,web,shopify}/Dockerfile (context = repo root).
+# Build context for {api,hooks,voice,workers,console,web,shopify}/Dockerfile (context = repo root).
 # Everything here is either rebuilt inside the image, irrelevant to it, or must never reach a
 # registry (secrets, customer data — CLAUDE.md invariant 8, AGENTS.md §11).
 

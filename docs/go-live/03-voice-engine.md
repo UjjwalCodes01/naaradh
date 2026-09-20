@@ -7,7 +7,7 @@ be called, identity, tools, knowledge, outcomes, billing. Product code only talk
 
 **All three vendor adapters are built** — Bolna and OmniDimension for India, Retell for US/EU —
 each written from the vendor's published API (Sep 2026) and **none yet run against a real
-account**: every assumption is marked `[VERIFY]` in `packages/engines/<vendor>/src`, and the test
+account**: every assumption is marked `[VERIFY]` in `engines/<vendor>/src`, and the test
 fixtures are stand-ins, not recordings. What is left is linking accounts, the verification calls
 in §5, and ADR-0001's choice of which Indian engine is primary.
 
@@ -65,12 +65,12 @@ extraction_correct | disclosure_spoken | duration_sec | billed_sec | cost_inr | 
   mid-sentence; constant interruptions; long silence; asks to change address; asks for a
   discount; "are you a robot?"; asks to stop calling; voicemail; busy; number off; regional
   accents. Indoor and outdoor. Same script on every engine — v0 with the mandatory disclosure
-  opening (P0-ENG-2) is in the `packages/scripts` templates (`COD_CONFIRM_HI_IN`,
+  opening (P0-ENG-2) is in the `call-scripts` templates (`COD_CONFIRM_HI_IN`,
   `COD_CONFIRM_EN_IN`).
 - **Inbound (15 scenarios, ADR-0006):** order status by caller ID, verification by order number +
   pincode, "cancel my order" two-step, FAQ with and without an article, "talk to a person" in and
   out of hours, withheld caller ID, Hinglish switch, interrupting while a tool runs. Point the
-  engine's inbound webhook and tools at a **staging** `apps/voice`. Measure tool round-trip p50/p95
+  engine's inbound webhook and tools at a **staging** `voice`. Measure tool round-trip p50/p95
   **as heard on the handset**. An engine that cannot run a mid-call tool in about 1 second is out
   for inbound.
 - **Billing:** read `billed_sec` from the vendor's **invoice or CDR**, not its docs (P0-ENG-4).
@@ -103,7 +103,7 @@ Per vendor, on **staging**, with a team member's phone as the customer:
 5. **Verification calls** — one per scenario: confirmed, cancelled, no answer, busy, voicemail,
    customer hangs up, opt-out, max duration, and (Bolna) one tool call. For each, save the raw
    webhook bodies and the fetched record, sanitise them (fake numbers, no names, no recordings)
-   and replace the stand-ins in `packages/engines/<vendor>/test/fake-*.ts`. Settle every
+   and replace the stand-ins in `engines/<vendor>/test/fake-*.ts`. Settle every
    `[VERIFY]`, in particular:
    - Bolna: `{variable}` substitution in the welcome message and in tool parameters
      (`execution_id`, `naaradh_attempt_id`); what a tool call's body looks like and whether Bolna

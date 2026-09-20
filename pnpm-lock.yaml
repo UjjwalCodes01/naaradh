@@ -42,7 +42,7 @@ importers:
         specifier: 2.1.8
         version: 2.1.8(@types/node@22.10.2)(lightningcss@1.32.0)
 
-  apps/api:
+  api:
     dependencies:
       '@fastify/rate-limit':
         specifier: 11.2.0
@@ -53,27 +53,27 @@ importers:
       '@google-cloud/storage':
         specifier: 8.1.0
         version: 8.1.0
+      '@naaradh/call-scripts':
+        specifier: workspace:*
+        version: link:../call-scripts
       '@naaradh/compliance':
         specifier: workspace:*
-        version: link:../../packages/compliance
+        version: link:../compliance
       '@naaradh/db':
         specifier: workspace:*
-        version: link:../../packages/db
+        version: link:../db
       '@naaradh/payments':
         specifier: workspace:*
-        version: link:../../packages/payments
+        version: link:../payments
       '@naaradh/pipeline':
         specifier: workspace:*
-        version: link:../../packages/pipeline
-      '@naaradh/scripts':
-        specifier: workspace:*
-        version: link:../../packages/scripts
+        version: link:../pipeline
       '@naaradh/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../shared
       '@naaradh/shopify-sdk':
         specifier: workspace:*
-        version: link:../../packages/shopify-sdk
+        version: link:../shopify-sdk
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
@@ -100,26 +100,69 @@ importers:
         specifier: 4.19.2
         version: 4.19.2
 
-  apps/console:
+  calendar:
+    dependencies:
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
+
+  call-scripts:
+    dependencies:
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
+
+  compliance:
+    dependencies:
+      '@naaradh/db':
+        specifier: workspace:*
+        version: link:../db
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../shared
+      drizzle-orm:
+        specifier: 0.44.7
+        version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
+      ioredis:
+        specifier: 5.6.1
+        version: 5.6.1
+      luxon:
+        specifier: 3.7.2
+        version: 3.7.2
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
+    devDependencies:
+      '@types/luxon':
+        specifier: 3.7.5
+        version: 3.7.5
+
+  console:
     dependencies:
       '@google-cloud/storage':
         specifier: 8.1.0
         version: 8.1.0
       '@naaradh/calendar':
         specifier: workspace:*
-        version: link:../../packages/calendar
+        version: link:../calendar
       '@naaradh/compliance':
         specifier: workspace:*
-        version: link:../../packages/compliance
+        version: link:../compliance
       '@naaradh/db':
         specifier: workspace:*
-        version: link:../../packages/db
+        version: link:../db
       '@naaradh/pipeline':
         specifier: workspace:*
-        version: link:../../packages/pipeline
+        version: link:../pipeline
       '@naaradh/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../shared
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
@@ -143,7 +186,129 @@ importers:
         specifier: 4.19.2
         version: 4.19.2
 
-  apps/hooks:
+  db:
+    dependencies:
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../shared
+      drizzle-orm:
+        specifier: 0.44.7
+        version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
+      pg:
+        specifier: 8.23.0
+        version: 8.23.0
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
+    devDependencies:
+      '@testcontainers/postgresql':
+        specifier: 12.1.0
+        version: 12.1.0
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+      drizzle-kit:
+        specifier: 0.31.10
+        version: 0.31.10
+      tsx:
+        specifier: 4.19.2
+        version: 4.19.2
+
+  engines/bolna:
+    dependencies:
+      '@naaradh/engines-core':
+        specifier: workspace:*
+        version: link:../core
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      '@naaradh/engine-harness':
+        specifier: workspace:*
+        version: link:../harness
+
+  engines/core:
+    dependencies:
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../../shared
+
+  engines/harness:
+    dependencies:
+      '@naaradh/engines-core':
+        specifier: workspace:*
+        version: link:../core
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../../shared
+      vitest:
+        specifier: '*'
+        version: 2.1.8(@types/node@22.10.2)(lightningcss@1.32.0)
+
+  engines/omnidim:
+    dependencies:
+      '@naaradh/engines-core':
+        specifier: workspace:*
+        version: link:../core
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      '@naaradh/engine-harness':
+        specifier: workspace:*
+        version: link:../harness
+
+  engines/registry:
+    dependencies:
+      '@naaradh/engine-bolna':
+        specifier: workspace:*
+        version: link:../bolna
+      '@naaradh/engine-omnidim':
+        specifier: workspace:*
+        version: link:../omnidim
+      '@naaradh/engine-retell':
+        specifier: workspace:*
+        version: link:../retell
+      '@naaradh/engine-simulator':
+        specifier: workspace:*
+        version: link:../simulator
+      '@naaradh/engines-core':
+        specifier: workspace:*
+        version: link:../core
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../../shared
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
+
+  engines/retell:
+    dependencies:
+      '@naaradh/engines-core':
+        specifier: workspace:*
+        version: link:../core
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      '@naaradh/engine-harness':
+        specifier: workspace:*
+        version: link:../harness
+
+  engines/simulator:
+    dependencies:
+      '@naaradh/engines-core':
+        specifier: workspace:*
+        version: link:../core
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      '@naaradh/engine-harness':
+        specifier: workspace:*
+        version: link:../harness
+
+  hooks:
     dependencies:
       '@fastify/rate-limit':
         specifier: 11.2.0
@@ -153,22 +318,22 @@ importers:
         version: 6.0.1
       '@naaradh/db':
         specifier: workspace:*
-        version: link:../../packages/db
+        version: link:../db
       '@naaradh/engines-core':
         specifier: workspace:*
-        version: link:../../packages/engines/core
+        version: link:../engines/core
       '@naaradh/engines-registry':
         specifier: workspace:*
-        version: link:../../packages/engines/registry
+        version: link:../engines/registry
       '@naaradh/payments':
         specifier: workspace:*
-        version: link:../../packages/payments
+        version: link:../payments
       '@naaradh/pipeline':
         specifier: workspace:*
-        version: link:../../packages/pipeline
+        version: link:../pipeline
       '@naaradh/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../shared
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
@@ -181,7 +346,7 @@ importers:
     devDependencies:
       '@naaradh/engine-simulator':
         specifier: workspace:*
-        version: link:../../packages/engines/simulator
+        version: link:../engines/simulator
       tsup:
         specifier: 8.3.5
         version: 8.3.5(jiti@2.7.0)(postcss@8.5.28)(tsx@4.19.2)(typescript@5.7.2)(yaml@2.9.1)
@@ -189,26 +354,80 @@ importers:
         specifier: 4.19.2
         version: 4.19.2
 
-  apps/shopify:
+  notify: {}
+
+  payments:
     dependencies:
-      '@naaradh/compliance':
-        specifier: workspace:*
-        version: link:../../packages/compliance
-      '@naaradh/db':
-        specifier: workspace:*
-        version: link:../../packages/db
-      '@naaradh/pipeline':
-        specifier: workspace:*
-        version: link:../../packages/pipeline
-      '@naaradh/scripts':
-        specifier: workspace:*
-        version: link:../../packages/scripts
       '@naaradh/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../shared
+
+  pipeline:
+    dependencies:
+      '@naaradh/calendar':
+        specifier: workspace:*
+        version: link:../calendar
+      '@naaradh/call-scripts':
+        specifier: workspace:*
+        version: link:../call-scripts
+      '@naaradh/compliance':
+        specifier: workspace:*
+        version: link:../compliance
+      '@naaradh/db':
+        specifier: workspace:*
+        version: link:../db
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../shared
+      drizzle-orm:
+        specifier: 0.44.7
+        version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
+
+  shared:
+    dependencies:
+      libphonenumber-js:
+        specifier: 1.13.13
+        version: 1.13.13
+      luxon:
+        specifier: 3.7.2
+        version: 3.7.2
+      pino:
+        specifier: 10.3.1
+        version: 10.3.1
+      ulid:
+        specifier: 2.3.0
+        version: 2.3.0
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
+    devDependencies:
+      '@types/luxon':
+        specifier: 3.7.5
+        version: 3.7.5
+
+  shopify:
+    dependencies:
+      '@naaradh/call-scripts':
+        specifier: workspace:*
+        version: link:../call-scripts
+      '@naaradh/compliance':
+        specifier: workspace:*
+        version: link:../compliance
+      '@naaradh/db':
+        specifier: workspace:*
+        version: link:../db
+      '@naaradh/pipeline':
+        specifier: workspace:*
+        version: link:../pipeline
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@naaradh/shopify-sdk':
         specifier: workspace:*
-        version: link:../../packages/shopify-sdk
+        version: link:../shopify-sdk
       '@react-router/node':
         specifier: 7.18.3
         version: 7.18.3(react-router@7.18.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(typescript@5.7.2)
@@ -286,7 +505,16 @@ importers:
         specifier: 6.1.1
         version: 6.1.1(typescript@5.7.2)(vite@7.3.6(@types/node@22.10.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)(yaml@2.9.1))
 
-  apps/voice:
+  shopify-sdk:
+    dependencies:
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../shared
+      zod:
+        specifier: 3.24.1
+        version: 3.24.1
+
+  voice:
     dependencies:
       '@fastify/rate-limit':
         specifier: 11.2.0
@@ -296,28 +524,28 @@ importers:
         version: 6.1.1
       '@naaradh/calendar':
         specifier: workspace:*
-        version: link:../../packages/calendar
+        version: link:../calendar
+      '@naaradh/call-scripts':
+        specifier: workspace:*
+        version: link:../call-scripts
       '@naaradh/compliance':
         specifier: workspace:*
-        version: link:../../packages/compliance
+        version: link:../compliance
       '@naaradh/db':
         specifier: workspace:*
-        version: link:../../packages/db
+        version: link:../db
       '@naaradh/engines-core':
         specifier: workspace:*
-        version: link:../../packages/engines/core
+        version: link:../engines/core
       '@naaradh/engines-registry':
         specifier: workspace:*
-        version: link:../../packages/engines/registry
+        version: link:../engines/registry
       '@naaradh/pipeline':
         specifier: workspace:*
-        version: link:../../packages/pipeline
-      '@naaradh/scripts':
-        specifier: workspace:*
-        version: link:../../packages/scripts
+        version: link:../pipeline
       '@naaradh/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../shared
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
@@ -333,10 +561,10 @@ importers:
     devDependencies:
       '@naaradh/engine-simulator':
         specifier: workspace:*
-        version: link:../../packages/engines/simulator
+        version: link:../engines/simulator
       '@naaradh/notify':
         specifier: workspace:*
-        version: link:../../packages/notify
+        version: link:../notify
       '@testcontainers/redis':
         specifier: 12.1.0
         version: 12.1.0
@@ -347,32 +575,32 @@ importers:
         specifier: 4.19.2
         version: 4.19.2
 
-  apps/web:
+  web:
     dependencies:
       '@google-cloud/storage':
         specifier: 8.1.0
         version: 8.1.0
+      '@naaradh/call-scripts':
+        specifier: workspace:*
+        version: link:../call-scripts
       '@naaradh/compliance':
         specifier: workspace:*
-        version: link:../../packages/compliance
+        version: link:../compliance
       '@naaradh/db':
         specifier: workspace:*
-        version: link:../../packages/db
+        version: link:../db
       '@naaradh/notify':
         specifier: workspace:*
-        version: link:../../packages/notify
+        version: link:../notify
       '@naaradh/payments':
         specifier: workspace:*
-        version: link:../../packages/payments
+        version: link:../payments
       '@naaradh/pipeline':
         specifier: workspace:*
-        version: link:../../packages/pipeline
-      '@naaradh/scripts':
-        specifier: workspace:*
-        version: link:../../packages/scripts
+        version: link:../pipeline
       '@naaradh/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../shared
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
@@ -405,7 +633,7 @@ importers:
         specifier: 4.3.3
         version: 4.3.3
 
-  apps/workers:
+  workers:
     dependencies:
       '@google-cloud/bigquery':
         specifier: 9.0.3
@@ -421,37 +649,37 @@ importers:
         version: 8.1.0
       '@naaradh/calendar':
         specifier: workspace:*
-        version: link:../../packages/calendar
+        version: link:../calendar
+      '@naaradh/call-scripts':
+        specifier: workspace:*
+        version: link:../call-scripts
       '@naaradh/compliance':
         specifier: workspace:*
-        version: link:../../packages/compliance
+        version: link:../compliance
       '@naaradh/db':
         specifier: workspace:*
-        version: link:../../packages/db
+        version: link:../db
       '@naaradh/engines-core':
         specifier: workspace:*
-        version: link:../../packages/engines/core
+        version: link:../engines/core
       '@naaradh/engines-registry':
         specifier: workspace:*
-        version: link:../../packages/engines/registry
+        version: link:../engines/registry
       '@naaradh/notify':
         specifier: workspace:*
-        version: link:../../packages/notify
+        version: link:../notify
       '@naaradh/payments':
         specifier: workspace:*
-        version: link:../../packages/payments
+        version: link:../payments
       '@naaradh/pipeline':
         specifier: workspace:*
-        version: link:../../packages/pipeline
-      '@naaradh/scripts':
-        specifier: workspace:*
-        version: link:../../packages/scripts
+        version: link:../pipeline
       '@naaradh/shared':
         specifier: workspace:*
-        version: link:../../packages/shared
+        version: link:../shared
       '@naaradh/shopify-sdk':
         specifier: workspace:*
-        version: link:../../packages/shopify-sdk
+        version: link:../shopify-sdk
       drizzle-orm:
         specifier: 0.44.7
         version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
@@ -467,7 +695,7 @@ importers:
     devDependencies:
       '@naaradh/engine-simulator':
         specifier: workspace:*
-        version: link:../../packages/engines/simulator
+        version: link:../engines/simulator
       '@testcontainers/redis':
         specifier: 12.1.0
         version: 12.1.0
@@ -480,234 +708,6 @@ importers:
       tsx:
         specifier: 4.19.2
         version: 4.19.2
-
-  packages/calendar:
-    dependencies:
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../shared
-      zod:
-        specifier: 3.24.1
-        version: 3.24.1
-
-  packages/compliance:
-    dependencies:
-      '@naaradh/db':
-        specifier: workspace:*
-        version: link:../db
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../shared
-      drizzle-orm:
-        specifier: 0.44.7
-        version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
-      ioredis:
-        specifier: 5.6.1
-        version: 5.6.1
-      luxon:
-        specifier: 3.7.2
-        version: 3.7.2
-      zod:
-        specifier: 3.24.1
-        version: 3.24.1
-    devDependencies:
-      '@types/luxon':
-        specifier: 3.7.5
-        version: 3.7.5
-
-  packages/db:
-    dependencies:
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../shared
-      drizzle-orm:
-        specifier: 0.44.7
-        version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
-      pg:
-        specifier: 8.23.0
-        version: 8.23.0
-      zod:
-        specifier: 3.24.1
-        version: 3.24.1
-    devDependencies:
-      '@testcontainers/postgresql':
-        specifier: 12.1.0
-        version: 12.1.0
-      '@types/pg':
-        specifier: 8.23.1
-        version: 8.23.1
-      drizzle-kit:
-        specifier: 0.31.10
-        version: 0.31.10
-      tsx:
-        specifier: 4.19.2
-        version: 4.19.2
-
-  packages/engines/bolna:
-    dependencies:
-      '@naaradh/engines-core':
-        specifier: workspace:*
-        version: link:../core
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../../shared
-    devDependencies:
-      '@naaradh/engine-harness':
-        specifier: workspace:*
-        version: link:../harness
-
-  packages/engines/core:
-    dependencies:
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../../shared
-
-  packages/engines/harness:
-    dependencies:
-      '@naaradh/engines-core':
-        specifier: workspace:*
-        version: link:../core
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../../shared
-      vitest:
-        specifier: '*'
-        version: 2.1.8(@types/node@22.10.2)(lightningcss@1.32.0)
-
-  packages/engines/omnidim:
-    dependencies:
-      '@naaradh/engines-core':
-        specifier: workspace:*
-        version: link:../core
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../../shared
-    devDependencies:
-      '@naaradh/engine-harness':
-        specifier: workspace:*
-        version: link:../harness
-
-  packages/engines/registry:
-    dependencies:
-      '@naaradh/engine-bolna':
-        specifier: workspace:*
-        version: link:../bolna
-      '@naaradh/engine-omnidim':
-        specifier: workspace:*
-        version: link:../omnidim
-      '@naaradh/engine-retell':
-        specifier: workspace:*
-        version: link:../retell
-      '@naaradh/engine-simulator':
-        specifier: workspace:*
-        version: link:../simulator
-      '@naaradh/engines-core':
-        specifier: workspace:*
-        version: link:../core
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../../shared
-      zod:
-        specifier: 3.24.1
-        version: 3.24.1
-
-  packages/engines/retell:
-    dependencies:
-      '@naaradh/engines-core':
-        specifier: workspace:*
-        version: link:../core
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../../shared
-    devDependencies:
-      '@naaradh/engine-harness':
-        specifier: workspace:*
-        version: link:../harness
-
-  packages/engines/simulator:
-    dependencies:
-      '@naaradh/engines-core':
-        specifier: workspace:*
-        version: link:../core
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../../shared
-    devDependencies:
-      '@naaradh/engine-harness':
-        specifier: workspace:*
-        version: link:../harness
-
-  packages/notify: {}
-
-  packages/payments:
-    dependencies:
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../shared
-
-  packages/pipeline:
-    dependencies:
-      '@naaradh/calendar':
-        specifier: workspace:*
-        version: link:../calendar
-      '@naaradh/compliance':
-        specifier: workspace:*
-        version: link:../compliance
-      '@naaradh/db':
-        specifier: workspace:*
-        version: link:../db
-      '@naaradh/scripts':
-        specifier: workspace:*
-        version: link:../scripts
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../shared
-      drizzle-orm:
-        specifier: 0.44.7
-        version: 0.44.7(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
-      zod:
-        specifier: 3.24.1
-        version: 3.24.1
-
-  packages/scripts:
-    dependencies:
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../shared
-      zod:
-        specifier: 3.24.1
-        version: 3.24.1
-
-  packages/shared:
-    dependencies:
-      libphonenumber-js:
-        specifier: 1.13.13
-        version: 1.13.13
-      luxon:
-        specifier: 3.7.2
-        version: 3.7.2
-      pino:
-        specifier: 10.3.1
-        version: 10.3.1
-      ulid:
-        specifier: 2.3.0
-        version: 2.3.0
-      zod:
-        specifier: 3.24.1
-        version: 3.24.1
-    devDependencies:
-      '@types/luxon':
-        specifier: 3.7.5
-        version: 3.7.5
-
-  packages/shopify-sdk:
-    dependencies:
-      '@naaradh/shared':
-        specifier: workspace:*
-        version: link:../shared
-      zod:
-        specifier: 3.24.1
-        version: 3.24.1
 
 packages:
 

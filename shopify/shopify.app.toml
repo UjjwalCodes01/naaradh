@@ -1,0 +1,55 @@
+# Naaradh — Shopify app configuration (ADR-0007). `client_id` comes from the Partner Dashboard
+# (`shopify app config link`); a human does that, never CI (CLAUDE.md).
+#
+# Scopes: shopify-sdk/src/scopes.ts is the source of truth, with a reason per scope,
+# and docs/shopify/pcd-justification.md covers protected customer data (Level 2). Change all
+# three together.
+#
+# Webhooks: every topic is delivered to hooks (https://hooks.naaradh.com/shopify/webhooks),
+# which verifies the HMAC (401 on failure), dedupes on X-Shopify-Webhook-Id and publishes to
+# Pub/Sub. The app itself handles no webhooks.
+name = "Naaradh"
+client_id = ""
+application_url = "https://shopify.naaradh.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+include_config_on_deploy = true
+
+[access_scopes]
+scopes = "read_orders,write_orders,read_customers,read_checkouts,read_fulfillments,read_locales"
+use_legacy_install_flow = false
+
+[auth]
+redirect_urls = ["https://shopify.naaradh.com/auth/callback", "https://shopify.naaradh.com/auth/shopify/callback"]
+
+[webhooks]
+# Same version the workers use for Admin GraphQL (SHOPIFY_ADMIN_API_VERSION); bump both per
+# docs/runbooks/shopify-api-upgrade.md.
+api_version = "2026-07"
+
+  [[webhooks.subscriptions]]
+  topics = [
+    "orders/create",
+    "orders/updated",
+    "orders/cancelled",
+    "orders/fulfilled",
+    "fulfillments/create",
+    "fulfillments/update",
+    "checkouts/create",
+    "checkouts/update",
+    "app/uninstalled",
+    "app_subscriptions/update",
+    "app_subscriptions/approaching_capped_amount",
+    "shop/update",
+  ]
+  uri = "https://hooks.naaradh.com/shopify/webhooks"
+
+  # Mandatory privacy compliance topics (App Store). HMAC-verified by hooks; 401 on failure.
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+  uri = "https://hooks.naaradh.com/shopify/webhooks"
+
+[pos]
+embedded = false

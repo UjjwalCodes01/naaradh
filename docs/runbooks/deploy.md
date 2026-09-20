@@ -150,7 +150,7 @@ Find the cause in the consumer's logs (`handler failed; nack`, with `message_id`
 
 ## 8. Refresh the Node base image
 
-All four `apps/*/Dockerfile` pin `node:22.<x>.<y>-bookworm-slim@sha256:…`. Monthly, or when trivy reports a fixable CRITICAL in the base:
+All four `*/Dockerfile` pin `node:22.<x>.<y>-bookworm-slim@sha256:…`. Monthly, or when trivy reports a fixable CRITICAL in the base:
 
 ```bash
 docker pull node:22-bookworm-slim

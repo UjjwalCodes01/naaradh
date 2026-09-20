@@ -46,4 +46,4 @@ Pick one tenant from `report.tenants` and confirm: `select name, phone_enc, eras
 
 ## Analytics export
 
-The nightly BigQuery export (`daily_call_facts`, `apps/workers/src/analytics`) holds per-tenant, per-day counts only — no phone numbers, hashes, ids or names (the row schema is strict and tested for it). Erasure therefore does not touch BigQuery; there is nothing per subject to remove.
+The nightly BigQuery export (`daily_call_facts`, `workers/src/analytics`) holds per-tenant, per-day counts only — no phone numbers, hashes, ids or names (the row schema is strict and tested for it). Erasure therefore does not touch BigQuery; there is nothing per subject to remove.

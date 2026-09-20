@@ -4,16 +4,16 @@
     "noEmit": true
   },
   "include": [
-    "apps/*/src/**/*.ts",
-    "apps/*/test/**/*.ts",
-    "packages/*/src/**/*.ts",
-    "packages/*/test/**/*.ts",
-    "packages/engines/*/src/**/*.ts",
-    "packages/engines/*/test/**/*.ts",
+    "*/src/**/*.ts",
+    "*/test/**/*.ts",
+    "engines/*/src/**/*.ts",
+    "engines/*/test/**/*.ts",
+    "engines/*/src/**/*.ts",
+    "engines/*/test/**/*.ts",
     "vitest.config.ts",
     "vitest.*.config.ts",
-    "apps/*/tsup.config.ts",
-    "packages/*/drizzle.config.ts"
+    "*/tsup.config.ts",
+    "*/drizzle.config.ts"
   ],
-  "exclude": ["**/dist/**", "**/node_modules/**", "apps/web/**", "apps/shopify/**"]
+  "exclude": ["**/dist/**", "**/node_modules/**", "web/**", "shopify/**"]
 }

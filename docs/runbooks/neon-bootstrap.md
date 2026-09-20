@@ -61,7 +61,7 @@ DATABASE_MIGRATOR_URL='postgres://naaradh_owner:…@ep-….neon.tech/naaradh?ssl
 
 ## 5. Verify (do not skip)
 
-Run `packages/db/test/int/rls.test.ts`'s checks by hand against the new environment, as
+Run `db/test/int/rls.test.ts`'s checks by hand against the new environment, as
 `naaradh_app`:
 
 ```sql

@@ -57,7 +57,7 @@ Engage a TMT/telecom + data-protection lawyer for a **scoped written opinion** (
 
 ## 5. Legal documents the product already links to
 
-Drafts are live in the dashboard app (`apps/web/src/content/legal.ts`) and show a "pending review
+Drafts are live in the dashboard app (`web/src/content/legal.ts`) and show a "pending review
 by counsel" notice. They describe what the code actually does; when the lawyer changes wording,
 edit that file (and keep it true to the code).
 
@@ -74,7 +74,7 @@ edit that file (and keep it true to the code).
 | Do-not-call form | `/do-not-call` | working |
 
 Still to write (SPEC §13): merchant compliance attestation text (a version exists in the Shopify
-app — `MERCHANT_ATTESTATION` in `packages/pipeline/src/billing/shopify-subscribe.ts`), consent
+app — `MERCHANT_ATTESTATION` in `pipeline/src/billing/shopify-subscribe.ts`), consent
 wording templates per language, SLA for Scale/Enterprise, employee/contractor NDA and
 data-handling policy, and an **incident response plan** (required for Shopify Level 2).
 

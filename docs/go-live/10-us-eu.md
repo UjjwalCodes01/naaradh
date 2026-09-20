@@ -14,7 +14,7 @@ happen until each step here is done.** Work top to bottom; later steps depend on
 
 | Area | State | Blocks live calls? |
 |---|---|---|
-| Retell adapter (`packages/engines/retell`) | Built from the published API; contract suite green against a stand-in. Every `[VERIFY]` is open (Q-31) | **Yes** — until step 2 |
+| Retell adapter (`engines/retell`) | Built from the published API; contract suite green against a stand-in. Every `[VERIFY]` is open (Q-31) | **Yes** — until step 2 |
 | Calling windows, holidays, recording consent | Conservative intersection in code (Q-29 `[LEGAL]`) | **Yes** — until counsel signs off (step 1) |
 | National DNC (US, UK) | Loader, freshness checks and fail-closed screening built | **Yes** for marketing — until a list is loaded (step 5) |
 | STIR/SHAKEN attestation | Gate dials +1 only from numbers recorded A (Q-28) | **Yes** — until numbers are checked (step 4) |
@@ -25,7 +25,7 @@ happen until each step here is done.** Work top to bottom; later steps depend on
 
 ## 1. Counsel (P6-LEG-1, P6-LEG-2) — start first, longest lead time
 
-Send US and EU counsel the rules the code applies today (`packages/compliance/src/constants.ts`,
+Send US and EU counsel the rules the code applies today (`compliance/src/constants.ts`,
 `WINDOW_RULES_*`, `recordingConsentFor`) and ask them to confirm or tighten, in writing:
 
 - US federal and state calling hours and holiday bans; which states' mini-TCPA laws cover our
@@ -49,9 +49,9 @@ that cites them. **Loosening a rule without that answer is not allowed.**
    tenant-bound webhook URL on `hooks.stage.naaradh.com`.
 3. Place one call per contract scenario to a team member's phone: happy path, no answer, busy,
    voicemail, opt-out, mid-call tool, agent hang-up. Save each webhook body and tool-call body.
-4. Sanitise them (fake numbers from `packages/shared/test/fake-phones.ts`, no names, no
-   recordings) and replace the shapes in `packages/engines/retell/test/fake-retell.ts`. Settle
-   every `[VERIFY]` in `packages/engines/retell/src/` — signature header, cost units, reason
+4. Sanitise them (fake numbers from `shared/test/fake-phones.ts`, no names, no
+   recordings) and replace the shapes in `engines/retell/test/fake-retell.ts`. Settle
+   every `[VERIFY]` in `engines/retell/src/` — signature header, cost units, reason
    names, tool body — and close Q-31's items one by one.
 5. Ask Retell in writing about inbound (per-call dynamic variables from an answer URL), warm
    transfer and cancelling a queued call. Until they work, the adapter keeps declaring them off.

@@ -17,20 +17,20 @@ possible answer to "what happens if the marketing host is compromised".
 | Setting | Value |
 |---|---|
 | Framework preset | Next.js |
-| Root directory | `apps/web` |
+| Root directory | `web` |
 | Install command | `pnpm install --frozen-lockfile` (run from the repo root; Vercel detects the workspace) |
 | Build command | `pnpm build` |
 | Node version | 22.x |
 | Production branch | `main` |
 
-The repo is a pnpm workspace, so `apps/web` builds its workspace dependencies
+The repo is a pnpm workspace, so `web` builds its workspace dependencies
 (`@naaradh/pipeline` for the plan catalogue and the legal content, `@naaradh/shared`) from
 source. Nothing else in the monorepo is built.
 
 ## 2. Environment variables
 
 Project → Settings → Environment Variables. Two, for **Production and Preview** both
-(`apps/web/.env.example`, or `pnpm env:list vercel`):
+(`web/.env.example`, or `pnpm env:list vercel`):
 
 ```
 NAARADH_SURFACE=marketing

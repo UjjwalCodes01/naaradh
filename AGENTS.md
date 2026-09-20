@@ -22,10 +22,10 @@ Agents may not (propose instead): apply Terraform, run `gcloud` mutations, touch
 
 | Role | Tool | Why | Adapter package |
 |---|---|---|---|
-| India primary | **Bolna** | India-first (Hindi/Hinglish/vernacular), Exotel/Plivo integration, call transfer, Cal.com slot tools, bulk API; reported ≈ ₹5.5/min `[VERIFY]`; final selection after bake-off (SPEC §15.1) | `packages/engines/bolna` |
-| India secondary | **OmniDimension** (direct API, *not* OmniRelay) | +91 numbers via eKYC, Exotel import, SIP; model-agnostic; retail $0.084→$0.035/min `[VERIFIED docs]`; no DLT features — compliance is ours | `packages/engines/omnidim` |
-| US/EU | **Retell** | Strong inbound, warm transfer with context summary, Cal.com booking tools, HIPAA BAA, SOC 2 `[VERIFIED]`; $0.07/min + LLM + telephony ≈ $0.13–0.31 all-in | `packages/engines/retell` |
-| Local/test | **Simulator** | Deterministic scripted events for CI | `packages/engines/simulator` |
+| India primary | **Bolna** | India-first (Hindi/Hinglish/vernacular), Exotel/Plivo integration, call transfer, Cal.com slot tools, bulk API; reported ≈ ₹5.5/min `[VERIFY]`; final selection after bake-off (SPEC §15.1) | `engines/bolna` |
+| India secondary | **OmniDimension** (direct API, *not* OmniRelay) | +91 numbers via eKYC, Exotel import, SIP; model-agnostic; retail $0.084→$0.035/min `[VERIFIED docs]`; no DLT features — compliance is ours | `engines/omnidim` |
+| US/EU | **Retell** | Strong inbound, warm transfer with context summary, Cal.com booking tools, HIPAA BAA, SOC 2 `[VERIFIED]`; $0.07/min + LLM + telephony ≈ $0.13–0.31 all-in | `engines/retell` |
+| Local/test | **Simulator** | Deterministic scripted events for CI | `engines/simulator` |
 | Rejected | CALL-E, Vapi (v1), self-hosted LiveKit/Pipecat (v3+) | See SPEC §5.2 | — |
 
 Selection at runtime: `tenants.engine_override` → else by recipient region (`+91`→`ENGINE_DEFAULT_IN`, `+1/+44/EU`→`ENGINE_DEFAULT_US`). Failover to secondary only if `tenants.multi_engine_ok = true` and the primary is circuit-open. **Inbound** uses whichever engine the called number is attached to (`numbers.engine`).
@@ -48,11 +48,11 @@ Selection at runtime: `tenants.engine_override` → else by recipient region (`+
 ### 2.4 Application stack
 
 - Node 22 LTS, TypeScript 5 strict, ESM, pnpm 9, Turborepo.
-- `apps/api`, `apps/hooks`, `apps/voice`, `apps/workers`: Fastify 5, Zod, `pino`, `ioredis`, `@google-cloud/pubsub`, `@google-cloud/storage`, `luxon`, `libphonenumber-js`, `ulid`.
-- `apps/shopify`: Shopify CLI React Router template, `@shopify/shopify-app-react-router`, App Bridge, Polaris web components, Admin GraphQL (pinned `api_version` in `shopify.app.toml`, upgraded quarterly). Sessions in our own `shopify_sessions` table, token encrypted (ADR-0007) — no Prisma.
-- `apps/web`: Next.js 15 App Router, Tailwind, server components and server actions (no client data fetching library; one client component for forms). Magic-link sign-in (ADR-0009).
-- `apps/console`: Fastify + server-rendered HTML behind IAP; the one merchant-data UI that holds the service role (ADR-0009).
-- `packages/db`: Drizzle ORM, drizzle-kit, RLS helpers.
+- `api`, `hooks`, `voice`, `workers`: Fastify 5, Zod, `pino`, `ioredis`, `@google-cloud/pubsub`, `@google-cloud/storage`, `luxon`, `libphonenumber-js`, `ulid`.
+- `shopify`: Shopify CLI React Router template, `@shopify/shopify-app-react-router`, App Bridge, Polaris web components, Admin GraphQL (pinned `api_version` in `shopify.app.toml`, upgraded quarterly). Sessions in our own `shopify_sessions` table, token encrypted (ADR-0007) — no Prisma.
+- `web`: Next.js 15 App Router, Tailwind, server components and server actions (no client data fetching library; one client component for forms). Magic-link sign-in (ADR-0009).
+- `console`: Fastify + server-rendered HTML behind IAP; the one merchant-data UI that holds the service role (ADR-0009).
+- `db`: Drizzle ORM, drizzle-kit, RLS helpers.
 - Payments: Shopify Billing API (mandatory for Shopify-installed merchants `[VERIFIED]`), Razorpay Subscriptions (INR), Stripe (USD).
 - Email: Postmark; team mail Google Workspace.
 - Tests: Vitest, Testcontainers, k6, Playwright. Lint: ESLint (typescript-eslint strict), Prettier, custom `lint:pii` rule.
@@ -68,10 +68,10 @@ Shopify (v1) → REST API + JS snippet (v1) → WooCommerce plugin (v2, GPL, `pl
 ## 3. Repository map and ownership
 
 ```
-apps/api         public + admin REST (Fastify). Owns: auth, API keys, intents API, consents API, suppressions API, recordings signed URLs, merchant webhooks registry, knowledge articles, support tickets, inbound profiles, transfer targets.
-apps/hooks       inbound webhooks only. Owns: signature verification, dedupe, publish to Pub/Sub. Must respond < 800 ms p99. No business logic here.
-apps/voice       synchronous agent runtime (voice.naaradh.com). Owns: inbound admission (who answers, or fallback), per-call prompt/tools/variables, every mid-call tool (identity, orders, knowledge, cancellation, tickets, transfer, opt-out). p95 < 500 ms context / < 700 ms tools. Holds the staff decryption key, never the customer one.
-apps/workers     Pub/Sub consumers + loops:
+api         public + admin REST (Fastify). Owns: auth, API keys, intents API, consents API, suppressions API, recordings signed URLs, merchant webhooks registry, knowledge articles, support tickets, inbound profiles, transfer targets.
+hooks       inbound webhooks only. Owns: signature verification, dedupe, publish to Pub/Sub. Must respond < 800 ms p99. No business logic here.
+voice       synchronous agent runtime (voice.naaradh.com). Owns: inbound admission (who answers, or fallback), per-call prompt/tools/variables, every mid-call tool (identity, orders, knowledge, cancellation, tickets, transfer, opt-out). p95 < 500 ms context / < 700 ms tools. Holds the staff decryption key, never the customer one.
+workers     Pub/Sub consumers + loops:
                    intents-consumer   shopify/woo/api events → call_intents; order cache (orders) for inbound lookups
                    dispatcher         gates → placeCall → call_attempts
                    results-consumer   engine events → attempts/outcomes → writebacks → billing (outcomes outbound, minutes inbound)
@@ -83,19 +83,19 @@ apps/workers     Pub/Sub consumers + loops:
                    retention          erasure requests (media + rows, tombstones kept); recordings/transcripts lifecycle; order-cache retention
                    complaints         complaint_reports → attribution → counters → auto-pause (E-05) / global kill
                    notifications      merchant email: alerts queued with merchant events (complaint, pause, billing) + daily summary (P2-WEB-4)
-apps/shopify     embedded app UI (React Router, ADR-0007) + OAuth + Billing API approval flow. Webhooks, incl. compliance topics, go to apps/hooks.
-apps/web         dashboard (calls, transcripts, recordings, tickets, knowledge, agent, scripts, privacy, billing, team, API keys, access log), marketing site, public pages (/privacy, /terms, /dpa, /aup, /do-not-call, /security, /subprocessors, …). App role only.
-apps/console     staff console (IAP): complaints, tenant resume/suspend, disputes, kill switches, global erasure/DNC. Service role; every action audited as staff:<email>.
-packages/compliance  THE gate (outbound gateIntent) and admission (inbound admitInbound), consent ledger, suppression list, windows, complaint counters, DND scrub client, disclosure validators.
-packages/engines     VoiceEngineAdapter interface (calls, inbound context, tool calls), vendor adapters, simulator, contract-test harness, registry.
-packages/db          schema, migrations, RLS, seed, typed queries.
-packages/shared      zod schemas, ids, errors, logger, phone utils (hash/encrypt, customer + staff key pairs), money utils, time utils, signing.
-packages/scripts     outbound script templates, inbound agent profiles → prompts, tool definitions, per-locale disclosure lines, validators, variable sanitiser (E-72), extraction schemas.
-packages/pipeline    domain operations used by api, voice and workers: contacts, intents, cancellation, order cache, identity, knowledge search, tickets, agent actions, audit, merchant-webhook outbox.
-packages/shopify-sdk typed GraphQL documents, webhook payload parsers, tag/note/metafield writers, billing, scopes, expiring-token refresh, hourly order listing.
-packages/notify      Postmark mailer + email templates (no customer data in any email).
-packages/calendar    appointment calendars behind one port (ADR-0011): Cal.com adapter, deterministic fake, registry. No calendar SDK outside this package.
-packages/payments    Razorpay Subscriptions client + webhook signature verification.
+shopify     embedded app UI (React Router, ADR-0007) + OAuth + Billing API approval flow. Webhooks, incl. compliance topics, go to hooks.
+web         dashboard (calls, transcripts, recordings, tickets, knowledge, agent, scripts, privacy, billing, team, API keys, access log), marketing site, public pages (/privacy, /terms, /dpa, /aup, /do-not-call, /security, /subprocessors, …). App role only.
+console     staff console (IAP): complaints, tenant resume/suspend, disputes, kill switches, global erasure/DNC. Service role; every action audited as staff:<email>.
+compliance  THE gate (outbound gateIntent) and admission (inbound admitInbound), consent ledger, suppression list, windows, complaint counters, DND scrub client, disclosure validators.
+engines     VoiceEngineAdapter interface (calls, inbound context, tool calls), vendor adapters, simulator, contract-test harness, registry.
+db          schema, migrations, RLS, seed, typed queries.
+shared      zod schemas, ids, errors, logger, phone utils (hash/encrypt, customer + staff key pairs), money utils, time utils, signing.
+call-scripts     outbound script templates, inbound agent profiles → prompts, tool definitions, per-locale disclosure lines, validators, variable sanitiser (E-72), extraction schemas.
+pipeline    domain operations used by api, voice and workers: contacts, intents, cancellation, order cache, identity, knowledge search, tickets, agent actions, audit, merchant-webhook outbox.
+shopify-sdk typed GraphQL documents, webhook payload parsers, tag/note/metafield writers, billing, scopes, expiring-token refresh, hourly order listing.
+notify      Postmark mailer + email templates (no customer data in any email).
+calendar    appointment calendars behind one port (ADR-0011): Cal.com adapter, deterministic fake, registry. No calendar SDK outside this package.
+payments    Razorpay Subscriptions client + webhook signature verification.
 infra/               terraform: network, cloudrun, cloudsql, redis, pubsub, gcs, kms, armor, dns, iam, monitoring.
 docs/                SPEC, ADRs, runbooks, legal drafts, open-questions.md, shopify/pcd-justification.md.
 ```
@@ -104,11 +104,11 @@ docs/                SPEC, ADRs, runbooks, legal drafts, open-questions.md, shop
 
 ## 4. Data model rules
 
-Schema is defined in `packages/db/schema/*.ts` and mirrors SPEC §6.5. Rules:
+Schema is defined in `db/schema/*.ts` and mirrors SPEC §6.5. Rules:
 
 - Every tenant-scoped table: `tenant_id` NOT NULL + RLS policy `USING (tenant_id = app_tenant_id())` — the function raises when the context is unset (ADR-0004). The API, voice runtime and workers set `app.tenant_id` per transaction via `withTenant(db, tenantId, fn)`. Only documented cross-tenant queries use the service role (dispatcher claim, reconcile, hooks, deliveries).
 - Append-only tables (`consents`, `audit_log`, `billing_ledger`, `agent_actions`): no `UPDATE`/`DELETE` for app roles, enforced by grants and triggers; corrections are new rows. `suppressions` may only be lifted.
-- Phone handling: `contacts.phone_hash = HMAC_SHA256(PHONE_HASH_KEY, e164)`; `contacts.phone_enc = RSA-OAEP(PHONE_ENC_PUBLIC_KEY, e164)`. Ingestion (api, voice, intents-consumer) holds only the public key. Only `dispatcher`, `results-consumer` and `reconcile` hold `PHONE_ENC_PRIVATE_KEY`. **Transfer targets** use a separate staff key pair (`STAFF_ENC_*`): `apps/voice` holds the staff private key so it can transfer a call, and cannot decrypt customer numbers. Dashboard shows masked numbers (`+91 98xxx xx123`). A manager "reveal" is deferred until a KMS-backed decrypt exists: no merchant-facing service may hold the customer private key (ADR-0009).
+- Phone handling: `contacts.phone_hash = HMAC_SHA256(PHONE_HASH_KEY, e164)`; `contacts.phone_enc = RSA-OAEP(PHONE_ENC_PUBLIC_KEY, e164)`. Ingestion (api, voice, intents-consumer) holds only the public key. Only `dispatcher`, `results-consumer` and `reconcile` hold `PHONE_ENC_PRIVATE_KEY`. **Transfer targets** use a separate staff key pair (`STAFF_ENC_*`): `voice` holds the staff private key so it can transfer a call, and cannot decrypt customer numbers. Dashboard shows masked numbers (`+91 98xxx xx123`). A manager "reveal" is deferred until a KMS-backed decrypt exists: no merchant-facing service may hold the customer private key (ADR-0009).
 - **Order cache** (`orders`): minimal fields for inbound lookups only — order number, statuses, total, item summary, tracking, `phone_hash`, `pincode_hash`. No names, no addresses, no line-level PII. Erased with the contact.
 - Money: `bigint` paise/cents + `currency` char(3).
 - Enums are Postgres enums; adding a value is a migration + ADR if it affects billing or gating.
@@ -136,7 +136,7 @@ Steps:
 6. Sanitise `variables` (E-72): strip control chars, cap each at 120 chars, allow-list keys per use case, never include free-text customer fields in the system prompt (they go into a `{{customer_name}}`-style user-visible slot only).
 7. Enqueue Cloud Task for `not_before` (task name = idempotency key hash → dedupe).
 
-### 5.2 Gate (`packages/compliance/gateIntent`) — ordered, first failure wins, all checks recorded
+### 5.2 Gate (`compliance/gateIntent`) — ordered, first failure wins, all checks recorded
 
 ```
 1  tenant.active && billing.ok (no frozen subscription; E-50)
@@ -151,7 +151,7 @@ Steps:
 8  DND/NCPR: promotional → scrub result must be 'not_registered' (cache 24h); transactional → `[OPEN]` policy flag `dnd.scrub_transactional` (default true until TSP letter says otherwise)
 9  attempts: max 2 per 24h, 3 lifetime per (phone_hash, purpose, external_ref); minimum gap since the last
            customer-facing attempt: 2h for service/promotional, 10 min for transactional (so one retry fits
-           inside the 30-min COD envelope — see MIN_MINUTES_BETWEEN_ATTEMPTS in packages/compliance); an attempt
+           inside the 30-min COD envelope — see MIN_MINUTES_BETWEEN_ATTEMPTS in compliance); an attempt
            still on the wire always blocks
 10 concurrency: tenant live calls < tenant.max_concurrency; engine live < engine.max_concurrency (Redis INCR with TTL; decrement on terminal event; reconcile job repairs leaks)
 11 CLI selection: numbers where region matches && purpose ∈ purpose_allowed && status='active' && answer_rate_7d >= 0.25 (E-28); round-robin; none → GATED('cli:none_available')
@@ -172,7 +172,7 @@ Gate result is persisted on the intent (`gated_reason`, `gate_trace JSONB`) and 
 - Idempotent on `webhook_events.external_event_id` (E-22).
 - On `call.ended`: download recording to GCS within 10 min (E-34), store transcript JSON, run outcome extraction (engine-provided structured result first; fallback LLM extraction on transcript with a fixed schema and temperature 0), set `confidence`.
 - Outcome mapping → `call_outcomes`; `billable` computed by `isBillable(outcome, answered_by)`; never billable if `outcome_superseded` (E-40) or duration < 5 s of human speech (E-25).
-- Writebacks (each idempotent, retried with backoff, then alert): Shopify tags/note/metafields; optional `orderCancel` only if tenant `auto_cancel_enabled` AND `confidence >= 0.9` (E-44); **no address is ever written** — always `naaradh:address-review` + `needs_review` until Q-19 closes; merchant webhook; CRM activity. The Shopify write-back is scheduled on the outcome row by finalize and executed by the `writebacks` worker **after the transaction commits** (Admin GraphQL, `packages/shopify-sdk`; plan rebuilt from current tenant settings; retryable failures back off 2^n min up to 6 attempts; a revoked token, a disconnected store or a Shopify refusal stops at once — runbook `shopify-writeback.md`).
+- Writebacks (each idempotent, retried with backoff, then alert): Shopify tags/note/metafields; optional `orderCancel` only if tenant `auto_cancel_enabled` AND `confidence >= 0.9` (E-44); **no address is ever written** — always `naaradh:address-review` + `needs_review` until Q-19 closes; merchant webhook; CRM activity. The Shopify write-back is scheduled on the outcome row by finalize and executed by the `writebacks` worker **after the transaction commits** (Admin GraphQL, `shopify-sdk`; plan rebuilt from current tenant settings; retryable failures back off 2^n min up to 6 attempts; a revoked token, a disconnected store or a Shopify refusal stops at once — runbook `shopify-writeback.md`).
 - Opt-out detected (verbal) → `suppressions` insert (90 d) + merchant notification + update Shopify `smsMarketingConsent` only if `[VERIFY]` policy allows (flag `shopify.sync_optout`, default off).
 - Transfer events: record `transferred_to` (masked), `transfer_result`; if `TRANSFER_FAILED` → outcome `callback_requested` (E-30).
 
@@ -189,7 +189,7 @@ Gate result is persisted on the intent (`gated_reason`, `gate_trace JSONB`) and 
 - `SCHEDULED` → status `CANCELLED` (the queue row is the task, ADR-0005).
 - `DIALING/RINGING/IN_CONVERSATION` → `adapter.cancelCall` if supported; else let finish and mark outcome `outcome_superseded`, non-billable (E-40). Never bill a call for an order that was cancelled before answer.
 
-### 5.7 Inbound admission (`apps/voice` → `packages/compliance/admitInbound`)
+### 5.7 Inbound admission (`voice` → `compliance/admitInbound`)
 
 A customer dials a merchant's number. The engine asks `POST /inbound/:vendor` who should answer — one URL per vendor, configured on every inbound number; there is no tenant in it, because the tenant comes only from the called number (invariant 16). In order, first failure wins, every step recorded in the attempt's `admission_trace`:
 
@@ -207,7 +207,7 @@ A customer dials a merchant's number. The engine asks `POST /inbound/:vendor` wh
 - **Refuse** → a fallback the engine can execute: forward to `profile.fallback_forward` (the merchant's own number) if set, else a spoken closed message in the profile locale with the business hours. Never silence, never an error tone (E-92).
 - The context endpoint must answer in < 500 ms p95; it does at most two indexed queries and two Redis round trips beyond the upserts. If it cannot decide in 2 s the engine's own timeout plays the fallback configured on the number — configure that on every inbound number.
 
-### 5.8 Caller identity (`packages/pipeline/identity`)
+### 5.8 Caller identity (`pipeline/identity`)
 
 | Level | Established by | Grants |
 |---|---|---|
@@ -219,7 +219,7 @@ A customer dials a merchant's number. The engine asks `POST /inbound/:vendor` wh
 - Three failed `verify_caller` attempts in one call → locked for the rest of the call (E-94); the agent offers a callback ticket.
 - Nothing lets any level change an address, issue a refund or reveal a full address; those are tickets (E-44, E-96).
 
-### 5.9 Agent tools (`apps/voice` `POST /tools/:vendor/:tenantTag/:tool`)
+### 5.9 Agent tools (`voice` `POST /tools/:vendor/:tenantTag/:tool`)
 
 Every tool: signature verified → tenant from the URL tag (`voiceToolPath`, a `voice:`-domain HMAC, so a hooks URL can never be replayed at a tool) → attempt resolved from the vendor call id inside that tenant (the echoed attempt id is accepted only while the engine call id is not yet recorded) → attempt still live → **replay** if this `tool_call_id` was already handled (the stored result is returned, never re-executed, never with a transfer action or a token) → tool enabled for this call → Zod-validated args (strict: unknown keys refused) → identity/tenant-setting checks → action → `agent_actions` row (append-only, args PII-scrubbed, secrets stored only as hashes or masked) → a **short structured result** the agent speaks from. Every outcome the agent can act on is HTTP 200 with `ok: false` and a sentence; only authentication failures are HTTP errors. Budget < 700 ms p95. Inbound calls get the profile's enabled tools; outbound agents get the same minus `confirm_order`, and only when the tenant has an active support profile (its settings — transfer target, cancel toggle — apply).
 
@@ -239,19 +239,19 @@ The model states only what a tool result or a knowledge article says. The system
 
 ---
 
-## 6. Compliance layer contracts (`packages/compliance`)
+## 6. Compliance layer contracts (`compliance`)
 
 - `recordConsent({tenantId, phone, purpose, source, evidenceUri, wordingVersion, capturedAt})` — validates `source` ∈ allowed set per recipient region; computes `expires_at` (promotional explicit: +7 d India `[VERIFIED]`; US written: none; EU opt-in: none unless withdrawn); append-only.
 - `revokeConsent(...)`, `suppress({scope: 'global'|'tenant', phone, purpose|'all', reason, untilDays})`.
 - `gateIntent(intent, ctx) → { ok: true, cli, script } | { ok: false, reason, retryAt?, trace }`.
 - `admitInbound(input, deps) → { ok: true, lease, trace } | { ok: false, reason, fallback, trace }` (§5.7).
-- `disclosureValidator(scriptBody, locale)` — asserts first utterance contains the locale's AI + recording disclosure phrase from `packages/scripts/disclosures/<locale>.json`; fails build if a script template lacks it.
+- `disclosureValidator(scriptBody, locale)` — asserts first utterance contains the locale's AI + recording disclosure phrase from `call-scripts/disclosures/<locale>.json`; fails build if a script template lacks it.
 - `complaint.record({tenantId, phone, source})` → increments 10-day rolling counters (Redis ZSET + Postgres) → `tenant.status = paused` at 3, global kill at 5 (E-05) → PagerDuty/email alert.
 - `dndScrub(phone, region)` — provider-backed; results cached 24 h; failures = "registered" (fail closed) for promotional.
 - `windowFor(phone) → {zone, open, close}`; `isOpen(ts, phone)`.
 - All functions pure where possible; side-effecting ones take an explicit `tx`.
 
-Everything above has a compliance regression test in `packages/compliance/test/regression/*.test.ts` that must stay green.
+Everything above has a compliance regression test in `compliance/test/regression/*.test.ts` that must stay green.
 
 ---
 
@@ -263,7 +263,7 @@ Everything above has a compliance regression test in `packages/compliance/test/r
 - Webhooks (all HMAC-verified, deduped by `X-Shopify-Webhook-Id`, ack < 5 s): `orders/create, orders/updated, orders/cancelled, orders/fulfilled, fulfillments/update, checkouts/create, checkouts/update, customers/update, app/uninstalled, app_subscriptions/update, shop/update` + mandatory `customers/data_request, customers/redact, shop/redact` (return 401 on bad HMAC; complete within 30 days; `shop/redact` arrives 48 h post-uninstall) `[VERIFIED]`.
 - Billing: `appSubscriptionCreate` with recurring + usage lines; `cappedAmount` = tenant spend cap; usage via `appUsageRecordCreate` keyed by `outcome_id` (idempotent); on capped → pause + notify (E-61).
 - Order writebacks: tags `naaradh:*`, note append, metafields namespace `naaradh` (`cod_status, last_call_at, attempts, confidence, outcome_ref`).
-- COD detection: normalise `paymentGatewayNames` against `packages/shopify-sdk/gateways.ts` (Shopify manual/COD + GoKwik/Shiprocket/Magic/Cashfree variants) (E-45). Unknown gateway → not COD → no call + telemetry.
+- COD detection: normalise `paymentGatewayNames` against `shopify-sdk/gateways.ts` (Shopify manual/COD + GoKwik/Shiprocket/Magic/Cashfree variants) (E-45). Unknown gateway → not COD → no call + telemetry.
 - Abandoned checkout: only when the shop uses Shopify Checkout; else ingest provider webhooks (E-14). Promotional consent must come from the custom checkout-extension checkbox (`naaradh_call_consent` order attribute) + ledger; `smsMarketingConsent` alone is insufficient (E-13) `[LEGAL wording]`.
 - Uninstall: stop dispatch ≤ 60 s (delete tasks, set tenant `paused`), purge on `shop/redact`, retain consents/suppressions/billing/audit (E-48).
 - Reconcile: hourly GraphQL `orders(query: "created_at:>… gateway:…")`; create intents only if inside window; else report (E-53).
@@ -271,7 +271,7 @@ Everything above has a compliance regression test in `packages/compliance/test/r
 
 ---
 
-## 8. Public API and merchant webhooks (`apps/api`)
+## 8. Public API and merchant webhooks (`api`)
 
 - Auth: `Authorization: Bearer nrd_live_…` (hashed at rest, scoped, per-key daily caps, optional IP allow-list) — E-70.
 - Endpoints: `POST /v1/intents`, `GET /v1/intents/:id`, `POST /v1/intents/:id/cancel`, `POST /v1/consents`, `POST /v1/suppressions`, `GET /v1/calls/:id/recording` (signed URL 15 min), `POST/GET/DELETE /v1/webhooks`.
@@ -283,7 +283,7 @@ Everything above has a compliance regression test in `packages/compliance/test/r
 
 ---
 
-## 9. Agent scripts (`packages/scripts`)
+## 9. Agent scripts (`call-scripts`)
 
 - Templates are JSON: `{use_case, locale, version, opening, purpose_line, branches[], closing, extraction_schema, max_duration_sec, forbidden_topics[]}`.
 - Mandatory opening: greeting + brand + AI disclosure + recording disclosure (per-locale phrase file). Build fails if missing.
@@ -299,9 +299,9 @@ Everything above has a compliance regression test in `packages/compliance/test/r
 
 ## 10. Engine adapter contract and testing
 
-- Implement `VoiceEngineAdapter` exactly as in `packages/engines/core`. Capabilities: `{inbound, cancel, warmTransfer, midCallTools, perSecondBilling, recordingToggle, signedWebhooks, reportsDisclosure}`; product code branches on capabilities, never on vendor name.
+- Implement `VoiceEngineAdapter` exactly as in `engines/core`. Capabilities: `{inbound, cancel, warmTransfer, midCallTools, perSecondBilling, recordingToggle, signedWebhooks, reportsDisclosure}`; product code branches on capabilities, never on vendor name.
 - **Inbound surface** (required for ADR-0006): `parseInboundRequest(headers, rawBody) → InboundCallRequest` (verified; called number, caller number or null, vendor call id), `formatInboundResponse(decision) → { status, headers, body }` (answer with prompt/tools/variables, or forward/closed-message fallback, in the vendor's format), `parseToolCall(headers, rawBody) → ToolCallRequest` (verified; vendor call id, tool name, args), `formatToolResult(result)`. The adapter translates; it never decides.
-- Each adapter ships: `client.ts` (HTTP), `map-events.ts`, `map-errors.ts`, `map-inbound.ts`, `fixtures/*.json` (sanitised recorded payloads), `contract.test.ts` (runs the shared harness in `packages/engines/harness`).
+- Each adapter ships: `client.ts` (HTTP), `map-events.ts`, `map-errors.ts`, `map-inbound.ts`, `fixtures/*.json` (sanitised recorded payloads), `contract.test.ts` (runs the shared harness in `engines/harness`).
 - Harness scenarios: answered-human-confirmed, answered-machine, no-answer, busy, transfer-success, transfer-fail, opt-out mid-call, webhook-duplicate, webhook-out-of-order, webhook-missing (poll path), unsigned-webhook (re-fetch path), 429 backoff, 5xx circuit-open; **inbound:** context request parses and a bad signature is rejected, answer/forward/closed responses round-trip, tool call parses and a bad signature is rejected, tool result round-trips.
 - Cost: adapters must return `billable_sec` and vendor `cost` from CDR when available; `billing-meter` records margin per call and alerts if GM < 40% (E-33).
 - Never log vendor request/response bodies at `info`; `debug` only with PII redaction.
@@ -311,7 +311,7 @@ Everything above has a compliance regression test in `packages/compliance/test/r
 ## 11. Security rules for agents
 
 - No secrets in code, tests, fixtures, docs, or commit messages. `gitleaks` runs in CI.
-- No raw phone numbers anywhere in git; use `packages/shared/test/fake-phones.ts` (reserved ranges) and clearly fake names.
+- No raw phone numbers anywhere in git; use `shared/test/fake-phones.ts` (reserved ranges) and clearly fake names.
 - Every new inbound endpoint: signature verification + schema validation + rate limit + dedupe, or it does not merge.
 - Every new table: RLS policy; every new column that may hold PII: added to logger redaction and to the erasure job.
 - Every new outbound integration: secret via Secret Manager, egress via Cloud NAT static IP, timeout + retry + circuit breaker.
@@ -415,7 +415,7 @@ SLOs (SPEC §6.8): webhook ack p99 < 800 ms; intent→dial p95 < 90 s in window;
 | E-71 bought list | consent gate + AUP flag | `gate.no_consent_promotional` |
 | E-72 prompt injection | variable sanitiser | `scripts.sanitise_variables` |
 | E-73 impersonation | tenant verification | `tenant.new_tenant_review_window` |
-| E-74 insider access | audit + roles | media access audited before serving; access log (`packages/pipeline/test/int/dashboard.test.ts`, console `transcript.accessed`) |
+| E-74 insider access | audit + roles | media access audited before serving; access log (`pipeline/test/int/dashboard.test.ts`, console `transcript.accessed`) |
 | E-80 withheld caller ID | admission + identity `none` | `inbound.withheld_caller_is_unverified` |
 | E-81 unknown number called | admission step 1 | `inbound.unrouted_number_closed_message` |
 | E-82 other customer's order | tools identity check | `tools.lookup_refuses_foreign_order` |
@@ -467,7 +467,7 @@ SLOs (SPEC §6.8): webhook ack p99 < 800 ms; intent→dial p95 < 90 s in window;
    Naaradh asks customers for no email.
 8b. Who sends the recovery link (Q-21) — Naaradh sends no SMS/WhatsApp; the merchant does, on
    `checkout.recovery_requested`. Pricing a recovery (Q-24) — measured, never billed.
-9. DPDP final rules timelines — retention/erasure constants in `packages/compliance/constants.ts` are placeholders marked `TODO_LEGAL`.
+9. DPDP final rules timelines — retention/erasure constants in `compliance/constants.ts` are placeholders marked `TODO_LEGAL`.
 
 If a task depends on any of these, implement behind a flag with the conservative default and note the dependency in the PR.
 

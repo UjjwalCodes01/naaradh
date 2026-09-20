@@ -4,6 +4,34 @@ import prettier from 'eslint-config-prettier';
 import naaradh from './tools/eslint-plugin-naaradh/index.js';
 
 /**
+ * Every workspace folder at the repo root (kept in step with pnpm-workspace.yaml). The rules
+ * below are keyed on these paths and ENFORCE invariants — the vendor-SDK ban (13), the
+ * RLS-bypassing service role (15), luxon-only window maths — so a folder missing from this
+ * list would silently lose its guard rails. `pnpm env:check` and the tests do not catch that;
+ * only this list does.
+ */
+const WORKSPACES = [
+  'api',
+  'hooks',
+  'voice',
+  'workers',
+  'web',
+  'shopify',
+  'console',
+  'compliance',
+  'db',
+  'engines',
+  'call-scripts',
+  'pipeline',
+  'shared',
+  'shopify-sdk',
+  'calendar',
+  'notify',
+  'payments',
+];
+const ALL_WORKSPACE_CODE = WORKSPACES.flatMap((w) => [`${w}/**/*.ts`, `${w}/**/*.tsx`]);
+
+/**
  * Type-aware linting is on: several of the rules that matter most here (no-floating-promises
  * in the workers, only-throw-error for NaaradhError, no-misused-promises in Fastify handlers)
  * cannot work without type information.
@@ -18,8 +46,8 @@ export default tseslint.config(
       '**/.shopify/**',
       '**/.next/**',
       '**/.react-router/**',
-      'apps/shopify/build/**',
-      'apps/web/next-env.d.ts',
+      'shopify/build/**',
+      'web/next-env.d.ts',
       'plugins/woocommerce/**', // PHP
     ],
   },
@@ -54,7 +82,7 @@ export default tseslint.config(
 
   // The website snippet runs in merchants' pages: browser globals, ES2017, no modules.
   {
-    files: ['apps/web/public/naaradh.js'],
+    files: ['web/public/naaradh.js'],
     languageOptions: {
       ecmaVersion: 2017,
       sourceType: 'script',
@@ -70,7 +98,7 @@ export default tseslint.config(
   },
 
   {
-    files: ['**/*.ts', 'apps/web/**/*.tsx', 'apps/shopify/app/**/*.tsx'],
+    files: ['**/*.ts', 'web/**/*.tsx', 'shopify/app/**/*.tsx'],
     extends: [...tseslint.configs.strictTypeChecked],
     languageOptions: {
       parserOptions: {
@@ -101,7 +129,7 @@ export default tseslint.config(
         { allowNumber: true, allowBoolean: false, allowNullish: false },
       ],
 
-      // Invariant 13: no vendor SDK outside packages/engines/<vendor>/.
+      // Invariant 13: no vendor SDK outside engines/<vendor>/.
       // Product code only ever sees VoiceEngineAdapter.
       'no-restricted-imports': [
         'error',
@@ -121,7 +149,7 @@ export default tseslint.config(
                 '@naaradh/engine-retell',
               ],
               message:
-                'Vendor SDKs and vendor adapter packages may only be imported inside packages/engines/<vendor>/ (invariant 13). Product code depends on @naaradh/engines-core and resolves an adapter through the registry.',
+                'Vendor SDKs and vendor adapter packages may only be imported inside engines/<vendor>/ (invariant 13). Product code depends on @naaradh/engines-core and resolves an adapter through the registry.',
             },
           ],
         },
@@ -131,7 +159,7 @@ export default tseslint.config(
 
   // The engines workspace is where vendor code is allowed to exist.
   {
-    files: ['packages/engines/**/*.ts'],
+    files: ['engines/**/*.ts'],
     rules: { 'no-restricted-imports': 'off' },
   },
 
@@ -141,14 +169,14 @@ export default tseslint.config(
   // the api's bootstrap module (tenant creation), and tests. Nothing that serves a merchant
   // request may touch it.
   {
-    files: ['apps/**/*.ts', 'apps/**/*.tsx', 'packages/**/*.ts'],
+    files: ALL_WORKSPACE_CODE,
     ignores: [
-      'apps/hooks/**',
-      'apps/workers/**',
+      'hooks/**',
+      'workers/**',
       // The staff console (behind IAP) acts across tenants by design — never a merchant surface.
-      'apps/console/**',
-      'apps/api/src/bootstrap/**',
-      'packages/db/**',
+      'console/**',
+      'api/src/bootstrap/**',
+      'db/**',
       '**/test/**',
       '**/*.test.ts',
     ],
@@ -160,7 +188,7 @@ export default tseslint.config(
             {
               name: '@naaradh/db/service',
               message:
-                'createServiceDb() bypasses RLS (invariant 15). Only hooks, cross-tenant workers and apps/api/src/bootstrap may import it; everything else goes through withTenant().',
+                'createServiceDb() bypasses RLS (invariant 15). Only hooks, cross-tenant workers and api/src/bootstrap may import it; everything else goes through withTenant().',
             },
           ],
           patterns: [
@@ -178,7 +206,7 @@ export default tseslint.config(
                 '@naaradh/engine-retell',
               ],
               message:
-                'Vendor SDKs and vendor adapter packages may only be imported inside packages/engines/<vendor>/ (invariant 13).',
+                'Vendor SDKs and vendor adapter packages may only be imported inside engines/<vendor>/ (invariant 13).',
             },
           ],
         },
@@ -189,7 +217,7 @@ export default tseslint.config(
   // The engines workspace resolves vendor adapters (the registry imports them), so the vendor
   // ban above does not apply there; the service-role ban still does.
   {
-    files: ['packages/engines/**/*.ts'],
+    files: ['engines/**/*.ts'],
     rules: {
       'no-restricted-imports': [
         'error',
@@ -211,11 +239,11 @@ export default tseslint.config(
   // Scoped to the DECISION code: adapters (cache TTLs, Redis keys) and tests may use the clock.
   {
     files: [
-      'packages/compliance/src/gate/**/*.ts',
-      'packages/compliance/src/consent.ts',
-      'packages/compliance/src/retry.ts',
-      'packages/compliance/src/billable.ts',
-      'packages/compliance/src/constants.ts',
+      'compliance/src/gate/**/*.ts',
+      'compliance/src/consent.ts',
+      'compliance/src/retry.ts',
+      'compliance/src/billable.ts',
+      'compliance/src/constants.ts',
     ],
     rules: {
       'no-restricted-syntax': [
@@ -236,7 +264,7 @@ export default tseslint.config(
 
   // React Router (the Shopify app) signals redirects and HTTP errors by throwing a Response.
   {
-    files: ['apps/shopify/app/**/*.ts', 'apps/shopify/app/**/*.tsx'],
+    files: ['shopify/app/**/*.ts', 'shopify/app/**/*.tsx'],
     rules: {
       '@typescript-eslint/only-throw-error': [
         'error',

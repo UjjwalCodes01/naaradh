@@ -201,7 +201,7 @@ module "pubsub" {
   region         = var.region
   prefix         = "naaradh"
 
-  # apps/hooks/src/pubsub.ts TopicName. provider.events has no consumer yet: Pub/Sub drops
+  # hooks/src/pubsub.ts TopicName. provider.events has no consumer yet: Pub/Sub drops
   # messages published to a topic without subscriptions — add one with its consumer.
   topics = ["shopify.events", "engine.events", "provider.events", "billing.events"]
 
@@ -317,7 +317,7 @@ module "migrate" {
   region     = var.region
   name       = "migrate"
   image      = var.image_tag == "bootstrap" ? var.bootstrap_image : "${local.registry}/workers:${var.image_tag}"
-  # Always the migrate entrypoint of the workers image (apps/workers/Dockerfile). With the
+  # Always the migrate entrypoint of the workers image (workers/Dockerfile). With the
   # bootstrap placeholder image the job exists but must not be executed until CI sets a real one.
   command               = ["node"]
   args                  = ["dist/migrate.js"]

@@ -28,12 +28,12 @@ A failed threshold exits non-zero. Do not deploy to production on a red run with
 ## When a threshold fails
 
 1. **hooks slow:** Cloud Run → `hooks` → instances and CPU during the run; Pub/Sub publish latency; Neon query latency from the region (`resolve_tenant_by_integration` + one insert per webhook). Fix: raise `min_instances`/CPU in tfvars, or check for a Neon cold compute (autosuspend must be off in stage/prod).
-2. **voice slow:** `voice` must have `min ≥ 2` and CPU always allocated (locals.tf); check Redis latency (admission reads kill switches and counters) and Neon. If only tool calls are slow, look at the tool handler's queries (`apps/voice/src/tools/handlers.ts`).
+2. **voice slow:** `voice` must have `min ≥ 2` and CPU always allocated (locals.tf); check Redis latency (admission reads kill switches and counters) and Neon. If only tool calls are slow, look at the tool handler's queries (`voice/src/tools/handlers.ts`).
 3. **api intents not scheduled:** the response body says why (`gated` with a reason — outside the window, use case off, cap reached). That is the gate working, not a performance problem.
 4. **5xx during the run:** the SLO alert policies fire on staging too; read the logs with `jsonPayload.level >= 50`.
 
 ## Chaos
 
-`apps/workers/test/int/chaos.test.ts` (runs in `pnpm test:int`) restarts Postgres and Redis under the running dispatcher and reconcile loops and proves they carry on and process work afterwards. The loops back off exponentially (1 s → 30 s) on a failed tick and log `worker loop unhealthy` after five consecutive failures — that line pages (`infra/main.tf` → `log_alerts.loop_unhealthy`). Engine failures (5xx opening the breaker, 429, timeout-uncertain) and duplicate / out-of-order / missing webhooks are covered by `e2e.test.ts`.
+`workers/test/int/chaos.test.ts` (runs in `pnpm test:int`) restarts Postgres and Redis under the running dispatcher and reconcile loops and proves they carry on and process work afterwards. The loops back off exponentially (1 s → 30 s) on a failed tick and log `worker loop unhealthy` after five consecutive failures — that line pages (`infra/main.tf` → `log_alerts.loop_unhealthy`). Engine failures (5xx opening the breaker, 429, timeout-uncertain) and duplicate / out-of-order / missing webhooks are covered by `e2e.test.ts`.
 
-To run the chaos test alone: `pnpm exec vitest run --config vitest.int.config.ts apps/workers/test/int/chaos.test.ts`.
+To run the chaos test alone: `pnpm exec vitest run --config vitest.int.config.ts workers/test/int/chaos.test.ts`.

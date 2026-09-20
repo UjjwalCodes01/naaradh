@@ -20,7 +20,7 @@ Drizzle) and workers that must call the Admin API with the shop's **offline acce
 
 ## Decision
 
-1. `apps/shopify` is built from the **React Router template**, UI in **Polaris web components**,
+1. `shopify` is built from the **React Router template**, UI in **Polaris web components**,
    Admin **GraphQL** only, API version pinned in `shopify.app.toml` (same version as
    `SHOPIFY_ADMIN_API_VERSION` for workers).
 2. **No Prisma.** Sessions live in Postgres table `shopify_sessions`, accessed through a
@@ -31,7 +31,7 @@ Drizzle) and workers that must call the Admin API with the shop's **offline acce
 3. `integrations.credentials_secret_ref` for a Shopify store becomes
    `shopify-session:offline_<shop>`; workers resolve it through the same `SecretResolver`
    interface, which decrypts from `shopify_sessions`. Only services that call Shopify mount the key:
-   `apps/shopify`, workers roles `writebacks`, `actions`, `billing`, `reconcile`.
+   `shopify`, workers roles `writebacks`, `actions`, `billing`, `reconcile`.
 4. **Webhooks are not handled by the app.** `shopify.app.toml` declares every topic (incl. the
    three mandatory compliance topics) with `uri = https://hooks.naaradh.com/shopify/webhooks`;
    hooks already verifies HMAC, returns 401 on a bad one, dedupes and publishes (invariant 9). One

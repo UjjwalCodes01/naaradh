@@ -2,7 +2,7 @@
 
 **Symptom:** `call_attempts` rows sit in `DIALING` / `RINGING` / `IN_CONVERSATION` / `UNCERTAIN` for longer than a call can last; concurrency counters look full while nothing is ringing; merchants see intents "in progress" for an hour.
 
-## What reconcile does every minute (`apps/workers/src/reconcile`)
+## What reconcile does every minute (`workers/src/reconcile`)
 
 | Case | Rule | Result |
 |---|---|---|

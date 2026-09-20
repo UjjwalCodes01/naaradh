@@ -1,9 +1,0 @@
-# Tells the Shopify CLI how to run this app during `shopify app dev` (it runs the command below
-# with PORT, SHOPIFY_API_KEY, SHOPIFY_API_SECRET, SHOPIFY_APP_URL and SCOPES set; those win over
-# .env.local, which supplies everything else — database, phone hash key, token key).
-name = "naaradh-shopify"
-roles = ["frontend", "backend"]
-
-[commands]
-dev = "node --env-file-if-exists=../../.env.local ./node_modules/@react-router/dev/bin.js dev"
-build = "node ./node_modules/@react-router/dev/bin.js build"

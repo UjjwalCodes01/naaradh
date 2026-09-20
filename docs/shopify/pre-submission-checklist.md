@@ -8,7 +8,7 @@ requirements page, which changes — read it the same day.
 ## Before you start
 
 - [ ] Level 2 protected customer data approved (`pcd-justification.md`); until then the app installs but every COD order is refused `no_phone` and the review would fail on function
-- [ ] Legal pages final (not "pending counsel"): `/privacy`, `/terms`, `/dpa`, `/aup`, `/refunds`; versions recorded in `apps/web/src/content/legal.ts`
+- [ ] Legal pages final (not "pending counsel"): `/privacy`, `/terms`, `/dpa`, `/aup`, `/refunds`; versions recorded in `web/src/content/legal.ts`
 - [ ] Production app has **Public distribution** selected (irreversible — Partner Dashboard → App distribution)
 - [ ] Production environment applied and deployed: `shopify`, `hooks`, `web`, workers all green; `SHOPIFY_BILLING_TEST=false`; `SHOPIFY_WRITEBACK=live`
 - [ ] Support mailbox `support@naaradh.com` answered; `https://naaradh.com/contact` live
@@ -41,7 +41,7 @@ requirements page, which changes — read it the same day.
 - [ ] `X-Shopify-Hmac-Sha256` verified over the raw body for every topic; unknown shop → 200 ignored
 - [ ] App URL and redirect URLs on HTTPS with a valid certificate; no mixed content; `frame-ancestors` allows Shopify admin only
 - [ ] Session tokens (not cookies) for embedded requests; no third-party cookies required
-- [ ] No API scope beyond `read_orders, write_orders, read_customers, read_checkouts, read_fulfillments, read_locales`; each justified in `packages/shopify-sdk/src/scopes.ts` and the listing
+- [ ] No API scope beyond `read_orders, write_orders, read_customers, read_checkouts, read_fulfillments, read_locales`; each justified in `shopify-sdk/src/scopes.ts` and the listing
 
 ## Listing (P3-SHOP-1)
 

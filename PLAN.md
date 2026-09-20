@@ -52,7 +52,7 @@ Step-by-step instructions for every external item below (accounts, registrations
 
 **ENG — Engine bake-off**
 - P0-ENG-1 Sign up: Bolna, OmniDimension (direct API), Retell (for reference). Fund minimal wallets.
-- P0-ENG-1B **Inbound bake-off** (ADR-0006): on each engine, attach a number, point its inbound-context webhook and tools at a staging `apps/voice`, and run 15 inbound scenarios — order status by caller ID, verification by order number + pincode, "cancel my order" two-step, FAQ with and without a matching article, "talk to a person" in and out of hours, withheld caller ID, Hinglish switch mid-sentence, caller interrupting while a tool runs. Measure tool round-trip p50/p95 **as heard on the handset**, filler behaviour, and whether the engine lets us set tool timeouts and return a transfer number. An engine that cannot do mid-call tools under ~1 s is disqualified for inbound.
+- P0-ENG-1B **Inbound bake-off** (ADR-0006): on each engine, attach a number, point its inbound-context webhook and tools at a staging `voice`, and run 15 inbound scenarios — order status by caller ID, verification by order number + pincode, "cancel my order" two-step, FAQ with and without a matching article, "talk to a person" in and out of hours, withheld caller ID, Hinglish switch mid-sentence, caller interrupting while a tool runs. Measure tool round-trip p50/p95 **as heard on the handset**, filler behaviour, and whether the engine lets us set tool timeouts and return a transfer number. An engine that cannot do mid-call tools under ~1 s is disqualified for inbound.
 - P0-ENG-2 Write the COD confirmation script v0 (Hinglish + English) with mandatory disclosure opening (SPEC §10.2).
 - P0-ENG-3 Run the 20-scenario bake-off (SPEC §15.1) on Jio/Airtel/Vi handsets; record every call; fill Appendix B sheet.
 - P0-ENG-4 Verify **per-second billing and minimum billable duration from the vendor invoice/CDR**, not docs. `[OPEN]`
@@ -70,7 +70,7 @@ Step-by-step instructions for every external item below (accounts, registrations
 - P0-INF-3 Google Workspace on `naaradh.com`; SPF/DKIM/DMARC; mailboxes `support@ legal@ privacy@ dnc@ security@`.
 - P0-INF-4 Terraform skeleton in `infra/`: state bucket, VPC, Cloud NAT, Secret Manager, KMS keyring, Artifact Registry, Workload Identity Federation for GitHub.
 - P0-INF-5 GitHub org `naaradh`, repo with `CLAUDE.md`, `AGENTS.md`, `PLAN.md`, `docs/`, PR template, branch protection, gitleaks + CI skeleton.
-- P0-INF-6 Monorepo scaffold: pnpm + Turborepo, `apps/*`, `packages/*` (empty but wired), `docker-compose.yml` (Postgres 16, Redis 7, Pub/Sub emulator).
+- P0-INF-6 Monorepo scaffold: pnpm + Turborepo, one folder per service and per shared library at the repo root (empty but wired), `docker-compose.yml` (Postgres 16, Redis 7, Pub/Sub emulator).
 
 ### Exit criteria
 - ADR-0001 written with bake-off data attached; extraction accuracy ≥ 85% on real numbers; per-second billing confirmed from invoice.
@@ -96,31 +96,31 @@ Bake-off accuracy, first-response latency p50, cost per 45-s call, answer rate o
 ### Workstreams
 
 **CORE — Data + pipeline**
-- P1-CORE-1 `packages/db`: schema from SPEC §6.5 (all tables), RLS policies, drizzle migrations, seed with fake tenants and fake numbers.
-- P1-CORE-2 `packages/shared`: ids (ULID prefixes), errors, `pino` logger with redaction, phone hash/encrypt utils, E.164 validation, money/time utils, fake-phone ranges.
-- P1-CORE-3 `apps/hooks`: Fastify service; generic verified-webhook pipeline → `webhook_events` (dedupe) → Pub/Sub publish → 200 in < 800 ms; Shopify HMAC verifier; engine signature verifiers; DLQ topics.
-- P1-CORE-4 `apps/workers/intents-consumer`: source parsers (Shopify `orders/create`, API intents), idempotency keys, `event_ts`/`not_before`/`not_after` per use case, variable sanitiser (E-72), Cloud Tasks enqueue.
-- P1-CORE-5 `packages/compliance` v0: `gateIntent` with steps 1–12 (SPEC AGENTS §5.2) — suppressions, consent lookup, windows (luxon, IST), attempts, concurrency (Redis), CLI selection, kill switches, spend caps; `gate_trace` persisted.
-- P1-CORE-6 `apps/workers/dispatcher`: gate → `placeCall` → `call_attempts`; uncertain-dispatch handling; retry scheduling (AGENTS §5.5); cancellation (§5.6).
-- P1-CORE-7 `apps/workers/results-consumer`: normalise events, idempotency, recording download to GCS (CMEK bucket), transcript store, outcome extraction with Zod schema, `isBillable`, audit log, merchant webhook emit.
-- P1-CORE-8 `apps/workers/reconcile`: stuck-attempt poller (E-21); concurrency leak repair.
+- P1-CORE-1 `db`: schema from SPEC §6.5 (all tables), RLS policies, drizzle migrations, seed with fake tenants and fake numbers.
+- P1-CORE-2 `shared`: ids (ULID prefixes), errors, `pino` logger with redaction, phone hash/encrypt utils, E.164 validation, money/time utils, fake-phone ranges.
+- P1-CORE-3 `hooks`: Fastify service; generic verified-webhook pipeline → `webhook_events` (dedupe) → Pub/Sub publish → 200 in < 800 ms; Shopify HMAC verifier; engine signature verifiers; DLQ topics.
+- P1-CORE-4 `workers/intents-consumer`: source parsers (Shopify `orders/create`, API intents), idempotency keys, `event_ts`/`not_before`/`not_after` per use case, variable sanitiser (E-72), Cloud Tasks enqueue.
+- P1-CORE-5 `compliance` v0: `gateIntent` with steps 1–12 (SPEC AGENTS §5.2) — suppressions, consent lookup, windows (luxon, IST), attempts, concurrency (Redis), CLI selection, kill switches, spend caps; `gate_trace` persisted.
+- P1-CORE-6 `workers/dispatcher`: gate → `placeCall` → `call_attempts`; uncertain-dispatch handling; retry scheduling (AGENTS §5.5); cancellation (§5.6).
+- P1-CORE-7 `workers/results-consumer`: normalise events, idempotency, recording download to GCS (CMEK bucket), transcript store, outcome extraction with Zod schema, `isBillable`, audit log, merchant webhook emit.
+- P1-CORE-8 `workers/reconcile`: stuck-attempt poller (E-21); concurrency leak repair.
 - P1-CORE-9 Compliance regression suite v0 with boundary tests (08:59/09:00/20:59/21:00 IST; +29m59s/+30m01s).
 
 **ENG — Adapters**
-- P1-ENG-1 `packages/engines`: `VoiceEngineAdapter` interface + `capabilities()`; contract-test harness with 13 scenarios (AGENTS §10).
-- P1-ENG-2 `packages/engines/simulator` (deterministic scripted events, used in all CI).
-- ◐ P1-ENG-3 Adapter for the Phase 0 winner (Bolna or OmniDim) with sanitised recorded fixtures. *Code done (20 Sep 2026), ahead of the bake-off so it can run through Naaradh:* `packages/engines/bolna` and `packages/engines/omnidim`, from the vendors' published APIs, passing the shared contract on stand-in fixtures. Both vendors send **unsigned** webhooks, so outcomes are written from the record fetched back from the vendor (`EngineCallSnapshot.result`, E-23). Recorded fixtures and every `[VERIFY]` wait on accounts (go-live 03 §5).
-- P1-ENG-4 Agent creation/versioning through the adapter; script v1 for `cod_confirm` and `lead_callback` in `packages/scripts` with disclosure validator.
+- P1-ENG-1 `engines`: `VoiceEngineAdapter` interface + `capabilities()`; contract-test harness with 13 scenarios (AGENTS §10).
+- P1-ENG-2 `engines/simulator` (deterministic scripted events, used in all CI).
+- ◐ P1-ENG-3 Adapter for the Phase 0 winner (Bolna or OmniDim) with sanitised recorded fixtures. *Code done (20 Sep 2026), ahead of the bake-off so it can run through Naaradh:* `engines/bolna` and `engines/omnidim`, from the vendors' published APIs, passing the shared contract on stand-in fixtures. Both vendors send **unsigned** webhooks, so outcomes are written from the record fetched back from the vendor (`EngineCallSnapshot.result`, E-23). Recorded fixtures and every `[VERIFY]` wait on accounts (go-live 03 §5).
+- P1-ENG-4 Agent creation/versioning through the adapter; script v1 for `cod_confirm` and `lead_callback` in `call-scripts` with disclosure validator.
 
 **API — Client B**
-- P1-API-1 `apps/api`: API keys (hashed, scoped), `POST /v1/intents`, `GET /v1/intents/:id`, `POST /v1/intents/:id/cancel`, `POST /v1/consents`, `POST /v1/suppressions`, rate limits, `Idempotency-Key`.
+- P1-API-1 `api`: API keys (hashed, scoped), `POST /v1/intents`, `GET /v1/intents/:id`, `POST /v1/intents/:id/cancel`, `POST /v1/consents`, `POST /v1/suppressions`, rate limits, `Idempotency-Key`.
 - P1-API-2 Outbound merchant webhooks with HMAC signature and retries.
-- ✅ P1-API-3 Minimal `naaradh.js` snippet with consent checkbox helper; public site key. Built in Phase 2: `apps/web/public/naaradh.js` (served by the web app until cdn.naaradh.com exists) + CORS for public keys on `POST /v1/intents`.
+- ✅ P1-API-3 Minimal `naaradh.js` snippet with consent checkbox helper; public site key. Built in Phase 2: `web/public/naaradh.js` (served by the web app until cdn.naaradh.com exists) + CORS for public keys on `POST /v1/intents`.
 - P1-API-4 Client B wired: form submission → lead-callback intent → call → result webhook to their site.
 
 **SHOP — Client A mirror (not the public app yet)**
 - P1-SHOP-1 Custom app on Client A's store (private/custom distribution) subscribing `orders/create`, `orders/cancelled`, `orders/updated`; HMAC verified; gateway normalisation table v0 (Shopify manual/COD + GoKwik/Shiprocket/Magic/Cashfree names) (E-45).
-- ✅ P1-SHOP-2 Writebacks: tags `naaradh:*`, order note, metafields — Admin GraphQL client in `packages/shopify-sdk`, executed by the `writebacks` worker outside the results transaction, retried with backoff. No address write (Q-19). `orderCancel` is used only by the gated paths: extraction auto-cancel (setting on + confidence ≥ 0.9) and the agent's two-step cancellation (ADR-0006). Live verification against a dev store is the last step before `SHOPIFY_WRITEBACK=live`.
+- ✅ P1-SHOP-2 Writebacks: tags `naaradh:*`, order note, metafields — Admin GraphQL client in `shopify-sdk`, executed by the `writebacks` worker outside the results transaction, retried with backoff. No address write (Q-19). `orderCancel` is used only by the gated paths: extraction auto-cancel (setting on + confidence ≥ 0.9) and the agent's two-step cancellation (ADR-0006). Live verification against a dev store is the last step before `SHOPIFY_WRITEBACK=live`.
 - P1-SHOP-3 Client A live in **pilot mode**: 10% of COD orders for 2 days → 50% → 100%; daily review of recordings.
 
 **INF**
@@ -153,17 +153,17 @@ Answer rate, confirm rate, cancel rate, no-answer rate, avg billable seconds, co
 
 **Entry criteria:** Phase 1 core on the simulator (done). For live calls: an engine that passed P0-ENG-1B, an inbound-capable number, entity/eKYC (see sequencing note).
 
-**Status (12 Sep 2026):** everything that does not need a real engine or a real number is **done on the simulator** — INB-1…6, CORE-1…3, API-1, OPS-1, and the simulator half of the exit criteria (`apps/voice/test/int/voice.test.ts`, 25 tests through voice + hooks + results on Postgres + Redis). Open: P1B-ENG-1 (blocked on the P0 bake-off, ADR-0001), P1B-OPS-2 (needs Cloud Monitoring, P0-INF-4), the live exit criteria, and a live smoke test of the Shopify write-back (P1-SHOP-2, built — see Phase 1) against a real dev store. Beyond the plan: `confirm_order` (the "confirm" half of E-97), a tool-call replay guard (`agent_actions.tool_call_id`), migration 0005 (withheld callers have no contact), Devanagari-aware knowledge search, and the inbound contract suite every vendor adapter must pass.
+**Status (12 Sep 2026):** everything that does not need a real engine or a real number is **done on the simulator** — INB-1…6, CORE-1…3, API-1, OPS-1, and the simulator half of the exit criteria (`voice/test/int/voice.test.ts`, 25 tests through voice + hooks + results on Postgres + Redis). Open: P1B-ENG-1 (blocked on the P0 bake-off, ADR-0001), P1B-OPS-2 (needs Cloud Monitoring, P0-INF-4), the live exit criteria, and a live smoke test of the Shopify write-back (P1-SHOP-2, built — see Phase 1) against a real dev store. Beyond the plan: `confirm_order` (the "confirm" half of E-97), a tool-call replay guard (`agent_actions.tool_call_id`), migration 0005 (withheld callers have no contact), Devanagari-aware knowledge search, and the inbound contract suite every vendor adapter must pass.
 
 ### Workstreams
 
-**INB — Agent runtime (`apps/voice`)**
+**INB — Agent runtime (`voice`)**
 - ✅ P1B-INB-1 Schema: `inbound_profiles`, `knowledge_articles` (FTS), `orders` cache, `support_tickets`, `agent_actions` (append-only), inbound columns on `call_attempts`, outcome/kill-switch enum values, staff key pair for transfer targets; RLS + grants + triggers; `resolve_inbound_number()`.
-- ✅ P1B-INB-2 `admitInbound()` in `packages/compliance` (AGENTS §5.7) + regression suite: one positive and one negative per step; fallback behaviour (forward / closed message).
+- ✅ P1B-INB-2 `admitInbound()` in `compliance` (AGENTS §5.7) + regression suite: one positive and one negative per step; fallback behaviour (forward / closed message).
 - ✅ P1B-INB-3 Engine contract for inbound: `parseInboundRequest`, `formatInboundResponse`, `parseToolCall`, `formatToolResult`; simulator inbound conversations; harness scenarios.
 - ✅ P1B-INB-4 `POST /inbound/:vendor` (tenant from the called number only): admission, attempt row (idempotent on vendor call id), caller contact, identity from caller ID, rendered greeting + prompt + tools.
 - ✅ P1B-INB-5 Tools (AGENTS §5.9): `lookup_orders`, `verify_caller`, `search_knowledge`, `confirm_order`, `request_cancellation` (two-step), `request_address_change`, `create_ticket`, `transfer_to_human`, `register_opt_out`; each with identity/setting checks, `agent_actions` row, latency test, and a negative test for an unverified caller.
-- ✅ P1B-INB-6 Inbound prompt renderer + profile validator (disclosure first, guardrails, tools, pinned facts) in `packages/scripts`; `inbound_support_v1` extraction.
+- ✅ P1B-INB-6 Inbound prompt renderer + profile validator (disclosure first, guardrails, tools, pinned facts) in `call-scripts`; `inbound_support_v1` extraction.
 
 **CORE — Data the agent needs**
 - ✅ P1B-CORE-1 Order cache from `orders/create|updated|cancelled|fulfilled` and `fulfillments/update` (intents-consumer); API ingestion for non-Shopify merchants (`PUT /v1/orders/:ref`).
@@ -174,13 +174,13 @@ Answer rate, confirm rate, cancel rate, no-answer rate, avg billable seconds, co
 - ✅ P1B-API-1 `/v1/inbound-profiles`, `/v1/knowledge`, `/v1/tickets`, `/v1/transfer-targets` (create + verify by attestation until a test-call verification exists), `/v1/orders`.
 
 **ENG / OPS**
-- ◐ P1B-ENG-1 Adapter for the P0 winner covering inbound + tools (`packages/engines/<vendor>`), with recorded fixtures. *Code done for Bolna:* tools (bearer-token authenticated), and inbound through a variable-prompt agent per number with the called number signed into the lookup URL (`inbound:attach`); inbound is **off** (`BOLNA_INBOUND`) until verified, and cannot forward a refused call (Q-34). OmniDimension has neither (Q-35).
+- ◐ P1B-ENG-1 Adapter for the P0 winner covering inbound + tools (`engines/<vendor>`), with recorded fixtures. *Code done for Bolna:* tools (bearer-token authenticated), and inbound through a variable-prompt agent per number with the called number signed into the lookup URL (`inbound:attach`); inbound is **off** (`BOLNA_INBOUND`) until verified, and cannot forward a refused call (Q-34). OmniDimension has neither (Q-35).
 - ✅ P1B-OPS-1 Runbooks: `inbound-fallback.md` (what callers hear when the agent cannot answer, and how to change it), `agent-action-failed.md`.
 - P1B-OPS-2 Latency dashboard: context and tool p50/p95 per engine; alert when p95 > budget for 5 minutes.
 
 ### Exit criteria
 - On the simulator: an end-to-end inbound suite covering every AGENTS §5.9 tool with verified, unverified and foreign-order callers; cancellation two-step; transfer in/after hours; withheld caller; fallback paths — green in CI.
-- Live (after engine + number): Client A's support number forwarded to Naaradh for ≥ 2 weeks; ≥ 300 inbound calls; ≥ 50% resolved without a human; zero order data disclosed to an unverified caller (audit query over `agent_actions`); tool p95 < 700 ms measured at `apps/voice`.
+- Live (after engine + number): Client A's support number forwarded to Naaradh for ≥ 2 weeks; ≥ 300 inbound calls; ≥ 50% resolved without a human; zero order data disclosed to an unverified caller (audit query over `agent_actions`); tool p95 < 700 ms measured at `voice`.
 
 ### Kill / pivot criteria
 - Tool round-trips on real networks make callers hang up (abandon rate > 25% during tool calls) on every engine → simplify to FAQ + ticket + transfer (no live order tools) while self-hosting is evaluated.
@@ -205,22 +205,22 @@ Calls answered, resolution rate (no human), transfer rate, ticket rate, abandon 
 - P2-LEG-1 Register Naaradh as **Telemarketer (Aggregator)** on one TSP DLT portal (₹5,000 + GST); document rejections and fixes. `[VERIFIED fee]`
 - P2-LEG-2 Merchant PE registration guide + in-app step; PE↔TM linkage tracking (`tenants.dlt_pe_id`, `dlt_linked_at`).
 - ✅ P2-CMP-1 Consent ledger service (`recordConsent`, `revokeConsent`, expiry rules per region), suppression service (global/tenant, purpose scoping, 90-day opt-out), complaint intake + counters + auto-pause (E-05), template registry (DLT template IDs), DND scrub client with fail-closed for promotional, disclosure validator wired into script publishing. Complaint intake: `complaint_reports` queue (migration 0007), attribution to the last outbound caller within 30 days, unattributed → global suppression; `complaints` worker; `/v1/complaints`; runbook `complaint-received.md`. DND scrub client waits for a TSP/DLT account (P2-LEG-1).
-- ◐ P2-CMP-2 Public `/do-not-call` page → global suppression within 24 h; `dnc@` mailbox workflow. Backend done: `POST /v1/public/dnc` (suppression immediately, per-IP and per-phone limits, `submit_dnc_request()`); the page ships with `apps/web`.
+- ◐ P2-CMP-2 Public `/do-not-call` page → global suppression within 24 h; `dnc@` mailbox workflow. Backend done: `POST /v1/public/dnc` (suppression immediately, per-IP and per-phone limits, `submit_dnc_request()`); the page ships with `web`.
 - ✅ P2-CMP-3 Erasure workflow (`erasure_requests`) covering GCS, transcripts, contacts, tombstones; tested end-to-end. `retention` worker, `/v1/erasure-requests`, runbook `erasure-request.md`.
 - ✅ P2-CMP-4 Retention job per tenant setting (media via `call_attempts.media_purged_at`, order cache 180 days).
 
 **SHOP — Public app**
-- ✅ P2-SHOP-1 Scaffold `apps/shopify` (Shopify CLI React Router template, ADR-0007), embedded, session tokens, App Bridge, Polaris; `shopify.app.toml` with pinned API version, scopes (minimum set), all webhooks incl. mandatory compliance topics (`customers/data_request`, `customers/redact`, `shop/redact`) with HMAC + 401 behaviour. `[VERIFIED]` Done: `apps/shopify` (sessions sealed in Postgres via definer functions, ADR-0009), `shopify.app.toml` pointing every topic at hooks.
+- ✅ P2-SHOP-1 Scaffold `shopify` (Shopify CLI React Router template, ADR-0007), embedded, session tokens, App Bridge, Polaris; `shopify.app.toml` with pinned API version, scopes (minimum set), all webhooks incl. mandatory compliance topics (`customers/data_request`, `customers/redact`, `shop/redact`) with HMAC + 401 behaviour. `[VERIFIED]` Done: `shopify` (sessions sealed in Postgres via definer functions, ADR-0009), `shopify.app.toml` pointing every topic at hooks.
 - ◐ P2-SHOP-2 Onboarding flow (SPEC §8.4): business details, compliance step (PE), use-case selection, script review + approval, voice/language, behaviour settings (auto-cancel off, address write off, retries, spend cap), test call, billing, go-live. Done: checklist, business details, compliance clickwrap, script approval, behaviour settings, support-line setup, billing, go-live guard. Waits: the test call (needs an engine, P0-ENG), voice choice (engine voices).
-- ✅ P2-SHOP-3 Billing via Shopify Billing API: `appSubscriptionCreate` recurring + usage lines, `cappedAmount` = spend cap, `appUsageRecordCreate` per billable outcome (idempotent by `outcome_id`), `app_subscriptions/update` handling, capped → pause (E-61). `[VERIFIED requirement]` Backend done (ADR-0008): SDK operations, `billing_subscriptions`, usage records keyed by ledger id, subscription sync, capped/frozen. Approval flow in `apps/shopify/app/routes/app.billing.tsx`. Live dev-store round-trip is an exit criterion.
+- ✅ P2-SHOP-3 Billing via Shopify Billing API: `appSubscriptionCreate` recurring + usage lines, `cappedAmount` = spend cap, `appUsageRecordCreate` per billable outcome (idempotent by `outcome_id`), `app_subscriptions/update` handling, capped → pause (E-61). `[VERIFIED requirement]` Backend done (ADR-0008): SDK operations, `billing_subscriptions`, usage records keyed by ledger id, subscription sync, capped/frozen. Approval flow in `shopify/app/routes/app.billing.tsx`. Live dev-store round-trip is an exit criterion.
 - ✅ P2-SHOP-4 Uninstall flow: stop dispatch ≤ 60 s, purge on `shop/redact` (48 h), retain legal records (E-48). Uninstall also deletes the store's sealed Admin session; reinstall lifts only the uninstall pause.
-- ✅ P2-SHOP-5 Hourly reconcile job (E-53); duplicate webhook idempotency (E-52); merchant-cancel cancellation path (E-40). `apps/workers/src/reconcile/shopify-orders.ts` (Redis-locked hourly, watermark per store, same ingestion path as `orders/create`).
+- ✅ P2-SHOP-5 Hourly reconcile job (E-53); duplicate webhook idempotency (E-52); merchant-cancel cancellation path (E-40). `workers/src/reconcile/shopify-orders.ts` (Redis-locked hourly, watermark per store, same ingestion path as `orders/create`).
 - ◐ P2-SHOP-6 Protected customer data **Level 2** request in Partner Dashboard with justification doc `docs/shopify/pcd-justification.md`; app tolerates `null` phone (gate `no_phone`). `[VERIFIED]` Justification written; submission is a human step.
 - ◐ P2-SHOP-7 Shopify Flow trigger "Naaradh call completed" (metafields already written) `[VERIFY extension requirements]`. *Code done:* `extensions/call-completed-flow-trigger`, `fireCallCompletedTrigger` after each write-back behind `SHOPIFY_FLOW_TRIGGER`; needs a deploy of the extension.
 - P2-SHOP-8 Staging Partner app + dev store test matrix (COD manual gateway, cancellation, uninstall/reinstall, billing decline).
 
 **WEB — Dashboard + site**
-- ✅ P2-WEB-1 `apps/web` dashboard: calls list with outcome/reason, transcript viewer, recording player (signed URL), gated-reason explanations, settings, script editor with approval, numbers page, consent/suppression views, complaint log. Plus team/roles, API keys, access log (E-74), billing + disputes. Number reveal deferred (ADR-0009).
+- ✅ P2-WEB-1 `web` dashboard: calls list with outcome/reason, transcript viewer, recording player (signed URL), gated-reason explanations, settings, script editor with approval, numbers page, consent/suppression views, complaint log. Plus team/roles, API keys, access log (E-74), billing + disputes. Number reveal deferred (ADR-0009).
 - ◐ P2-WEB-2 RTO analytics: baseline vs current (orders confirmed, cancelled pre-ship, RTO % by state/pincode band, ₹ saved) from BigQuery nightly export (phone hashed). Done: in-app counts; the nightly export (`workers-analytics`, Phase 3; facts carry no PII, state/pincode band null until the order cache stores a coarse band). Open: the baseline comparison view.
 - ✅ P2-WEB-3 Marketing site pages: home, pricing (INR), how it works, `/privacy`, `/terms`, `/dpa`, `/aup`, `/security`, `/subprocessors`, `/cookies`, `/refunds`, `/contact`, `/grievance`, `/do-not-call`. Legal pages are drafts marked pending counsel.
 - ✅ P2-WEB-4 Merchant notifications (Postmark): daily summary, gated-orders digest, complaint alert, spend-cap alert, billing events.
@@ -232,7 +232,7 @@ Calls answered, resolution rate (no human), transfer rate, ticket rate, abandon 
 
 **INF / OPS**
 - ✅ P2-INF-1 Cloud Armor rules for `/hooks/*` (vendor IP allow-lists where published, rate limits), WAF preconfigured rules.
-- ✅ P2-INF-2 BigQuery dataset + scheduled export; PII hashing in export. Dataset and table in Terraform; nightly load job in `apps/workers/src/analytics` (Phase 3) — aggregates only, nothing to hash.
+- ✅ P2-INF-2 BigQuery dataset + scheduled export; PII hashing in export. Dataset and table in Terraform; nightly load job in `workers/src/analytics` (Phase 3) — aggregates only, nothing to hash.
 - ✅ P2-OPS-1 Runbooks: `complaint-received.md`, `erasure-request.md`, `billing-dispute.md`, `billing-postings.md`, `cli-health.md` (job + console page, Phase 3), `merchant-access.md`, `staff-console.md`, `deploy.md`.
 - ◐ P2-OPS-2 Alerting: complaint counter increments, spend-cap hits, capped subscriptions, writeback failures, Cloud SQL CPU, cert expiry.
 
@@ -262,9 +262,9 @@ Time-to-first-call for a new install, billing reconciliation delta (must be 0), 
 
 **SEC / INF**
 - ◐ P3-INF-1 Execute SPEC §14 checklist end to end; each item ticked with evidence link. → `docs/security/checklist.md` (27 items with evidence; `applied`/`human` items wait for the first apply, the entity and counsel).
-- ◐ P3-INF-2 Secret rotation runbook + first rotation; Workload Identity everywhere; no SA keys. → ✅ `docs/runbooks/secret-rotation.md`, previous-key window for `SHOPIFY_TOKEN_KEY`, re-encryption jobs (`apps/workers/src/maintenance`, tested); first rotation pending (needs staging).
+- ◐ P3-INF-2 Secret rotation runbook + first rotation; Workload Identity everywhere; no SA keys. → ✅ `docs/runbooks/secret-rotation.md`, previous-key window for `SHOPIFY_TOKEN_KEY`, re-encryption jobs (`workers/src/maintenance`, tested); first rotation pending (needs staging).
 - ◐ P3-INF-3 Backup restore drill (`restore-drill.md`); PITR verified; RPO/RTO documented. → ✅ runbook + `scripts/restore-drill.sh` (Neon branch from timestamp) + `docs/security/restore-drills.md`; first drill pending (needs the Neon project).
-- ✅ P3-INF-4 Load test (k6): `load/` scripts + `load` workflow (staging only) + `docs/runbooks/load-test.md`; chaos: `apps/workers/test/int/chaos.test.ts` (Postgres/Redis failover under the running loops; every loop now on `runLoop` with backoff + `worker loop unhealthy` alert; pool error handler added), engine failures and duplicate/out-of-order webhooks in `e2e.test.ts`. Runs against staging pending.
+- ✅ P3-INF-4 Load test (k6): `load/` scripts + `load` workflow (staging only) + `docs/runbooks/load-test.md`; chaos: `workers/test/int/chaos.test.ts` (Postgres/Redis failover under the running loops; every loop now on `runLoop` with backoff + `worker loop unhealthy` alert; pool error handler added), engine failures and duplicate/out-of-order webhooks in `e2e.test.ts`. Runs against staging pending.
 - ✅ P3-INF-5 Audit logs (Admin + Data Access) exported to locked bucket, 1-year retention. → `infra/modules/audit-logs` (validated, not applied).
 - ✅ P3-INF-6 `security.txt`, vulnerability disclosure page, dependency/container scanning gates enforced. → `/.well-known/security.txt`, Dependabot, CodeQL (+ existing trivy, gitleaks).
 - ✅ P3-INF-7 Evaluate VPC Service Controls perimeter for prod `[VERIFY cost/complexity]`. → `docs/security/vpc-service-controls.md` (recommendation: defer).
@@ -423,7 +423,7 @@ account, no apply; what each still needs from outside the code is in
 - ◐ P6-INF-2 Separate Pub/Sub, Cloud SQL, GCS, Redis per region; shared DNS/LB with region-aware routing; status page per region. *Code done:* `region_directory` (no PII) published by each region's reconcile worker and pushed to peers, signed with each region's own Ed25519 key; hooks passes a verified Shopify webhook for another region's store through to that region before storing anything (ADR-0012 amendment 1). Status page per region not started.
 
 **ENG**
-- ◐ P6-ENG-1 `packages/engines/retell` adapter (warm transfer with summary, Cal.com tools, HIPAA BAA where required); contract tests; capabilities flags. *Code done:* outbound calls, agents with our webhook and extraction fields, mid-call tools, signed webhooks, idempotency lookup; contract suite green on a stand-in (capability-aware harness). Declared off until verified (Q-31): inbound, warm transfer, cancel. Recorded payloads pending.
+- ◐ P6-ENG-1 `engines/retell` adapter (warm transfer with summary, Cal.com tools, HIPAA BAA where required); contract tests; capabilities flags. *Code done:* outbound calls, agents with our webhook and extraction fields, mid-call tools, signed webhooks, idempotency lookup; contract suite green on a stand-in (capability-aware harness). Declared off until verified (Q-31): inbound, warm transfer, cancel. Recorded payloads pending.
 - ◐ P6-ENG-2 US/UK numbers via Retell (Twilio/Telnyx) with STIR/SHAKEN A-attestation `[VERIFY]`; CLI pools by region and purpose. *Code done:* `numbers.attestation` recorded by staff (audited); gate step 11 dials +1 recipients only from A. Numbers not bought (Q-28).
 
 **CMP / LEG**

@@ -37,17 +37,17 @@ use cases run on the same platform. SPEC §1 is rewritten accordingly (v1.2).
 The engine (Bolna / OmniDimension / Retell — ADR-0001) terminates the call, does STT/LLM/TTS, and
 calls **our** endpoints at two moments:
 
-| Moment | Endpoint (`apps/voice`, `voice.naaradh.com`) | Budget |
+| Moment | Endpoint (`voice`, `voice.naaradh.com`) | Budget |
 |---|---|---|
 | Call arrives on a merchant's number | `POST /inbound/:vendor/:tag` → answer or fall back; returns first utterance, system prompt, tools, variables | < 500 ms p95 |
 | Agent needs to know or do something | `POST /tools/:vendor/:tag/:tool` → structured result the agent speaks from | < 700 ms p95 |
 
-`apps/voice` is a new synchronous service. It is not `apps/hooks` (which does no business logic)
-and not `apps/api` (merchant-facing auth model). The same tool endpoints serve **outbound** calls,
+`voice` is a new synchronous service. It is not `hooks` (which does no business logic)
+and not `api` (merchant-facing auth model). The same tool endpoints serve **outbound** calls,
 so "transfer me to the manager" works identically in both directions. Call events (answered,
 ended, recording, transcript) still flow through `hooks` → Pub/Sub → `results-consumer`, unchanged.
 
-### Admission instead of the gate (`packages/compliance/inbound`)
+### Admission instead of the gate (`compliance/inbound`)
 `admitInbound()` — pure, ordered, traced like `gateIntent()` — decides **answer with AI** or
 **fallback** (forward to the merchant's number, or a polite closed message):
 
@@ -73,7 +73,7 @@ Caller ID can be spoofed (Q-18), so it never unlocks anything that moves money o
 address; those always become merchant tickets.
 
 ### Actions the agent can take — server-side, two-step (invariant 14 amended)
-The model never mutates anything. It asks `apps/voice` to, and the service decides:
+The model never mutates anything. It asks `voice` to, and the service decides:
 
 - **Cancel an order** (the founder's "cancel after two confirmations"): step 1 returns a readback
   ("order #1001, ₹499, 2 kurtas") and a single-use token; the agent must read it back and get a
@@ -117,14 +117,14 @@ outcome-billed.
 
 ## Consequences
 
-- New app `apps/voice`; new tables `inbound_profiles`, `knowledge_articles`, `orders`,
+- New app `voice`; new tables `inbound_profiles`, `knowledge_articles`, `orders`,
   `support_tickets`, `agent_actions`, `order_actions`; enum values for inbound outcomes and the
   `inbound` kill scope (migrations 0003–0004). Migration 0005 makes `call_attempts.contact_id` /
   `phone_hash` nullable for inbound only (a withheld caller has neither; the
   `call_attempts_party_known` check keeps outbound rows complete) and adds
   `agent_actions.tool_call_id` so an engine retrying a tool call is answered from the stored
   result instead of acting twice.
-- Transfer-target numbers are encrypted with a **separate staff key pair**: `apps/voice` can
+- Transfer-target numbers are encrypted with a **separate staff key pair**: `voice` can
   decrypt a manager's number to transfer to it, but can never decrypt a customer number.
 - The Phase 0 bake-off (ADR-0001) must score **inbound + mid-call tools** — both Bolna and
   OmniDimension claim them; neither is confirmed until tested on real Indian numbers.

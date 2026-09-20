@@ -13,7 +13,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['packages/compliance/test/regression/**/*.test.ts'],
+    include: ['compliance/test/regression/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
     passWithNoTests: false,
     restoreMocks: true,

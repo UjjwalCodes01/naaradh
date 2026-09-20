@@ -8,12 +8,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['{apps,packages}/**/test/**/*.test.ts'],
+    include: ['*/test/**/*.test.ts', 'engines/*/test/**/*.test.ts'],
     exclude: [
       '**/node_modules/**',
       '**/dist/**',
       '**/test/int/**',
-      'packages/compliance/test/regression/**',
+      'compliance/test/regression/**',
       '**/contract.test.ts',
     ],
     passWithNoTests: false,

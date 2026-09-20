@@ -4,7 +4,7 @@ import { fail } from 'k6';
 /**
  * Shared helpers for the k6 scripts (P3-INF-4). STAGING ONLY: every script refuses a target
  * that is not on stage.naaradh.com or localhost, and every phone number it sends is in the
- * reserved fake range (packages/shared/test/fake-phones.ts), which is the only range the
+ * reserved fake range (shared/test/fake-phones.ts), which is the only range the
  * simulator engine will dial. Never point these at production or at a real number.
  */
 

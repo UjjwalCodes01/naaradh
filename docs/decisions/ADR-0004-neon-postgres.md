@@ -57,15 +57,15 @@ Neon is the system of record for every environment. Concretely:
   2. The privacy policy, DPA and sub-processor page must name Neon and Singapore. `[LEGAL]`
   3. **Q-16** (new): does an Indian merchant's DPA or a Shopify Level 2 review require in-country
      storage for call metadata? If yes, the migration path is `pg_dump` → Cloud SQL Mumbai; the
-     schema, roles and migrations in `packages/db` are plain Postgres and move unchanged.
+     schema, roles and migrations in `db` are plain Postgres and move unchanged.
 - **Encryption:** Neon encrypts at rest with provider-managed keys; CMEK is not available. The
-  app-level RSA-OAEP encryption of dialable numbers (`packages/shared/src/phone.ts`) is therefore
+  app-level RSA-OAEP encryption of dialable numbers (`shared/src/phone.ts`) is therefore
   the control that matters — a DB export alone yields no phone numbers.
 - **Availability:** Neon HA/PITR is per-plan; PITR retention must be set to ≥ 7 days on the
   production project to keep SPEC §6.10's RPO. `docs/runbooks/restore-drill.md` targets Neon's
   branch-from-timestamp restore.
 - **Connections:** Cloud Run instances × pool size must stay under the pooled-endpoint limit; each
-  service pool is capped at 5 (`packages/db/src/client.ts`).
+  service pool is capped at 5 (`db/src/client.ts`).
 - **Latency:** Mumbai → Singapore adds ~35–50 ms per round trip. The gate is designed to make few
   queries (batched reads, Redis for counters); the dispatcher SLO (intent → dial p95 < 90 s) has
   ample room.

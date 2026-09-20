@@ -10,7 +10,7 @@
 
 /**
  * E.164 prefixes of the reserved/fictitious ranges this repo uses for test data.
- * Must stay in sync with packages/shared/test/fake-phones.ts and scripts/lint-pii.mjs.
+ * Must stay in sync with shared/test/fake-phones.ts and scripts/lint-pii.mjs.
  */
 const FAKE_PREFIXES = [
   '+916000000',
@@ -88,12 +88,12 @@ const noRawPhoneLiteral = {
     type: 'problem',
     docs: {
       description:
-        'Disallow real-looking phone numbers in source. Use the reserved fake ranges in packages/shared/test/fake-phones.ts.',
+        'Disallow real-looking phone numbers in source. Use the reserved fake ranges in shared/test/fake-phones.ts.',
     },
     schema: [],
     messages: {
       rawPhone:
-        'Possible real phone number "{{match}}" in source (invariant 8). Use a reserved fake range from packages/shared/test/fake-phones.ts, or phone_hash if this is a lookup.',
+        'Possible real phone number "{{match}}" in source (invariant 8). Use a reserved fake range from shared/test/fake-phones.ts, or phone_hash if this is a lookup.',
     },
   },
   create(context) {
@@ -139,7 +139,7 @@ const noPiiInLogs = {
     schema: [],
     messages: {
       piiKey:
-        'Logging "{{key}}" risks writing PII to Cloud Logging (invariant 8). Log phone_hash / a masked value instead, and add the field to the redact list in packages/shared/src/logger.ts if it can ever carry PII.',
+        'Logging "{{key}}" risks writing PII to Cloud Logging (invariant 8). Log phone_hash / a masked value instead, and add the field to the redact list in shared/src/logger.ts if it can ever carry PII.',
     },
   },
   create(context) {

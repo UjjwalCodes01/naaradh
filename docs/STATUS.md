@@ -63,21 +63,21 @@ are covered by a regression suite that fails the build if a rule is weakened.
 
 | Area | State | Where |
 |---|---|---|
-| Compliance gate (13 ordered checks, full trace of every decision) | Built | `packages/compliance` |
-| Inbound admission, caller identity, agent tools (11), two-step cancellation | Built | `packages/compliance`, `apps/voice` |
-| Consent ledger, suppressions, complaints, do-not-call page, erasure, retention | Built | `packages/compliance`, `apps/workers` |
-| Call pipeline: intake → gate → dial → results → write-back → merchant webhooks | Built | `apps/workers` |
-| Database: 46 tables, 14 migrations, row-level isolation per merchant, append-only audit | Built | `packages/db` |
-| Regional isolation: one deployment per region, enforced in the gate, the support line and every sweep | Built (ADR-0012); second region is infrastructure work | `packages/compliance`, `apps/workers` |
-| Scripts: templates in Hindi, Indian English, US and UK English, German, French and Spanish; disclosure validator, extraction schemas, A/B tests | Built (non-English wording needs a native review) | `packages/scripts` |
-| Voice engine adapter contract + deterministic simulator (19 scenarios) | Built | `packages/engines` |
-| Shopify integration (orders, fulfilments, checkouts, billing, write-backs, install) | Built | `packages/shopify-sdk`, `apps/shopify` |
+| Compliance gate (13 ordered checks, full trace of every decision) | Built | `compliance` |
+| Inbound admission, caller identity, agent tools (11), two-step cancellation | Built | `compliance`, `voice` |
+| Consent ledger, suppressions, complaints, do-not-call page, erasure, retention | Built | `compliance`, `workers` |
+| Call pipeline: intake → gate → dial → results → write-back → merchant webhooks | Built | `workers` |
+| Database: 46 tables, 14 migrations, row-level isolation per merchant, append-only audit | Built | `db` |
+| Regional isolation: one deployment per region, enforced in the gate, the support line and every sweep | Built (ADR-0012); second region is infrastructure work | `compliance`, `workers` |
+| Scripts: templates in Hindi, Indian English, US and UK English, German, French and Spanish; disclosure validator, extraction schemas, A/B tests | Built (non-English wording needs a native review) | `call-scripts` |
+| Voice engine adapter contract + deterministic simulator (19 scenarios) | Built | `engines` |
+| Shopify integration (orders, fulfilments, checkouts, billing, write-backs, install) | Built | `shopify-sdk`, `shopify` |
 | WooCommerce plugin (GPL) | Built, not yet listed | `plugins/woocommerce` |
-| Appointment calendars (port + Cal.com + a manual diary) | Built; Cal.com payloads unverified | `packages/calendar` |
-| Merchant dashboard and public website | Built | `apps/web` |
-| Staff console | Built | `apps/console` |
-| Billing: plans, allowances, Shopify usage records, Razorpay subscriptions, disputes, reconciliation | Built (rupees) | `packages/pipeline/src/billing` |
-| Email (alerts, daily summary), transactional only, no customer data | Built | `packages/notify` |
+| Appointment calendars (port + Cal.com + a manual diary) | Built; Cal.com payloads unverified | `calendar` |
+| Merchant dashboard and public website | Built | `web` |
+| Staff console | Built | `console` |
+| Billing: plans, allowances, Shopify usage records, Razorpay subscriptions, disputes, reconciliation | Built (rupees) | `pipeline/src/billing` |
+| Email (alerts, daily summary), transactional only, no customer data | Built | `notify` |
 | Infrastructure as code: 13 Terraform modules, Docker images, CI/CD, monitoring, alerts | Written and validated; **nothing applied** | `infra/` |
 | Runbooks for on-call (24), decision records (8 written, 3 planned), phase reviews (6) | Built | `docs/` |
 

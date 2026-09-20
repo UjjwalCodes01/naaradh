@@ -53,13 +53,13 @@ updates:
   # every Dockerfile moves in the same commit; the `images` CI job builds and trivy-scans them.
   - package-ecosystem: docker
     directories:
-      - /apps/api
-      - /apps/console
-      - /apps/hooks
-      - /apps/shopify
-      - /apps/voice
-      - /apps/web
-      - /apps/workers
+      - /api
+      - /console
+      - /hooks
+      - /shopify
+      - /voice
+      - /web
+      - /workers
     schedule:
       interval: weekly
       day: monday

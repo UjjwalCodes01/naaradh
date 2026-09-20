@@ -1,5 +1,27 @@
+# Every folder at the repo root that is a workspace (has its own package.json). Listed one by
+# one rather than globbed, so this file doubles as the map of the repository: what gets
+# deployed, and what is shared code. See STRUCTURE.md.
 packages:
-  - 'apps/*'
-  - 'packages/*'
-  - 'packages/engines/*'
-  - 'plugins/*'
+  # --- services: each one is built into its own container and deployed ---------------------
+  - 'api' # public REST API            api.naaradh.com
+  - 'hooks' # inbound webhooks           hooks.naaradh.com
+  - 'voice' # live-call runtime          voice.naaradh.com
+  - 'workers' # background jobs            (no public URL)
+  - 'web' # dashboard + marketing     app.naaradh.com / naaradh.com
+  - 'shopify' # embedded Shopify app      shopify.naaradh.com
+  - 'console' # staff console (IAP only)  console.naaradh.com
+
+  # --- shared code: imported by the services above, deployed by nobody ---------------------
+  - 'compliance' # may we place this call? the gate, windows, consent, suppressions
+  - 'db' # tables, migrations, RLS policies, seed
+  - 'engines/*' # one folder per voice vendor, behind one adapter contract
+  - 'call-scripts' # what the AI says: prompts, disclosures, tool definitions
+  - 'pipeline' # shared business operations: orders, intents, tickets, billing
+  - 'shared' # small utilities: ids, errors, logging, phone hashing, signing
+  - 'shopify-sdk' # typed Shopify Admin API calls and webhook parsers
+  - 'calendar' # appointment providers (Cal.com)
+  - 'notify' # transactional email
+  - 'payments' # Razorpay and Stripe clients
+
+  # --- not TypeScript ----------------------------------------------------------------------
+  - 'plugins/*' # the WooCommerce plugin (PHP)

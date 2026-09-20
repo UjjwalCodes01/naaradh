@@ -35,7 +35,7 @@ Later: `naaradh-prod-us` / `naaradh-prod-eu` from the same modules (P6-INF-1). `
 | `modules/bigquery` | dataset `naaradh_analytics` (CMEK), table `daily_call_facts` (no PII); `workers-analytics` is the only writer (dataEditor + jobUser for its nightly load jobs) |
 | `modules/audit-logs` | Data Access audit logs for Secret Manager, GCS, KMS, BigQuery, IAP (`audit_data_access_logging`); every audit log exported to `<project>-audit-logs` (CMEK, 365-day retention policy, **locked** in prod via `audit_lock_retention`, irreversible) |
 | `modules/monitoring` | `/healthz` uptime checks, log-match alerts for events that need a human, Cloud Run SLO alerts (hooks p99 < 800 ms, voice p95 < 700 ms, 5xx < 2 %), Pub/Sub backlog, error-rate metrics, dead-letter and Redis-memory alerts; channels: email (all), PagerDuty / webhook (CRITICAL only — `TF_VAR_pagerduty_service_key`, `TF_VAR_alert_webhook_url`, never in tfvars) |
-| `docker/` | build helpers for `apps/*/Dockerfile` (import check, migrate-job entrypoint + tsup config) |
+| `docker/` | build helpers for `*/Dockerfile` (import check, migrate-job entrypoint + tsup config) |
 
 **Not here:** Postgres. The database is Neon (ADR-0004); its connection strings are secrets. `DATABASE_MIGRATOR_URL` is the direct endpoint and only the `migrate` job holds it.
 

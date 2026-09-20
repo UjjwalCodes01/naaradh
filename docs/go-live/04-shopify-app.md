@@ -1,6 +1,6 @@
 # 4. Shopify app (Partner account, apps, dev store, Level 2, App Store)
 
-The embedded app is built (`apps/shopify`, ADR-0007/0009): install provisioning, onboarding,
+The embedded app is built (`shopify`, ADR-0007/0009): install provisioning, onboarding,
 script approval, support-line setup and Shopify Billing. What it needs from Shopify is an
 **account, two app records (staging and production), a development store, a protected-data
 approval, and finally App Store review**. Nothing here is done by code or CI — a human does it
@@ -29,10 +29,10 @@ Use two separate app records so staging never touches production merchants (SPEC
 
 | App | Config file | App URL | Webhooks to |
 |---|---|---|---|
-| Naaradh (staging) | `apps/shopify/shopify.app.staging.toml` | `https://shopify.stage.naaradh.com` | `https://hooks.stage.naaradh.com/shopify/webhooks` |
-| Naaradh (production) | `apps/shopify/shopify.app.toml` (committed) | `https://shopify.naaradh.com` | `https://hooks.naaradh.com/shopify/webhooks` |
+| Naaradh (staging) | `shopify/shopify.app.staging.toml` | `https://shopify.stage.naaradh.com` | `https://hooks.stage.naaradh.com/shopify/webhooks` |
+| Naaradh (production) | `shopify/shopify.app.toml` (committed) | `https://shopify.naaradh.com` | `https://hooks.naaradh.com/shopify/webhooks` |
 
-From `apps/shopify` (Shopify CLI 3.x is installed; upgrade with `npm i -g @shopify/cli@latest`):
+From `shopify` (Shopify CLI 3.x is installed; upgrade with `npm i -g @shopify/cli@latest`):
 
 Staging first, in this order:
 
@@ -61,7 +61,7 @@ workers.
 What the toml declares (don't change without the process in CLAUDE.md):
 
 - **Scopes:** `read_orders, write_orders, read_customers, read_checkouts, read_fulfillments,
-  read_locales` — reasons per scope in `packages/shopify-sdk/src/scopes.ts`. `write_customers` is
+  read_locales` — reasons per scope in `shopify-sdk/src/scopes.ts`. `write_customers` is
   deliberately **not** requested (Q-07).
 - **Webhooks:** 12 topics plus the three mandatory privacy topics (`customers/data_request`,
   `customers/redact`, `shop/redact`), all delivered to **hooks**, which verifies the HMAC and
@@ -74,14 +74,14 @@ What the toml declares (don't change without the process in CLAUDE.md):
   `shopify app deploy`; then set `SHOPIFY_FLOW_TRIGGER=true` on the workers so write-backs fire
   it. `[VERIFY]` the field types in its toml against the Flow trigger reference first.
 - **Embedded** app; auth redirect URLs on the app host.
-- **Extensions** (`apps/shopify/extensions/`, ADR-0010 §2): `call-consent-checkout` (checkout UI
+- **Extensions** (`shopify/extensions/`, ADR-0010 §2): `call-consent-checkout` (checkout UI
   extension, Shopify Plus stores) and `call-consent-cart` (theme app block for the cart page, every
   plan). Both show the consent wording and write the `naaradh_call_consent` attribute. They are
   released by the same `shopify app deploy`; the CLI builds the checkout extension from its own
   `package.json`, which is **not** part of the pnpm workspace — run `npm install` in
   `extensions/call-consent-checkout` once before `dev` or `deploy`, or its build fails. Check the target and API version against the Shopify changelog first
   (`[VERIFY]` in the toml), and do not deploy them to production until counsel approves the
-  wording (Q-08) — the text lives in `packages/pipeline/src/promotional/consent-wording.ts` and
+  wording (Q-08) — the text lives in `pipeline/src/promotional/consent-wording.ts` and
   a unit test fails if the extension copies drift from it. Merchants add the cart block in the
   theme editor (Customize → Cart → Add block → *Call consent (Naaradh)*); Plus merchants add the
   checkout extension in the checkout editor.
@@ -100,7 +100,7 @@ per environment):
 Add the values to Secret Manager for the matching environment, enable the `shopify` service in
 the env's tfvars with its hostname, and apply ([05](05-cloud-infrastructure.md)). Offline tokens
 expire hourly for new public apps; the app refreshes them, and the workers refresh the same stored
-session (`apps/workers/src/shopify-tokens.ts`).
+session (`workers/src/shopify-tokens.ts`).
 
 ## 3. Development store
 
@@ -124,7 +124,7 @@ Always develop against the **staging** app (`shopify app config use staging`): t
 repoint the production app's URLs at your tunnel.
 
 ```bash
-cd apps/shopify && shopify app dev    # run it directly, not through turbo: the CLI asks
+cd shopify && shopify app dev    # run it directly, not through turbo: the CLI asks
                                       # questions (org, app, store) that turbo cannot answer
 ```
 

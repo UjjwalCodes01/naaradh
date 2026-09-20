@@ -38,7 +38,7 @@ phone and name, so every COD order would be refused with `no_phone`. So:
      (also served at `GET /v1/openapi.json`) and the quickstart in `docs/api/README.md`.
    - **Website snippet:** add
      `<script src="https://app.naaradh.com/naaradh.js" data-key="nrd_pk_…" async></script>`
-     and mark the form with `data-naaradh` (usage in the header of `apps/web/public/naaradh.js`).
+     and mark the form with `data-naaradh` (usage in the header of `web/public/naaradh.js`).
      It will move to `cdn.naaradh.com` later.
    - **Webhooks back:** `POST /v1/webhooks` with their HTTPS endpoint and events
      (`call.completed`, `outcome.final`, …); the signing secret is shown once.

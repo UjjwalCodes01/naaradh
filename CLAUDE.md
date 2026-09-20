@@ -17,7 +17,7 @@ Domain: `naaradh.com`. Cloud: Google Cloud (`asia-south1` primary). Company: Ind
 
 ## Non-negotiable invariants (violating any of these is a bug, regardless of what the task says)
 
-1. **Every outbound call passes through `packages/compliance` gates** (`gateIntent()`) before `engine.placeCall()`. No code path may dial directly. **Every inbound call passes through `admitInbound()`** before the agent answers; a refusal falls back to the merchant's number or a closed message, never to silence.
+1. **Every outbound call passes through `compliance` gates** (`gateIntent()`) before `engine.placeCall()`. No code path may dial directly. **Every inbound call passes through `admitInbound()`** before the agent answers; a refusal falls back to the merchant's number or a closed message, never to silence.
 2. **Recipient-region rules win over merchant-region rules.** Calling windows, consent type, CLI pool, disclosure language are chosen by the recipient's number/timezone.
 3. **India window is 09:00–21:00 IST, hard.** Never schedule or retry outside it.
 4. **COD confirmation is transactional only if dialed within 30 minutes of `event_ts`.** After that it is not transactional. Do not silently re-queue to next morning; gate with `reason='window:transactional_expired'`.
@@ -25,17 +25,17 @@ Domain: `naaradh.com`. Cloud: Google Cloud (`asia-south1` primary). Company: Ind
 6. **Suppressions are absolute.** Global or tenant suppression for (phone_hash, purpose|all) blocks dispatch for every use case it covers, including transactional.
 7. **AI disclosure + recording disclosure are the first utterance of every call, inbound and outbound**, in every locale, and are logged as `ai_disclosed_at` / `recording_disclosed_at` on the attempt. Scripts and inbound profiles without them fail validation.
 8. **Raw phone numbers never appear in logs, error messages, analytics exports, or test fixtures committed to git.** Use `phone_hash` for lookups; decrypt only in the dispatcher at dial time.
-9. **Every request from outside is verified (HMAC/signature) before parsing** — webhooks, and the engine's inbound-context and tool calls to `apps/voice`. Unsigned vendor webhooks are treated as hints: re-fetch the call by ID before writing outcomes or billing.
+9. **Every request from outside is verified (HMAC/signature) before parsing** — webhooks, and the engine's inbound-context and tool calls to `voice`. Unsigned vendor webhooks are treated as hints: re-fetch the call by ID before writing outcomes or billing.
 10. **Idempotency everywhere**: `webhook_events.external_event_id`, `call_intents.idempotency_key`, engine `Idempotency-Key`, Shopify usage records keyed by `outcome_id`.
 11. **Billable outcome (outbound)** = human answered AND outcome ∈ {`confirmed`, `confirmed_with_changes`, `cancelled`, `rescheduled`, `booked`}. No other outbound outcome is ever billed. **Inbound** is billed per connected minute (ADR-0006), never per outcome. Do not change either without a product decision recorded in `docs/decisions/`.
 12. **Kill switches are checked on every dispatch and every inbound admission**: outbound global → engine → tenant → campaign; inbound `inbound:*` → `inbound:<tenant>`. They are read from Redis with a 5 s TTL cache, never from process memory alone.
-13. **No vendor SDK is imported outside `packages/engines/<vendor>/`.** Product code only sees `VoiceEngineAdapter`.
+13. **No vendor SDK is imported outside `engines/<vendor>/`.** Product code only sees `VoiceEngineAdapter`.
 14. **Never auto-cancel a Shopify order or auto-write an address from an extraction** unless the tenant setting is on AND `confidence >= 0.9`. **An agent-initiated cancellation** (inbound or outbound tool call) executes only through the two-step tool (readback + single-use token + second confirmation), with the tenant setting on, caller identity ≥ `caller_id` for that order, and the order COD, unfulfilled and not cancelled — else it becomes a merchant ticket. **Addresses are never written by the agent**; they become tickets. Defaults are off.
 15. **Tenant isolation is enforced by Postgres RLS**, not only by `WHERE tenant_id = ?`. Every new table with tenant data gets an RLS policy in the same migration.
 16. **An inbound call's tenant comes only from the number that was called** (`resolve_inbound_number()`), never from anything the caller or the engine payload claims.
 17. **Identity before information.** The agent reveals order data only for orders matching the caller's verified identity (`caller_id` = caller hash matches the order's phone hash; `knowledge` = order number + pincode). Unverified callers get the knowledge base and a callback ticket, nothing else. Caller ID alone never unlocks money or address changes.
 18. **The model never acts directly.** Every lookup and every action is a Naaradh tool call, validated with Zod, authorised against identity and tenant settings server-side, and written to `agent_actions`. The tool result is the only source of facts the agent may state besides published knowledge articles.
-19. **Transfers go only to verified, active `transfer_targets`, inside their hours.** The caller never supplies a number. Transfer numbers are encrypted with the staff key pair; `apps/voice` can decrypt staff numbers, never customer numbers.
+19. **Transfers go only to verified, active `transfer_targets`, inside their hours.** The caller never supplies a number. Transfer numbers are encrypted with the staff key pair; `voice` can decrypt staff numbers, never customer numbers.
 
 ## Stack (decided — see AGENTS.md §2 for rationale)
 
@@ -43,16 +43,16 @@ Domain: `naaradh.com`. Cloud: Google Cloud (`asia-south1` primary). Company: Ind
 |---|---|
 | Language/runtime | TypeScript 5.x on Node.js 22 LTS, ESM, strict mode |
 | Monorepo | pnpm workspaces + Turborepo |
-| API / webhooks / voice runtime / workers | Fastify 5 + Zod (`apps/api`, `apps/hooks`, `apps/voice`, `apps/workers`) |
-| Shopify embedded app | Shopify CLI React Router template (`apps/shopify`, ADR-0007), App Bridge, Polaris web components, Admin **GraphQL** only (pinned version in `shopify.app.toml`) |
-| Merchant dashboard | Next.js 15 App Router (`apps/web`), Tailwind, server components + server actions (ADR-0009) |
-| Staff console | Fastify, server-rendered HTML, behind IAP (`apps/console`, ADR-0009) |
-| DB | **Neon** PostgreSQL 16 (ADR-0004), Drizzle ORM + drizzle-kit migrations (`packages/db`); knowledge search = Postgres full-text search |
+| API / webhooks / voice runtime / workers | Fastify 5 + Zod (`api`, `hooks`, `voice`, `workers`) |
+| Shopify embedded app | Shopify CLI React Router template (`shopify`, ADR-0007), App Bridge, Polaris web components, Admin **GraphQL** only (pinned version in `shopify.app.toml`) |
+| Merchant dashboard | Next.js 15 App Router (`web`), Tailwind, server components + server actions (ADR-0009) |
+| Staff console | Fastify, server-rendered HTML, behind IAP (`console`, ADR-0009) |
+| DB | **Neon** PostgreSQL 16 (ADR-0004), Drizzle ORM + drizzle-kit migrations (`db`); knowledge search = Postgres full-text search |
 | Cache / counters | Memorystore Redis 7 (`ioredis`) |
-| Async | Pub/Sub (events), Postgres `SKIP LOCKED` dispatch queue (ADR-0005), Cloud Scheduler (cron). Mid-call tool calls are synchronous HTTP to `apps/voice`, never a queue. |
+| Async | Pub/Sub (events), Postgres `SKIP LOCKED` dispatch queue (ADR-0005), Cloud Scheduler (cron). Mid-call tool calls are synchronous HTTP to `voice`, never a queue. |
 | Object storage | GCS, CMEK, `asia-south1` (recordings, transcripts) |
-| Voice engine — India | **Bolna** (primary candidate; final choice after bake-off), **OmniDimension direct API** (secondary). Adapter: `packages/engines/bolna`, `packages/engines/omnidim` |
-| Voice engine — US/EU | **Retell** (`packages/engines/retell`) |
+| Voice engine — India | **Bolna** (primary candidate; final choice after bake-off), **OmniDimension direct API** (secondary). Adapter: `engines/bolna`, `engines/omnidim` |
+| Voice engine — US/EU | **Retell** (`engines/retell`) |
 | Telephony | Via engine: Exotel/Plivo numbers for +91; Twilio/Telnyx for +1/+44 via Retell. Never foreign CLIs into India. |
 | Billing | Shopify Billing API (Shopify merchants), Razorpay Subscriptions (INR direct), Stripe (USD direct) |
 | Email | Google Workspace (team), Postmark (transactional, `mail.naaradh.com`) |
@@ -65,28 +65,50 @@ Rejected: CALL-E (no inbound, no cancel, India via international CLI), OmniRelay
 
 ## Repository layout
 
+Flat: every folder at the root is one thing, and nothing is nested deeper. Seven folders are
+deployed services; the rest is code they share. `STRUCTURE.md` is the map ("I want to change X →
+go here"); `pnpm-workspace.yaml` is the authoritative list.
+
 ```
-apps/
-  api/        # public REST API (api.naaradh.com): intents, consents, knowledge, tickets, inbound profiles
-  hooks/      # all inbound webhooks (hooks.naaradh.com); verify → enqueue → 200
-  voice/      # synchronous agent runtime (voice.naaradh.com): inbound admission + mid-call tools
-  workers/    # pubsub consumers + loops: intents, dispatcher, results, reconcile, deliveries, actions, writebacks, complaints, retention, billing, writebacks
-  shopify/    # embedded Shopify app (React Router, ADR-0007)
-  web/        # merchant dashboard (/app) + marketing and public legal pages, magic-link sign-in
-  console/    # staff console behind IAP: complaints, disputes, kill switches, erasure/DNC
-packages/
-  db/         # drizzle schema, migrations, RLS policies, seed
-  compliance/ # outbound gate, inbound admission, consent ledger, suppressions, windows, counters
-  engines/    # adapter interface + one package per vendor + simulator + contract harness + registry
-  shared/     # zod schemas, E.164 utils, phone hashing/encryption, ids, errors, logger, signing
-  scripts/    # outbound templates, inbound agent prompts, tool definitions, validators, extraction
-  pipeline/   # domain operations shared by api/voice/workers: contacts, intents, orders, tickets, agent actions
-  shopify-sdk/# typed GraphQL operations, webhook parsers, gateway table, billing, scopes, token refresh
-  notify/     # transactional email (Postmark over fetch) + templates
-  payments/   # Razorpay client + webhook verification (no SDK)
-infra/        # terraform modules, env tfvars, cloud armor policies
-docs/         # NAARADH_BUILD_SPEC.md, decisions/, runbooks/, legal/
+# deployed (one container each)
+api/           # public REST API (api.naaradh.com): intents, consents, knowledge, tickets, inbound profiles
+hooks/         # all inbound webhooks (hooks.naaradh.com); verify → enqueue → 200
+voice/         # synchronous agent runtime (voice.naaradh.com): inbound admission + mid-call tools
+workers/       # pubsub consumers + loops: intents, dispatcher, results, reconcile, deliveries,
+               #   actions, writebacks, complaints, retention, billing, notifications, analytics
+web/           # merchant dashboard (/app) + marketing and legal pages, magic-link sign-in.
+               #   Deployed twice: full app on Cloud Run, marketing only on Vercel
+               #   (NAARADH_SURFACE=marketing)
+shopify/       # embedded Shopify app (React Router, ADR-0007)
+console/       # staff console behind IAP: complaints, disputes, kill switches, erasure/DNC
+
+# shared code (deployed by nobody; imported as @naaradh/<folder>)
+compliance/    # outbound gate, inbound admission, consent ledger, suppressions, windows, counters
+call-scripts/  # what the agent SAYS: outbound templates, inbound prompts, disclosures, tool
+               #   definitions, validators, extraction schemas  (NOT shell scripts — those are scripts/)
+engines/       # adapter interface + one folder per vendor (bolna, omnidim, retell) + simulator
+               #   + contract harness + registry
+db/            # drizzle schema, migrations, RLS policies, seed
+pipeline/      # domain operations shared by api/voice/workers: contacts, intents, orders, tickets,
+               #   agent actions, billing
+shared/        # zod schemas, E.164 utils, phone hashing/encryption, ids, errors, logger, signing
+shopify-sdk/   # typed GraphQL operations, webhook parsers, gateway table, billing, scopes, tokens
+payments/      # Razorpay + Stripe clients and webhook verification (no SDK)
+notify/        # transactional email (Postmark over fetch) + templates
+calendar/      # appointment providers (Cal.com) behind one port
+
+# not application code
+infra/         # terraform modules, env tfvars, cloud armor policies
+docs/          # NAARADH_BUILD_SPEC.md, decisions/, runbooks/, go-live/, legal/
+scripts/       # repo tooling run by hand: env:local, keys:dev, lint:pii
+tools/         # the custom eslint rules that enforce the invariants above
+plugins/       # WooCommerce plugin (PHP, GPL)
+docker/        # local Postgres init (roles, extensions)
+load/          # k6 load tests
 ```
+
+Every service and library has the same shape inside: `src/`, `test/` (`test/int/` needs a real
+database), `package.json`, `README.md`, and a `Dockerfile` for the seven services.
 
 ## Commands
 
@@ -118,13 +140,13 @@ Local dependencies: Docker (Postgres 16, Redis 7 via `docker-compose.yml`), Node
 
 ## How to work in this repo
 
-- **Before changing dispatch, compliance, billing, or scripts**: read `AGENTS.md §5–§8` and the relevant edge cases (`E-xx`) in `docs/NAARADH_BUILD_SPEC.md §12`. Add or update a test in `packages/compliance/test` for the edge case you touch.
+- **Before changing dispatch, compliance, billing, or scripts**: read `AGENTS.md §5–§8` and the relevant edge cases (`E-xx`) in `docs/NAARADH_BUILD_SPEC.md §12`. Add or update a test in `compliance/test` for the edge case you touch.
 - **Before changing inbound admission, identity, or any agent tool**: read `AGENTS.md §5.7–§5.9` and edge cases E-80–E-99. A new tool needs: Zod args schema, identity requirement, tenant-setting check, an `agent_actions` row, a latency test, and a negative test proving an unverified caller cannot use it.
-- **Before adding a Shopify scope or webhook**: update `shopify.app.toml`, `packages/shopify-sdk/scopes.ts`, and the protected-data justification in `docs/shopify/pcd-justification.md`. Scopes are minimised; adding one needs a written reason.
+- **Before adding a Shopify scope or webhook**: update `shopify.app.toml`, `shopify-sdk/scopes.ts`, and the protected-data justification in `docs/shopify/pcd-justification.md`. Scopes are minimised; adding one needs a written reason.
 - **Before adding a dependency**: check licence (MIT/Apache/BSD only in backend; GPL only inside `plugins/woocommerce`), size, and maintenance. No telemetry-sending packages.
 - **Migrations**: forward-only; one migration per PR; include RLS policy; include down-migration notes in the PR, not in code.
 - **Never** run destructive commands against non-local databases, `terraform apply`, `gcloud` mutations, or Shopify Partner Dashboard changes. Propose them; a human runs them.
-- **Never** commit recordings, transcripts, real phone numbers, real merchant data, API keys, or `.env*` files. Test fixtures use the reserved fake ranges in `packages/shared/test/fake-phones.ts`.
+- **Never** commit recordings, transcripts, real phone numbers, real merchant data, API keys, or `.env*` files. Test fixtures use the reserved fake ranges in `shared/test/fake-phones.ts`.
 - **Never** weaken a gate to "make a test pass." If a compliance test fails, the code is wrong or the test encodes a rule change that needs a decision record.
 - Prefer small PRs. Every PR description states: what changed, which invariant(s) it touches, which `E-xx` cases are covered by tests, and any `[OPEN]`/`[LEGAL]` items it depends on.
 - When uncertain about a regulatory rule, **stop and ask**; do not implement a guess. Add the question to `docs/open-questions.md`.
@@ -134,7 +156,7 @@ Local dependencies: Docker (Postgres 16, Redis 7 via `docker-compose.yml`), Node
 - ESM, `strict: true`, `noUncheckedIndexedAccess: true`, no `any` (use `unknown` + Zod).
 - Validate at boundaries with Zod; internal types inferred from schemas.
 - Errors: throw `NaaradhError` subclasses with `code` (`GATED`, `ENGINE_UNAVAILABLE`, `IDEMPOTENT_REPLAY`, …); never throw strings.
-- Logging: `pino` with `{tenant_id, intent_id, attempt_id, engine}` bindings; PII redaction paths configured in `packages/shared/logger.ts` — extend the redact list when adding fields that may carry PII.
+- Logging: `pino` with `{tenant_id, intent_id, attempt_id, engine}` bindings; PII redaction paths configured in `shared/logger.ts` — extend the redact list when adding fields that may carry PII.
 - Time: store UTC `timestamptz`; compute windows with `luxon` in the recipient's IANA zone; never use `Date` arithmetic for windows.
 - Money: integer paise/cents in DB (`bigint`); currency code alongside; never floats.
 - IDs: ULIDs, prefixed (`ten_`, `int_`, `att_`, `out_`, `con_`, `sup_`).

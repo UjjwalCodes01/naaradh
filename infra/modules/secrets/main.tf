@@ -36,9 +36,9 @@ resource "google_secret_manager_secret_iam_member" "accessor" {
 # ---------------------------------------------------------------------------------------------
 # Secrets created at RUNTIME: merchant webhook signing secrets.
 #
-# apps/api (POST /v1/webhooks, apps/api/src/secrets.ts) creates `merchant-webhook-<whk_id>` and
+# api (POST /v1/webhooks, api/src/secrets.ts) creates `merchant-webhook-<whk_id>` and
 # adds a version; the deliveries worker reads it back to sign each delivery
-# (apps/workers/src/deliveries/secrets.ts). Neither can be granted on the secret itself because it
+# (workers/src/deliveries/secrets.ts). Neither can be granted on the secret itself because it
 # does not exist yet, and `secretmanager.secrets.create` is checked on the PROJECT (the parent).
 # So both bindings are project-level, narrowed by an IAM condition on the resource name prefix.
 #

@@ -7,7 +7,7 @@ resource "google_artifact_registry_repository" "docker" {
   project       = var.project_id
   location      = var.region
   repository_id = var.repository_id
-  description   = "Naaradh service images (apps/*/Dockerfile), tagged by git SHA"
+  description   = "Naaradh service images (*/Dockerfile), tagged by git SHA"
   format        = "DOCKER"
 
   docker_config {

@@ -40,11 +40,11 @@ contract, one gate, one set of limits, with vendor code confined to a thin adapt
    it, is still executed by a person.
 
 4. **Consent wording is one list, and platforms copy from it.** `CONSENT_WORDINGS` in
-   `packages/pipeline` stays the only source: the WooCommerce checkbox, the Shopify extension and
+   `pipeline` stays the only source: the WooCommerce checkbox, the Shopify extension and
    the cart block all render the current version's text, and a test fails when a copy drifts. A
    cart or order that names an unpublished version is not consent (E-106).
 
-5. **Appointments are the merchant's calendar, seen through a port.** `packages/calendar` defines
+5. **Appointments are the merchant's calendar, seen through a port.** `calendar` defines
    `CalendarPort` — `listSlots`, `book`, `cancel`, `reschedule` — with a Cal.com adapter and a
    deterministic fake for tests. Product code never imports a calendar SDK (the rule that keeps
    voice vendors out of product code, invariant 13, applied to calendars). Google Calendar needs
@@ -118,7 +118,7 @@ contract, one gate, one set of limits, with vendor code confined to a thin adapt
 ## Consequences
 
 - A new platform is a client of the public API, not a new branch in the consumer. The only
-  vendor-shaped code added in Phase 5 is `packages/calendar/src/calcom.ts` and the WordPress
+  vendor-shaped code added in Phase 5 is `calendar/src/calcom.ts` and the WordPress
   plugin, both replaceable.
 - WooCommerce merchants get COD confirmation, the support-line order cache, cart recovery and
   feedback through the same gate as Shopify merchants, with no Shopify-specific behaviour.

@@ -18,7 +18,7 @@ import { join, relative, extname } from 'node:path';
 
 const ROOT = process.cwd();
 
-/** Must stay in sync with tools/eslint-plugin-naaradh and packages/shared/test/fake-phones.ts. */
+/** Must stay in sync with tools/eslint-plugin-naaradh and shared/test/fake-phones.ts. */
 const FAKE_PREFIXES = [
   '+916000000',
   '+121255501',
@@ -146,7 +146,7 @@ console.error(
     'Invariant 8: raw phone numbers must not be committed.',
     '',
     'Fix by one of:',
-    '  - use a reserved fake range from packages/shared/test/fake-phones.ts',
+    '  - use a reserved fake range from shared/test/fake-phones.ts',
     '  - store phone_hash (HMAC) instead of the number, if this is a lookup',
     '  - if this is genuinely not a phone number, add `naaradh-pii-allow` with a reason on that line',
     '',

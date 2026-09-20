@@ -2,7 +2,7 @@
 # (P1B-OPS-2 / P2-OPS-2; on-call channels and SLOs: P3-OPS-1).
 #
 # Log formats (why the filters look the way they do):
-#   workers        packages/shared/src/logger.ts — pino with `severity` (Cloud Logging severity)
+#   workers        shared/src/logger.ts — pino with `severity` (Cloud Logging severity)
 #                  and `message`  → LogEntry.severity, jsonPayload.message
 #   api/hooks/voice Fastify's pino via fastifyLoggerOptions() — `severity` plus numeric `level`
 #                  (50 = error, 60 = fatal) and `msg` → match jsonPayload.level / .msg

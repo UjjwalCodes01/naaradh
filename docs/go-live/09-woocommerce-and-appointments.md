@@ -103,7 +103,7 @@ echo "sm://projects/$GCP_PROJECT/secrets/calcom-$TENANT_ID"
 5. **`[VERIFY]` before the first real booking:** the adapter's request and response shapes are
    written from Cal.com's published v2 API and have never run against a live account (Q-25).
    Book one slot on a test event type, compare the response with
-   `packages/calendar/src/calcom.ts`, and correct the parsers if they differ. A changed shape
+   `calendar/src/calcom.ts`, and correct the parsers if they differ. A changed shape
    fails loudly — the agent offers a callback instead of a made-up time — so the failure mode is
    safe, but it is still a failure.
 

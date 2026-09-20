@@ -118,7 +118,7 @@ locals {
   #   PHONE_ENC_PRIVATE_KEY  → ONLY workers dispatcher, results, reconcile (the only code that
   #                            may turn a phone_enc back into a dialable number)
   #   STAFF_ENC_PRIVATE_KEY  → ONLY voice (transfer targets; voice never holds the customer key —
-  #                            apps/voice also refuses to boot with it in production)
+  #                            voice also refuses to boot with it in production)
   #   DATABASE_SERVICE_URL   → ONLY hooks, workers, console (BYPASSRLS). Never api, voice, web,
   #                            shopify: they reach pre-tenant rows via SECURITY DEFINER functions
   #   DATABASE_MIGRATOR_URL  → ONLY the migrate Cloud Run Job (owner role, direct endpoint)
