@@ -1,4 +1,6 @@
 import type { IncomingHttpHeaders } from 'node:http';
+import type { FastifyRequest } from 'fastify';
+import type { EngineHttpRequestInfo } from '@naaradh/engines-core';
 
 export function headersOf(headers: IncomingHttpHeaders): Record<string, string | undefined> {
   return Object.fromEntries(
@@ -15,4 +17,17 @@ export function isUniqueViolation(error: unknown, constraint?: string): boolean 
     e = rec.cause;
   }
   return false;
+}
+
+/** A GET has no body; adapters that read the query string get an empty buffer. */
+export function bodyOf(body: unknown): Buffer {
+  return Buffer.isBuffer(body) ? body : Buffer.alloc(0);
+}
+
+/** The request line for adapters whose vendor puts data in the URL (EngineHttpRequestInfo). */
+export function httpInfoOf(request: FastifyRequest): EngineHttpRequestInfo {
+  const query: Record<string, string> = {};
+  for (const [k, v] of Object.entries((request.query ?? {}) as Record<string, unknown>))
+    if (typeof v === 'string') query[k] = v;
+  return { method: request.method, path: request.url.split('?')[0] ?? request.url, query };
 }

@@ -44,6 +44,8 @@ export {
   WEBHOOK_REPLAY_WINDOW_SEC,
   signMerchantWebhook,
   verifyMerchantWebhook,
+  inboundLookupPath,
+  verifyInboundLookup,
   generateRegionKeyPair,
   signRegionSnapshot,
   verifyRegionSnapshot,

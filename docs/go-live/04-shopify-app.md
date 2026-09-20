@@ -63,9 +63,16 @@ What the toml declares (don't change without the process in CLAUDE.md):
 - **Scopes:** `read_orders, write_orders, read_customers, read_checkouts, read_fulfillments,
   read_locales` — reasons per scope in `packages/shopify-sdk/src/scopes.ts`. `write_customers` is
   deliberately **not** requested (Q-07).
-- **Webhooks:** 13 topics plus the three mandatory privacy topics (`customers/data_request`,
+- **Webhooks:** 12 topics plus the three mandatory privacy topics (`customers/data_request`,
   `customers/redact`, `shop/redact`), all delivered to **hooks**, which verifies the HMAC and
   answers 401 on a bad one.
+  `customers/update` is deliberately **not** subscribed: Shopify has no voice-consent object
+  (E-13), nothing may be inferred from it, and an unused feed of customer data would weaken the
+  protected-data case (Q-36). `shop/update` keeps the tenant's time zone in step with the store.
+- **Flow trigger** `call-completed-flow-trigger` ("Naaradh call completed": order, outcome,
+  confidence, attempts, needs-review — no phone, no transcript). Released by the same
+  `shopify app deploy`; then set `SHOPIFY_FLOW_TRIGGER=true` on the workers so write-backs fire
+  it. `[VERIFY]` the field types in its toml against the Flow trigger reference first.
 - **Embedded** app; auth redirect URLs on the app host.
 - **Extensions** (`apps/shopify/extensions/`, ADR-0010 §2): `call-consent-checkout` (checkout UI
   extension, Shopify Plus stores) and `call-consent-cart` (theme app block for the cart page, every

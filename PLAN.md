@@ -109,7 +109,7 @@ Bake-off accuracy, first-response latency p50, cost per 45-s call, answer rate o
 **ENG — Adapters**
 - P1-ENG-1 `packages/engines`: `VoiceEngineAdapter` interface + `capabilities()`; contract-test harness with 13 scenarios (AGENTS §10).
 - P1-ENG-2 `packages/engines/simulator` (deterministic scripted events, used in all CI).
-- P1-ENG-3 Adapter for the Phase 0 winner (Bolna or OmniDim) with sanitised recorded fixtures.
+- ◐ P1-ENG-3 Adapter for the Phase 0 winner (Bolna or OmniDim) with sanitised recorded fixtures. *Code done (20 Sep 2026), ahead of the bake-off so it can run through Naaradh:* `packages/engines/bolna` and `packages/engines/omnidim`, from the vendors' published APIs, passing the shared contract on stand-in fixtures. Both vendors send **unsigned** webhooks, so outcomes are written from the record fetched back from the vendor (`EngineCallSnapshot.result`, E-23). Recorded fixtures and every `[VERIFY]` wait on accounts (go-live 03 §5).
 - P1-ENG-4 Agent creation/versioning through the adapter; script v1 for `cod_confirm` and `lead_callback` in `packages/scripts` with disclosure validator.
 
 **API — Client B**
@@ -174,7 +174,7 @@ Answer rate, confirm rate, cancel rate, no-answer rate, avg billable seconds, co
 - ✅ P1B-API-1 `/v1/inbound-profiles`, `/v1/knowledge`, `/v1/tickets`, `/v1/transfer-targets` (create + verify by attestation until a test-call verification exists), `/v1/orders`.
 
 **ENG / OPS**
-- P1B-ENG-1 Adapter for the P0 winner covering inbound + tools (`packages/engines/<vendor>`), with recorded fixtures.
+- ◐ P1B-ENG-1 Adapter for the P0 winner covering inbound + tools (`packages/engines/<vendor>`), with recorded fixtures. *Code done for Bolna:* tools (bearer-token authenticated), and inbound through a variable-prompt agent per number with the called number signed into the lookup URL (`inbound:attach`); inbound is **off** (`BOLNA_INBOUND`) until verified, and cannot forward a refused call (Q-34). OmniDimension has neither (Q-35).
 - ✅ P1B-OPS-1 Runbooks: `inbound-fallback.md` (what callers hear when the agent cannot answer, and how to change it), `agent-action-failed.md`.
 - P1B-OPS-2 Latency dashboard: context and tool p50/p95 per engine; alert when p95 > budget for 5 minutes.
 
@@ -216,7 +216,7 @@ Calls answered, resolution rate (no human), transfer rate, ticket rate, abandon 
 - ✅ P2-SHOP-4 Uninstall flow: stop dispatch ≤ 60 s, purge on `shop/redact` (48 h), retain legal records (E-48). Uninstall also deletes the store's sealed Admin session; reinstall lifts only the uninstall pause.
 - ✅ P2-SHOP-5 Hourly reconcile job (E-53); duplicate webhook idempotency (E-52); merchant-cancel cancellation path (E-40). `apps/workers/src/reconcile/shopify-orders.ts` (Redis-locked hourly, watermark per store, same ingestion path as `orders/create`).
 - ◐ P2-SHOP-6 Protected customer data **Level 2** request in Partner Dashboard with justification doc `docs/shopify/pcd-justification.md`; app tolerates `null` phone (gate `no_phone`). `[VERIFIED]` Justification written; submission is a human step.
-- P2-SHOP-7 Shopify Flow trigger "Naaradh call completed" (metafields already written) `[VERIFY extension requirements]`.
+- ◐ P2-SHOP-7 Shopify Flow trigger "Naaradh call completed" (metafields already written) `[VERIFY extension requirements]`. *Code done:* `extensions/call-completed-flow-trigger`, `fireCallCompletedTrigger` after each write-back behind `SHOPIFY_FLOW_TRIGGER`; needs a deploy of the extension.
 - P2-SHOP-8 Staging Partner app + dev store test matrix (COD manual gateway, cancellation, uninstall/reinstall, billing decline).
 
 **WEB — Dashboard + site**

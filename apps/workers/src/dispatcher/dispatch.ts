@@ -333,8 +333,9 @@ async function prepareDial(
   // through to a number we choose must not be told it can (the agent would promise a transfer).
   const caps = ctx.registry.get(pass.engine).capabilities();
   const toolNames =
-    profile === undefined
-      ? []
+    profile === undefined || !caps.midCallTools
+      ? // No tools on an engine that cannot call them: the prompt must not promise lookups.
+        []
       : OUTBOUND_TOOLS.filter(
           (t) =>
             profile.toolsEnabled.includes(t) && (t !== 'transfer_to_human' || caps.warmTransfer),

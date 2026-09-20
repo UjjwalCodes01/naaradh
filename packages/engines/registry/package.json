@@ -8,6 +8,8 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@naaradh/engine-bolna": "workspace:*",
+    "@naaradh/engine-omnidim": "workspace:*",
     "@naaradh/engine-retell": "workspace:*",
     "@naaradh/engine-simulator": "workspace:*",
     "@naaradh/engines-core": "workspace:*",

@@ -26,6 +26,10 @@ export interface ContractFixtures {
     ref: { callId: string } | null;
     rawDeliveries: number;
     rejectedSignatures: number;
+    /** Verified deliveries the adapter acknowledged without an event (parseWebhook → null). */
+    ignoredDeliveries?: number;
+    /** The adapter the scenario ran on (it shares state with the vendor stand-in). */
+    adapter?: VoiceEngineAdapter;
   }>;
 }
 
@@ -101,15 +105,27 @@ export function driver(
       }
       const events: EngineEvent[] = [];
       let rejectedSignatures = 0;
+      let ignoredDeliveries = 0;
       for (const d of adapter.outbox) {
         try {
-          events.push(adapter.parseWebhook(d.headers, d.rawBody));
+          const event = adapter.parseWebhook(d.headers, d.rawBody);
+          // null = acknowledged and ignored (a status the vendor posts that we do not track).
+          if (event === null) ignoredDeliveries += 1;
+          else events.push(event);
         } catch (e) {
           if (e instanceof SignatureInvalidError) rejectedSignatures += 1;
           else throw e;
         }
       }
-      return { events, error, ref, rawDeliveries: adapter.outbox.length, rejectedSignatures };
+      return {
+        events,
+        error,
+        ref,
+        rawDeliveries: adapter.outbox.length,
+        rejectedSignatures,
+        ignoredDeliveries,
+        adapter,
+      };
     },
   };
 }
@@ -128,8 +144,8 @@ export function runContractSuite(
       const { events, error } = await fixtures.run('answered-human-confirmed');
       expect(error).toBeNull();
       expect(events.map((e) => e.type)).toEqual([
-        'call.ringing',
-        'call.answered',
+        // A vendor with one post-call event reports nothing while the call is live.
+        ...(caps.progressEvents ? ['call.ringing', 'call.answered'] : []),
         ...(caps.reportsDisclosure ? ['call.disclosed'] : []),
         'call.ended',
       ]);
@@ -154,9 +170,10 @@ export function runContractSuite(
 
     it('answered-machine: answered(machine) then ended(amd_hangup), never billable', async () => {
       const { events } = await fixtures.run('answered-machine');
-      expect(events.find((e) => e.type === 'call.answered')).toMatchObject({
-        answeredBy: 'machine',
-      });
+      if (caps.progressEvents)
+        expect(events.find((e) => e.type === 'call.answered')).toMatchObject({
+          answeredBy: 'machine',
+        });
       expect(events.at(-1)).toMatchObject({
         type: 'call.ended',
         reason: 'amd_hangup',
@@ -213,9 +230,9 @@ export function runContractSuite(
     });
 
     it('webhook-duplicate: the same eventId is delivered twice and parses identically (E-22)', async () => {
-      const { events, rawDeliveries } = await fixtures.run('webhook-duplicate');
+      const { events, rawDeliveries, ignoredDeliveries } = await fixtures.run('webhook-duplicate');
       const ids = events.map((e) => e.eventId);
-      expect(rawDeliveries).toBe(events.length);
+      expect(rawDeliveries).toBe(events.length + (ignoredDeliveries ?? 0));
       expect(new Set(ids).size).toBe(ids.length - 1);
       const [a, b] = events.slice(-2);
       expect(a).toEqual(b);
@@ -241,11 +258,37 @@ export function runContractSuite(
       expect(['ended', 'not_found']).toContain(snap.status);
     });
 
-    it('unsigned-webhook: a bad signature is rejected with SignatureInvalidError, not parsed (E-23)', async () => {
-      const { rejectedSignatures, events } = await fixtures.run('unsigned-webhook');
-      expect(rejectedSignatures).toBe(1);
-      expect(events.at(-1)).toMatchObject({ type: 'call.ended' });
-    });
+    it.skipIf(caps.signedWebhooks)(
+      'an unsigned vendor: the FETCHED record carries the outcome, so nothing is written from the webhook body (E-23)',
+      async () => {
+        const { events, ref, adapter } = await fixtures.run('answered-human-confirmed');
+        const claimed = events.at(-1);
+        expect(claimed).toMatchObject({ type: 'call.ended' });
+        const snap = await (adapter ?? adapterForFetch()).fetchCall({
+          vendor: name,
+          callId: ref?.callId ?? '',
+        });
+        expect(snap).toMatchObject({
+          status: 'ended',
+          endReason: 'completed',
+          answeredBy: 'human',
+        });
+        expect(snap.result?.extracted).toMatchObject({ outcome: 'confirmed' });
+        expect(snap.result?.recordingUrl).not.toBeNull();
+        // Where the vendor's record echoes our ids, it names the attempt it belongs to: a body
+        // cannot point it at another one.
+        if (caps.callLookup) expect(snap.attemptId).toBe('att_test');
+      },
+    );
+
+    it.skipIf(!caps.signedWebhooks)(
+      'unsigned-webhook: a bad signature is rejected with SignatureInvalidError, not parsed (E-23)',
+      async () => {
+        const { rejectedSignatures, events } = await fixtures.run('unsigned-webhook');
+        expect(rejectedSignatures).toBe(1);
+        expect(events.at(-1)).toMatchObject({ type: 'call.ended' });
+      },
+    );
 
     it('429: placeCall throws RATE_LIMITED with a Retry-After, and succeeds after backoff', async () => {
       const { error, ref } = await fixtures.run('rate-limited');

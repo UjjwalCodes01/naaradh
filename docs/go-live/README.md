@@ -137,3 +137,4 @@ Answer these in writing before spending on numbers (details in `docs/open-questi
 8. [First merchants](08-first-merchants.md) — onboarding Client A and Client B, the pilot, gaps you will hit
 9. [WooCommerce and appointments](09-woocommerce-and-appointments.md) — shipping the Woo plugin (and listing it), Cal.com credentials per merchant, the manual diary, one-click checkouts
 10. [United States and Europe](10-us-eu.md) — counsel on windows and recording consent, Retell account and recorded payloads, the `prod-us`/`prod-eu` projects, attestation, the US/UK do-not-call lists, Stripe, region routing (Phase 6)
+11. [The marketing site on Vercel](11-marketing-site-vercel.md) — naaradh.com on Vercel: the project, its two environment variables, domains, and what deliberately runs on Cloud Run instead

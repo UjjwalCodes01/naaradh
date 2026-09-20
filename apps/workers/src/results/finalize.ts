@@ -197,7 +197,12 @@ export async function finalizeAttempt(
     ctx.log.info({ attempt_id: attempt.id }, 'recording refused: media not persisted');
   if (ev.recordingUrl !== null && !refused) {
     try {
-      recordingUri = await ctx.recordings.persistRecording(tenantId, attempt.id, ev.recordingUrl);
+      recordingUri = await ctx.recordings.persistRecording(
+        tenantId,
+        attempt.id,
+        ev.recordingUrl,
+        ctx.registry.get(attempt.engine).recordingRequestHeaders?.(ev.recordingUrl),
+      );
     } catch (error) {
       recordingError = error instanceof Error ? error.message : String(error);
       ctx.log.error({ err: error, attempt_id: attempt.id }, 'recording persist failed (E-34)');

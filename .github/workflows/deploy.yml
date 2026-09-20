@@ -22,7 +22,9 @@ on:
       environment:
         description: Target environment
         type: choice
-        options: [stage, production]
+        # One GitHub environment per deployment (ADR-0012): each holds its own project, region
+        # and Workload Identity variables, and needs required reviewers.
+        options: [stage, production, production-us, production-eu]
         default: stage
       ref:
         description: Git commit SHA to deploy (production must name the SHA that is on stage)

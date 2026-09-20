@@ -120,7 +120,7 @@ Keys with special rules — read before touching (full procedures: `secret-rotat
 - `REDIS_URL` — built from Terraform outputs: `redis://:$(terraform -chdir=infra output -raw redis_auth_string)@$(terraform -chdir=infra output -raw redis_host):6379`. Pipe it straight into `gcloud secrets versions add REDIS_URL --data-file=-`; do not echo it.
 - `DATABASE_*` — from the Neon console (`neon-bootstrap.md`). `DATABASE_MIGRATOR_URL` is the **direct** endpoint; the job refuses a `-pooler.` URL.
 
-**Optional secrets** (engine API keys, Razorpay, `SHOPIFY_WEBHOOK_SECRETS`, `WEBHOOK_SIGNING_KEY`): Cloud Run will not start a revision whose secret has no version, so they are mounted only when listed in `enabled_optional_secrets` in the env's tfvars. Add the version first, then list it and apply.
+**Optional secrets** (engine API keys, `BOLNA_TOOL_TOKEN`, Razorpay, Stripe, `SHOPIFY_WEBHOOK_SECRETS`, `REGION_SYNC_PRIVATE_KEY`): Cloud Run will not start a revision whose secret has no version, so they are mounted only when listed in `enabled_optional_secrets` in the env's tfvars. Add the version first, then list it and apply.
 
 Disable an old version once nothing uses it: `gcloud secrets versions disable <n> --secret NAME --project $PROJECT`.
 

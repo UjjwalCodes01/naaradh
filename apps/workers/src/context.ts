@@ -56,4 +56,6 @@ export interface WorkerContext {
   readonly calendars?: CalendarRegistry;
   /** The data region this deployment serves (ADR-0012); absent → every tenant. */
   readonly dataRegion?: DataRegion;
+  /** Regions whose national do-not-call list must be loaded and fresh (DND_REGISTRY_REGIONS). */
+  readonly dndRegistryRegions?: readonly string[];
 }

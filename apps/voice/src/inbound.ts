@@ -32,11 +32,12 @@ import {
   engineWebhookPath,
   hashPhone,
   newId,
+  verifyInboundLookup,
   voiceToolPath,
   type PhoneRegion,
 } from '@naaradh/shared';
 import type { VoiceDeps } from './context.js';
-import { headersOf, isUniqueViolation } from './http.js';
+import { bodyOf, headersOf, httpInfoOf, isUniqueViolation } from './http.js';
 import {
   closedMessage,
   enabledTools,
@@ -59,36 +60,54 @@ import {
  * The tenant comes ONLY from the called number (invariant 16). Budget: < 500 ms p95.
  */
 export function registerInboundRoutes(app: FastifyInstance, deps: VoiceDeps): void {
-  app.post<{ Params: { vendor: string } }>('/inbound/:vendor', async (request, reply) => {
-    const { vendor } = request.params;
-    if (!isVendor(vendor)) return reply.code(404).send({ error: 'not found' });
-    const adapter = deps.registry.get(vendor);
-
-    let req: InboundCallRequest;
-    try {
-      req = adapter.parseInboundRequest(headersOf(request.headers), request.body as Buffer);
-    } catch (error) {
-      if (error instanceof SignatureInvalidError) {
-        request.log.warn({ vendor }, 'inbound context rejected: bad signature');
-        return reply.code(401).send({ error: 'invalid signature' });
-      }
-      request.log.warn({ err: error, vendor }, 'inbound context unparseable');
-      return reply.code(400).send({ error: 'unparseable' });
-    }
-
-    const started = Date.now();
-    const decision = await decide(deps, vendor, req, request.log);
-    const res = adapter.formatInboundResponse(decision);
-    request.log.info(
-      {
+  // POST for engines that send a signed body; GET for engines whose per-call lookup is a GET
+  // with query parameters (the adapter decides what it accepts).
+  app.route<{ Params: { vendor: string } }>({
+    method: ['GET', 'POST'],
+    url: '/inbound/:vendor',
+    handler: async (request, reply) => {
+      const { vendor } = request.params;
+      if (!isVendor(vendor)) return reply.code(404).send({ error: 'not found' });
+      const adapter = deps.registry.get(vendor);
+      const http = httpInfoOf(request);
+      // A number WE bound into this URL when it was attached to the engine (invariant 16).
+      const bound = verifyInboundLookup(
+        deps.engineWebhookKey,
         vendor,
-        decision: decision.kind,
-        attempt_id: decision.kind === 'answer' ? decision.attemptId : undefined,
-        ms: Date.now() - started,
-      },
-      'inbound decision',
-    );
-    return reply.code(res.status).headers(res.headers).send(res.body);
+        http.query['called'],
+        http.query['tag'],
+      );
+
+      let req: InboundCallRequest;
+      try {
+        req = adapter.parseInboundRequest(
+          headersOf(request.headers),
+          bodyOf(request.body),
+          bound === null ? http : { ...http, boundCalledE164: bound },
+        );
+      } catch (error) {
+        if (error instanceof SignatureInvalidError) {
+          request.log.warn({ vendor }, 'inbound context rejected: bad signature');
+          return reply.code(401).send({ error: 'invalid signature' });
+        }
+        request.log.warn({ err: error, vendor }, 'inbound context unparseable');
+        return reply.code(400).send({ error: 'unparseable' });
+      }
+
+      const started = Date.now();
+      const decision = await decide(deps, vendor, req, request.log);
+      const res = adapter.formatInboundResponse(decision);
+      request.log.info(
+        {
+          vendor,
+          decision: decision.kind,
+          attempt_id: decision.kind === 'answer' ? decision.attemptId : undefined,
+          ms: Date.now() - started,
+        },
+        'inbound decision',
+      );
+      return reply.code(res.status).headers(res.headers).send(res.body);
+    },
   });
 }
 
@@ -499,6 +518,9 @@ async function buildAnswer(
   const target = await loadTransferTarget(tx, profile.transferTargetId);
   const transferNow =
     tools.includes('transfer_to_human') &&
+    // An engine that cannot put the call through to a number we choose must not promise it:
+    // the agent offers a callback ticket instead.
+    deps.registry.get(vendor).capabilities().warmTransfer &&
     target !== null &&
     hours !== null &&
     transferPolicy(

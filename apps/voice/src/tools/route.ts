@@ -7,7 +7,7 @@ import { findToolReplay, recordAgentAction } from '@naaradh/pipeline';
 import { OUTBOUND_TOOLS, ToolArgs, isToolName, type ToolName } from '@naaradh/scripts';
 import { SignatureInvalidError, newId, verifyVoiceToolTag } from '@naaradh/shared';
 import type { VoiceDeps } from '../context.js';
-import { headersOf, isUniqueViolation } from '../http.js';
+import { bodyOf, headersOf, httpInfoOf, isUniqueViolation } from '../http.js';
 import { activeProfileForTenant, enabledTools, loadProfile, type ProfileRow } from '../profiles.js';
 import { HANDLERS } from './handlers.js';
 import { fail, type HandlerOutcome, type ToolAttempt, type ToolCtx } from './types.js';
@@ -35,7 +35,11 @@ export function registerToolRoutes(app: FastifyInstance, deps: VoiceDeps): void 
 
       let call: ToolCallRequest;
       try {
-        call = adapter.parseToolCall(headersOf(request.headers), request.body as Buffer);
+        call = adapter.parseToolCall(
+          headersOf(request.headers),
+          bodyOf(request.body),
+          httpInfoOf(request),
+        );
       } catch (error) {
         if (error instanceof SignatureInvalidError) {
           request.log.warn({ vendor, tenant_id: tenantId }, 'tool call rejected: bad signature');

@@ -22,6 +22,15 @@ const schema = z
     ...staffEncryptEnv,
     /** Public origin of the dashboard, for links in emails: https://app.naaradh.com */
     APP_URL: z.string().url().default('http://localhost:3000'),
+    /**
+     * `full` (the default) serves the marketing pages AND the dashboard, sign-in and the public
+     * do-not-call form — everything the database and Redis are needed for. `marketing` serves
+     * only the pages that need neither, which is what the Vercel deployment runs: those paths
+     * redirect to `DASHBOARD_URL` instead (src/middleware.ts).
+     */
+    NAARADH_SURFACE: z.enum(['full', 'marketing']).default('full'),
+    /** Where `marketing` sends the paths it does not serve. Unset → they answer 404. */
+    DASHBOARD_URL: z.string().url().optional(),
     POSTMARK_TOKEN: z.string().min(10).optional(),
     MAIL_FROM: z.string().default('Naaradh <no-reply@mail.naaradh.com>'),
     /** `gcs` signs recording URLs and reads transcripts from the bucket; `dev` fakes both. */
@@ -84,6 +93,9 @@ const schema = z
         message: 'required in production',
       });
   });
+
+/** Exported for `pnpm env:check` (scripts/env-template.mjs), which reads every service's schema. */
+export const webEnvSchema = schema;
 
 export type WebEnv = z.infer<typeof schema>;
 

@@ -25,11 +25,29 @@ hostnames = {
 apex_hostnames = ["naaradh.com"]
 
 common_env = {
-  LOG_LEVEL         = "info"
-  ENGINE_DEFAULT_IN = "simulator" # set to the ADR-0001 winner before launch
+  LOG_LEVEL = "info"
+  # Production refuses the simulator: set the ADR-0001 winner (bolna | omnidim) and enable its
+  # key below (enabled_optional_secrets) before the first prod-in deploy.
+  ENGINE_DEFAULT_IN = "simulator"
   ENGINE_DEFAULT_US = "simulator"
   SHOPIFY_WRITEBACK = "live"
+  # BOLNA_TELEPHONY_PROVIDER = "plivo"   # the telephony account connected to Bolna
+  # BOLNA_INBOUND            = "true"    # only after go-live 03 §inbound has been verified
+  # Once prod-us / prod-eu exist (go-live 10 §7): this deployment receives every store's Shopify
+  # webhooks, so it must know its peers to pass the foreign ones on.
+  # REGION_PEERS     = "{\"us\":\"https://hooks.us.naaradh.com\",\"eu\":\"https://hooks.eu.naaradh.com\"}"
+  # REGION_PEER_KEYS = "{\"us\":\"<public key>\",\"eu\":\"<public key>\"}"
 }
+
+# Optional secrets are mounted only when named here, and only once a version exists in Secret
+# Manager (Cloud Run refuses to start on a version-less secret). Uncomment each as its account
+# is linked:
+enabled_optional_secrets = [
+  # "BOLNA_API_KEY", "BOLNA_TOOL_TOKEN",                                   # go-live 03
+  # "OMNIDIM_API_KEY",                                                     # go-live 03
+  # "RAZORPAY_KEY_ID", "RAZORPAY_KEY_SECRET", "RAZORPAY_WEBHOOK_SECRET",   # go-live 06
+  # "REGION_SYNC_PRIVATE_KEY",                                             # go-live 10 §7
+]
 
 services = {
   web     = { enabled = false }
@@ -61,7 +79,9 @@ waf_preview = {
   console  = false
 }
 
-# Voice engines' published egress CIDRs, once the engine is chosen.
+# Voice engines' published egress CIDRs. Bolna signs nothing and publishes these three webhook
+# source IPs instead (docs.bolna.ai, Sep 2026) — set them when Bolna is the engine: [VERIFY]
+#   engine_ip_allowlist = ["13.203.39.153/32", "13.126.9.249/32", "13.202.133.53/32"]
 engine_ip_allowlist = []
 
 iap_members = [

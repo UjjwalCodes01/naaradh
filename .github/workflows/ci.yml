@@ -98,6 +98,27 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # The WooCommerce plugin is PHP (GPL, outside the pnpm workspace): every file must at least
+  # parse on the oldest and newest PHP it claims to support. Behaviour is covered by the manual
+  # matrix in docs/go-live/09 until a WordPress test harness exists.
+  woocommerce-plugin:
+    name: woocommerce plugin (php -l)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        php: ['8.1', '8.3']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: php -l
+        run: |
+          set -euo pipefail
+          find plugins/woocommerce -name '*.php' -print0 | xargs -0 -n1 php -l
+
   # infra/ must always format and validate. Offline: no backend, no credentials (the read-only
   # plan against a real project is .github/workflows/terraform-plan.yml).
   terraform:

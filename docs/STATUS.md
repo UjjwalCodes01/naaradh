@@ -23,9 +23,11 @@ staff console, and the compliance layer that decides whether any given call is a
 
 What is missing, in the order it blocks things:
 
-1. **A voice vendor for India.** No adapter for an Indian engine exists yet — deliberately,
-   because the choice waits on a side-by-side test of Bolna and OmniDimension on Indian networks.
-   (The US/EU adapter, Retell, is built but has not placed a real call.)
+1. **Voice vendor accounts.** The adapters for Bolna, OmniDimension (India) and Retell (US/EU)
+   are all built from the vendors' published APIs, but none has placed a real call: each needs
+   its account linked and a handful of verification calls, and the side-by-side test still
+   decides which Indian engine is primary. Only Bolna can run the support line, and that part
+   stays switched off until it has been seen working (Q-34).
 2. **A company, phone numbers and DLT registration.** Indian telecom rules require a registered
    entity and a registered telemarketer before a single number can be bought.
 3. **Cloud infrastructure switched on.** The infrastructure is written as code and validated;
@@ -126,12 +128,13 @@ These are in dependency order. Nothing below is code.
 
 | Item | Note |
 |---|---|
-| Voice engine adapter for the chosen vendor | The contract and its tests exist; this is the one piece the whole product waits on |
+| Voice engine verification | All three vendor adapters are built; each needs its account and recorded test calls to settle the `[VERIFY]` items ([go-live 03](go-live/03-voice-engine.md)) |
 | `reactivation` ("win back an old customer") | Declared with its limits and purpose, but no trigger, script or tests. Cannot be switched on by accident |
 | `delivery_reschedule` | Same: reserved and rate-limited, not implemented |
 | Automatic triggers for appointment *booking* calls | Bookings work through the API and on a call; there is no "call everyone who asked" trigger |
 | PHP in the build pipeline | The WooCommerce plugin's checks are a written manual matrix |
-| Shopify Flow trigger, dev-store test matrix | Both need the Partner app to exist |
+| Dev-store test matrix | Needs the Partner app to exist. (The Flow trigger is built; it goes live with the app deploy.) |
+| Onboarding test call | Needs a product decision on test intents and billing (Q-37) |
 
 ### Phase 6 — United States and Europe (code built, nothing live)
 
@@ -176,7 +179,7 @@ SLAs), SOC 2 readiness, and a US parent company only if raising US capital.
 
 ## 6. Decisions waiting on you (or a lawyer)
 
-33 questions are tracked with a conservative default in force for each, so no code is blocked
+37 questions are tracked with a conservative default in force for each, so no code is blocked
 ([full list](open-questions.md)). The ones that matter most:
 
 | Question | What is in force meanwhile |

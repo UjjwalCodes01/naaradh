@@ -1,0 +1,17 @@
+{
+  "name": "@naaradh/engine-omnidim",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "OmniDimension direct-API adapter — India secondary candidate (ADR-0001 bake-off, P1-ENG-3). Outbound only. HTTP over fetch, no vendor SDK. Written from OmniDimension's published API reference (docs.omnidim.io, Sep 2026); everything marked [VERIFY] must be confirmed against recorded payloads (docs/go-live/03-voice-engine.md).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@naaradh/engines-core": "workspace:*",
+    "@naaradh/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@naaradh/engine-harness": "workspace:*"
+  }
+}

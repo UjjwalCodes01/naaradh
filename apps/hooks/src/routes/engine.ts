@@ -62,6 +62,9 @@ export function registerEngineRoutes(app: FastifyInstance, deps: EngineRouteDeps
         return reply.code(400).send({ error: 'unparseable' });
       }
 
+      // A verified delivery that says nothing we track: acknowledged, nothing stored.
+      if (event === null) return reply.code(200).send({ status: 'ignored' });
+
       // The NORMALISED event is what gets stored: the results-consumer never sees vendor
       // wire formats, and the adapter's signature check has already happened here.
       const recorded = await recordWebhook(deps.db, {

@@ -74,7 +74,6 @@ Defined once in `locals.tf` (`secret_holders`); it drives both the IAM grant (`r
 | `RAZORPAY_KEY_ID/SECRET` | api, workers billing | optional |
 | `RAZORPAY_WEBHOOK_SECRET`, `SHOPIFY_WEBHOOK_SECRETS` | hooks | optional |
 | `POSTMARK_TOKEN` | web, console, workers notifications | |
-| `WEBHOOK_SIGNING_KEY` | workers deliveries | optional |
 | `REDIS_URL` | api, voice, web, console, workers | |
 | `merchant-webhook-*` (created at runtime) | api creates + adds versions; workers deliveries reads | project-level bindings with a name-prefix IAM condition (`modules/secrets`) |
 

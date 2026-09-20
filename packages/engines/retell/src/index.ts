@@ -99,6 +99,8 @@ export class RetellAdapter implements VoiceEngineAdapter {
       recordingToggle: false,
       signedWebhooks: true,
       reportsDisclosure: false,
+      progressEvents: true,
+      callLookup: true,
     };
   }
 
@@ -267,7 +269,7 @@ export class RetellAdapter implements VoiceEngineAdapter {
   parseWebhook(
     headers: Readonly<Record<string, string | undefined>>,
     rawBody: Buffer,
-  ): EngineEvent {
+  ): EngineEvent | null {
     this.verify(headers, rawBody);
     const body = JSON.parse(rawBody.toString('utf8')) as RetellWebhook;
     return mapWebhook(body, this.vendor, this.now());

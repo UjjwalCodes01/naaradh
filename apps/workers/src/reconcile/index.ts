@@ -1,7 +1,13 @@
 import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { schema, withTenant } from '@naaradh/db';
-import { inboundConcurrencyKey, releaseConcurrency, repairConcurrency } from '@naaradh/compliance';
+import {
+  REQUIRED_DNC_LISTS,
+  inboundConcurrencyKey,
+  releaseConcurrency,
+  repairConcurrency,
+} from '@naaradh/compliance';
 import { audit, sweepAbandonedCheckouts, sweepAppointmentReminders } from '@naaradh/pipeline';
+import { endedFromSnapshot } from '@naaradh/engines-core';
 import { addMinutes } from '@naaradh/shared';
 import type { WorkerContext } from '../context.js';
 import { runCliHealthDaily } from '../cli-health/index.js';
@@ -80,28 +86,25 @@ export async function reconcileOnce(ctx: WorkerContext): Promise<ReconcileReport
       if (snap.status === 'ended' || snap.status === 'failed' || snap.status === 'not_found') {
         const reason =
           snap.endReason ?? (snap.status === 'not_found' ? 'engine_error' : 'completed');
+        // The vendor has ended the call but is still writing its transcript and extraction:
+        // wait (up to ten minutes) rather than record an answered call as inconclusive.
+        if (
+          snap.status === 'ended' &&
+          snap.result === null &&
+          (snap.endedAt === null || snap.endedAt > addMinutes(now, -10))
+        )
+          return;
         await finalizeAttempt(
           ctx,
           tx,
           a.tenantId,
           row,
           {
-            type: 'call.ended',
-            eventId: `reconcile:${a.id}:${now.toISOString()}`,
-            ref: { vendor: a.engine, callId: a.engineCallId ?? '' },
-            at: snap.endedAt ?? now,
-            sequence: null,
-            attemptId: a.id,
+            ...endedFromSnapshot(
+              { ...snap, ref: { vendor: a.engine, callId: a.engineCallId ?? '' } },
+              { eventId: `reconcile:${a.id}:${now.toISOString()}`, attemptId: a.id, at: now },
+            ),
             reason,
-            answeredBy: snap.answeredBy ?? 'unknown',
-            durationSec: snap.durationSec ?? 0,
-            billableSec: snap.billableSec,
-            humanSpeechSec: null,
-            recordingUrl: null,
-            transcript: null,
-            extracted: null,
-            detectedLocale: null,
-            vendorCost: null,
           },
           { signatureValid: true },
         );
@@ -133,12 +136,18 @@ export async function reconcileOnce(ctx: WorkerContext): Promise<ReconcileReport
       idempotencyKey: schema.callAttempts.idempotencyKey,
       intentId: schema.callAttempts.intentId,
       dispatchedAt: schema.callAttempts.dispatchedAt,
+      maxDurationSec: schema.callAttempts.maxDurationSec,
     })
     .from(schema.callAttempts)
     .where(eq(schema.callAttempts.status, 'UNCERTAIN'))
     .limit(100);
   for (const a of uncertain) {
-    const found = await ctx.registry.get(a.engine).findCallByIdempotencyKey(a.idempotencyKey);
+    const engine = ctx.registry.get(a.engine);
+    const found = await engine.findCallByIdempotencyKey(a.idempotencyKey);
+    // An engine that cannot look a call up proves nothing by not finding it: if the call exists
+    // its post-call webhook finalizes this attempt (it carries our attempt id), so wait for the
+    // longest the call could last before concluding it never existed.
+    const graceMin = engine.capabilities().callLookup ? 2 : Math.ceil(a.maxDurationSec / 60) + 5;
     await withTenant(ctx.app, a.tenantId, async (tx) => {
       if (found !== null) {
         // The call exists: adopt it. Terminal already → finalize from the snapshot.
@@ -151,7 +160,12 @@ export async function reconcileOnce(ctx: WorkerContext): Promise<ReconcileReport
             lastEventAt: now,
           })
           .where(eq(schema.callAttempts.id, a.id));
-        if (found.status === 'ended' || found.status === 'failed') {
+        // Still being post-processed by the vendor → the stuck-attempt pass finishes it.
+        const pending =
+          found.status === 'ended' &&
+          found.result === null &&
+          (found.endedAt === null || found.endedAt > addMinutes(now, -10));
+        if ((found.status === 'ended' || found.status === 'failed') && !pending) {
           const row = await loadAttempt(tx, a.id);
           if (row !== null) {
             await finalizeAttempt(
@@ -164,24 +178,11 @@ export async function reconcileOnce(ctx: WorkerContext): Promise<ReconcileReport
                 aiDisclosedAt: row.aiDisclosedAt ?? found.startedAt,
                 recordingDisclosedAt: row.recordingDisclosedAt ?? found.startedAt,
               },
-              {
-                type: 'call.ended',
+              endedFromSnapshot(found, {
                 eventId: `reconcile:${a.id}:adopted`,
-                ref: found.ref,
-                at: found.endedAt ?? now,
-                sequence: null,
                 attemptId: a.id,
-                reason: found.endReason ?? 'completed',
-                answeredBy: found.answeredBy ?? 'unknown',
-                durationSec: found.durationSec ?? 0,
-                billableSec: found.billableSec,
-                humanSpeechSec: null,
-                recordingUrl: null,
-                transcript: null,
-                extracted: null,
-                detectedLocale: null,
-                vendorCost: null,
-              },
+                at: now,
+              }),
               { signatureValid: true },
             );
           }
@@ -195,7 +196,7 @@ export async function reconcileOnce(ctx: WorkerContext): Promise<ReconcileReport
           after: { engine_call_id: found.ref.callId, engine_status: found.status },
         });
         report.uncertainResolved += 1;
-      } else if (a.dispatchedAt !== null && a.dispatchedAt < addMinutes(now, -2)) {
+      } else if (a.dispatchedAt !== null && a.dispatchedAt < addMinutes(now, -graceMin)) {
         // Existence disproven: safe to fail the attempt and let the intent try again.
         await releaseConcurrency(ctx.redis, a.tenantId, a.engine);
         await tx
@@ -305,8 +306,16 @@ export async function reconcileOnce(ctx: WorkerContext): Promise<ReconcileReport
     if (!tenants.has(t.id)) tenants.set(t.id, 0);
     if (!tenants.has(inboundConcurrencyKey(t.id))) tenants.set(inboundConcurrencyKey(t.id), 0);
   }
-  for (const eng of ['simulator', ctx.gate.engines.defaultIn, ctx.gate.engines.defaultUs])
-    if (!engines.has(eng)) engines.set(eng, 0);
+  // Every configured engine, secondaries included: a leaked slot on a failover engine would
+  // otherwise never be repaired.
+  for (const eng of [
+    'simulator',
+    ctx.gate.engines.defaultIn,
+    ctx.gate.engines.defaultUs,
+    ctx.gate.engines.secondaryIn,
+    ctx.gate.engines.secondaryUs,
+  ])
+    if (eng !== null && !engines.has(eng)) engines.set(eng, 0);
   await repairConcurrency(ctx.redis, { tenants, engines });
 
   // ---- webhook payload retention (30 days) -------------------------------------------------------------
@@ -353,11 +362,47 @@ async function loadAttempt(
   return row ?? null;
 }
 
+/**
+ * A missing or stale national do-not-call list stops every marketing call to that country
+ * (the gate fails closed, quietly). Say so where an alert can hear it — and five days BEFORE a
+ * list expires, while there is still time to reload it (docs/runbooks/dnc-registry.md).
+ */
+export async function checkDncRegistries(ctx: WorkerContext): Promise<string[]> {
+  const regions = ctx.dndRegistryRegions ?? [];
+  if (regions.length === 0) return [];
+  const now = ctx.clock.now();
+  const lists = await ctx.service.select().from(schema.dncRegistryLists);
+  const problems: string[] = [];
+  for (const region of regions) {
+    for (const name of REQUIRED_DNC_LISTS[region] ?? []) {
+      const l = lists.find((x) => x.list === name);
+      if (l === undefined || l.loadedAt === null || l.activeVersion === null) {
+        problems.push(`${name}:missing`);
+        continue;
+      }
+      const ageDays = (now.getTime() - l.loadedAt.getTime()) / 86_400_000;
+      if (ageDays > l.maxAgeDays) problems.push(`${name}:stale`);
+      else if (ageDays > l.maxAgeDays - 5) problems.push(`${name}:expires_soon`);
+    }
+  }
+  for (const l of lists)
+    if (
+      !l.required &&
+      l.loadedAt !== null &&
+      (now.getTime() - l.loadedAt.getTime()) / 86_400_000 > l.maxAgeDays
+    )
+      problems.push(`${l.list}:stale`);
+  if (problems.length > 0)
+    ctx.log.warn({ lists: problems }, 'dnc registry missing or stale: marketing calls refused');
+  return problems;
+}
+
 export async function runReconcile(
   ctx: WorkerContext,
   intervalMs: number,
   signal: AbortSignal,
 ): Promise<void> {
+  let lastDncCheck = 0;
   await runLoop({
     name: 'reconcile',
     log: ctx.log,
@@ -366,6 +411,11 @@ export async function runReconcile(
     async tick() {
       const report = await reconcileOnce(ctx);
       if (Object.values(report).some((n) => n > 0)) ctx.log.info(report, 'reconcile pass');
+      // Hourly is plenty: the lists change every few weeks.
+      if (Date.now() - lastDncCheck > 3_600_000) {
+        lastDncCheck = Date.now();
+        await checkDncRegistries(ctx);
+      }
       const shopify = await reconcileShopifyOrders(ctx);
       if (shopify !== null && shopify.stores > 0) ctx.log.info(shopify, 'shopify reconcile pass');
       // ADR-0010 §1: every minute, so a checkout is called within ~46 minutes of going quiet.

@@ -49,6 +49,7 @@ shred -u phone_enc_private.pem   # after the offline backup is made
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` *(optional, US/EU)* | Stripe dashboard (restricted key; webhook endpoint signing secret) | [10](10-us-eu.md#6-stripe-p6-bill-1) |
 | `REGION_SYNC_PRIVATE_KEY` *(optional, multi-region only)* | `generateRegionKeyPair()` — one per region | [runbook](../runbooks/region-directory.md#keys) |
 | `BOLNA_API_KEY`, `OMNIDIM_API_KEY`, `RETELL_API_KEY` *(optional)* | Engine dashboards | [03](03-voice-engine.md) |
+| `BOLNA_TOOL_TOKEN` *(optional, with Bolna)* | `openssl rand -hex 32` — the bearer Bolna's agent presents when it calls our tools or asks who is calling (Bolna signs nothing) | [03](03-voice-engine.md#5-link-the-account-and-verify-the-adapter) |
 | `SIMULATOR_WEBHOOK_SECRET` *(optional, stage/dev only)* | `openssl rand -hex 32` | Signs the simulator's webhooks and tool calls; listed in `enabled_optional_secrets` |
 
 **Optional** secrets are mounted only when listed in the environment's `enabled_optional_secrets`
@@ -56,11 +57,16 @@ shred -u phone_enc_private.pem   # after the offline backup is made
 value before their services can start** — including the Shopify credentials for the four workers
 that call Shopify, so create the staging Shopify app before the first stage deploy.
 
-Reserved names with no code behind them: `WEBHOOK_SIGNING_KEY` (merchant webhooks use one
-secret per endpoint instead — do not list it in `enabled_optional_secrets`), `KILL_SWITCH_GLOBAL`
-(use the kill switch in the console or Redis instead).
+There is no global merchant-webhook signing key and no kill-switch variable: merchant webhooks
+are signed with one secret **per endpoint** (`merchant_webhooks.secret_ref`), and the kill
+switches live in Redis (invariant 12, `docs/runbooks/kill-switch.md`).
 
-Engine keys (`*_API_KEY`, `SIMULATOR_WEBHOOK_SECRET`) are held only by hooks, voice and the
+`pnpm env:list <api|hooks|voice|workers|console|web|shopify|vercel>` prints the authoritative
+list for one surface — which variables it needs, which are required, and whether each comes from
+Secret Manager or plain env. It reads the service's own schema and the key-holder map, so it
+cannot drift from the code; `pnpm env:check` fails the build when it would.
+
+Engine keys (`*_API_KEY`, `BOLNA_TOOL_TOKEN`, `SIMULATOR_WEBHOOK_SECRET`) are held only by hooks, voice and the
 dispatcher/results/reconcile workers; only those roles check engine configuration at boot, so
 the other worker roles start without them.
 

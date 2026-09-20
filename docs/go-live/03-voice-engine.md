@@ -5,26 +5,27 @@ text-to-speech and the PSTN connection (SPEC §5.1). Naaradh keeps everything ar
 be called, identity, tools, knowledge, outcomes, billing. Product code only talks to
 `VoiceEngineAdapter`; a vendor is plugged in by writing one adapter package (invariant 13).
 
-**Today two adapters exist: the simulator, and Retell for US/EU** (built from Retell's published
-API, not yet run against a real account — [10](10-us-eu.md#2-retell-account-and-recorded-payloads-p6-eng-1)).
-There is no Indian adapter: setting `ENGINE_DEFAULT_IN=bolna` or `omnidim` is refused **at boot**
-("has no adapter yet (ADR-0001)"). That is deliberate: the adapter is written for the engine that
-wins the bake-off, from its real payloads.
+**All three vendor adapters are built** — Bolna and OmniDimension for India, Retell for US/EU —
+each written from the vendor's published API (Sep 2026) and **none yet run against a real
+account**: every assumption is marked `[VERIFY]` in `packages/engines/<vendor>/src`, and the test
+fixtures are stand-ins, not recordings. What is left is linking accounts, the verification calls
+in §5, and ADR-0001's choice of which Indian engine is primary.
 
-**Adding the winner's adapter touches:** a new `packages/engines/<vendor>` package (client, event
-mapping, signature check, a fake vendor server and `test/contract.test.ts` against the shared
-harness); the registry (`packages/engines/registry`: dependency, the `case` in `create`, the
-vendor's env and its key check in `refineEngineEnv`, and removing it from `NOT_IMPLEMENTED`);
-`.env.example`; the tfvars (`ENGINE_DEFAULT_IN`, `enabled_optional_secrets`); per-engine
-concurrency and spend caps in `apps/workers/src/index.ts`. The `engine_<vendor>` webhook source,
-the import ban and the console's engine list already include Bolna and OmniDimension.
+| | Bolna | OmniDimension | Retell (US/EU) |
+|---|---|---|---|
+| Outbound calls | yes | yes | yes |
+| Mid-call tools (order lookup, tickets, cancel) | yes, with `BOLNA_TOOL_TOKEN` | **no** — custom APIs exist only in its dashboard | yes |
+| Support line (inbound) | built, **off** until verified (`BOLNA_INBOUND`, Q-34); a refusal speaks the closed message — it cannot forward to the merchant's number | no | no (Q-31) |
+| Warm transfer to a number chosen per call | no — becomes a callback ticket | no | no |
+| Cancel a queued call | yes | no | no |
+| Webhooks signed | **no** (source IPs) | **no** | yes |
+| Live progress events (ringing, answered) | yes | no — one post-call webhook | yes |
 
-**Record from the first real test calls** (sanitised, fake numbers only): the webhook signature
-header and exactly what it signs; every event type and its order; every end reason seen (no
-answer, busy, voicemail, hang-up, max duration); the tool-call body and whether it has an
-invocation id; cost and duration units against the invoice; whether recording URLs need
-authentication; and whether webhooks are signed at all — an unsigned vendor's outcome must come
-from a re-fetch (E-23).
+Because Bolna and OmniDimension sign nothing, the webhook is only a hint: the outcome, transcript,
+recording and cost are written from the call record **fetched back from the vendor's API** (E-23),
+the dispatched call id must match, and Cloud Armor should allow only the vendor's source IPs
+(`engine_ip_allowlist`). OmniDimension is therefore a fit for outbound confirmation calls only;
+the support line needs Bolna (or whichever engine the bake-off shows can do it).
 
 ## 1. Candidates (SPEC §5.2, prices `[VERIFY]`)
 
@@ -84,24 +85,43 @@ Write `docs/decisions/ADR-0001-india-engine.md` with the sheet attached: primary
 India engine, why, cost per 45-second call, and the answers to Q-04, Q-05 and Q-13 (Hinglish
 quality). Then close those questions in `docs/open-questions.md`.
 
-## 5. After the decision — code work
+## 5. Link the account and verify the adapter
 
-An engineer builds `packages/engines/<vendor>` (P1-ENG-3, P1B-ENG-1), typically 1–2 weeks:
+Per vendor, on **staging**, with a team member's phone as the customer:
 
-| Piece | What |
-|---|---|
-| `client.ts` | HTTP client: place call, fetch call, cancel, find by idempotency key |
-| `map-events.ts`, `map-errors.ts` | Vendor webhooks → Naaradh events; vendor errors → retryable / not |
-| `map-inbound.ts` | Inbound context request and tool calls → Naaradh shapes; our answers → vendor format |
-| Signature verification | Every vendor request verified before parsing (invariant 9); unsigned events are re-fetched (E-23) |
-| `fixtures/*.json` | **Sanitised** recorded payloads from the bake-off (no real numbers — lint:pii) |
-| `contract.test.ts` | Passes the shared harness (outbound + inbound scenarios) like the simulator does |
-| Registry | Case in `packages/engines/registry`; env key already exists (`BOLNA_API_KEY` …) |
-
-Then per environment: add the API key as a secret version, list it in
-`enabled_optional_secrets`, set `ENGINE_DEFAULT_IN=<vendor>` (and `ENGINE_SECONDARY_IN`) in the
-env's `common_env`, and apply (see [05](05-cloud-infrastructure.md) and
-[07](07-secrets-and-configuration.md)). Stage first; production after the pilot checks pass.
+1. **Secrets** ([07](07-secrets-and-configuration.md)): the API key (`BOLNA_API_KEY` /
+   `OMNIDIM_API_KEY`); for Bolna also `BOLNA_TOOL_TOKEN` (`openssl rand -hex 32`). List them in
+   `enabled_optional_secrets`.
+2. **Plain env** (tfvars `common_env`): `ENGINE_DEFAULT_IN` (and `ENGINE_SECONDARY_IN`),
+   `BOLNA_TELEPHONY_PROVIDER` (the Plivo/Exotel account connected to Bolna), and voices per locale
+   from the vendor's voice list — `BOLNA_VOICES` / `OMNIDIM_VOICES` (the built-in defaults are
+   English ElevenLabs voices; Hindi needs a Sarvam or similar voice).
+3. **Numbers**: buy/import them in the vendor's account, then add them in the console with
+   `engine = bolna|omnidim`. Naaradh never dials from a number that is not on the account.
+4. **Webhook source IPs**: set `engine_ip_allowlist` to the vendor's published IPs (Bolna's are
+   in `prod-in.tfvars`), since the webhooks are unsigned.
+5. **Verification calls** — one per scenario: confirmed, cancelled, no answer, busy, voicemail,
+   customer hangs up, opt-out, max duration, and (Bolna) one tool call. For each, save the raw
+   webhook bodies and the fetched record, sanitise them (fake numbers, no names, no recordings)
+   and replace the stand-ins in `packages/engines/<vendor>/test/fake-*.ts`. Settle every
+   `[VERIFY]`, in particular:
+   - Bolna: `{variable}` substitution in the welcome message and in tool parameters
+     (`execution_id`, `naaradh_attempt_id`); what a tool call's body looks like and whether Bolna
+     retries it; whether `recording_url` needs the API key; `hangup_by`/`hangup_reason` values;
+     `total_cost` currency; that `bypass_call_guardrails` stops Bolna rescheduling a call; the
+     shape of `extracted_data` for dispositions; whether literal `{…}` in a prompt is mistaken
+     for a variable.
+   - OmniDimension: that `call_context` fills `{{slots}}` in the welcome message; the post-call
+     webhook body and that `metadata` is echoed; `trigger_call_statuses` delivers no-answer and
+     busy; `call_request_id` on call logs; cost units; time zone of timestamps.
+6. **Bolna support line** (only after the above): set `BOLNA_INBOUND=true`, assign the number to
+   the tenant and its inbound profile in the console, then
+   `NUMBER_E164=+91… pnpm --filter @naaradh/workers inbound:attach`. Call the number: the
+   greeting must be the profile's disclosure, order lookup must work, and a paused tenant must
+   hear the closed message. Check what the caller hears if our lookup URL is down — if it is
+   silence or a raw `{placeholder}`, keep inbound off and raise it with Bolna (Q-34).
+7. Run `pnpm test:contracts`, then the dev-store matrix in [04](04-shopify-app.md) on the real
+   engine. Stage first; production after the pilot checks pass.
 
 ## 6. What the engine must be configured with
 
@@ -117,5 +137,5 @@ GCS bucket within minutes of the call; vendor recording URLs are never shown to 
 - [ ] 15 vendor questions answered in writing
 - [ ] Outbound + inbound bake-off run on Jio/Airtel/Vi; sheet filled; invoices kept
 - [ ] ADR-0001 written; Q-04/Q-05/Q-13 closed
-- [ ] Adapter built and passing the contract harness
+- [ ] Verification calls recorded; fixtures replaced; every `[VERIFY]` settled; `pnpm test:contracts` green
 - [ ] Engine key in Secret Manager; `ENGINE_DEFAULT_IN` set for stage, then prod

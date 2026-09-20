@@ -543,6 +543,19 @@ importers:
         specifier: 4.19.2
         version: 4.19.2
 
+  packages/engines/bolna:
+    dependencies:
+      '@naaradh/engines-core':
+        specifier: workspace:*
+        version: link:../core
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      '@naaradh/engine-harness':
+        specifier: workspace:*
+        version: link:../harness
+
   packages/engines/core:
     dependencies:
       '@naaradh/shared':
@@ -561,8 +574,27 @@ importers:
         specifier: '*'
         version: 2.1.8(@types/node@22.10.2)(lightningcss@1.32.0)
 
+  packages/engines/omnidim:
+    dependencies:
+      '@naaradh/engines-core':
+        specifier: workspace:*
+        version: link:../core
+      '@naaradh/shared':
+        specifier: workspace:*
+        version: link:../../shared
+    devDependencies:
+      '@naaradh/engine-harness':
+        specifier: workspace:*
+        version: link:../harness
+
   packages/engines/registry:
     dependencies:
+      '@naaradh/engine-bolna':
+        specifier: workspace:*
+        version: link:../bolna
+      '@naaradh/engine-omnidim':
+        specifier: workspace:*
+        version: link:../omnidim
       '@naaradh/engine-retell':
         specifier: workspace:*
         version: link:../retell

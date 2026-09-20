@@ -55,6 +55,9 @@ const schema = z
           });
   });
 
+/** Exported for `pnpm env:check` (scripts/env-template.mjs), which reads every service's schema. */
+export const shopifyAppEnvSchema = schema;
+
 export type ShopifyAppEnv = z.infer<typeof schema>;
 
 let cached: ShopifyAppEnv | undefined;

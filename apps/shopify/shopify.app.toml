@@ -39,7 +39,6 @@ api_version = "2026-07"
     "fulfillments/update",
     "checkouts/create",
     "checkouts/update",
-    "customers/update",
     "app/uninstalled",
     "app_subscriptions/update",
     "app_subscriptions/approaching_capped_amount",

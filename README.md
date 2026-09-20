@@ -26,7 +26,7 @@ Needs Node 22 (`.nvmrc`), pnpm 9 (pinned via `packageManager` — corepack fetch
 
 ```bash
 pnpm install
-cp .env.example .env.local        # local-only values; never commit
+pnpm env:local                    # writes .env.local with fresh local keys (git-ignored)
 pnpm services:up                  # Postgres 16, Redis 7, Pub/Sub emulator
 pnpm dev                          # api :3001, hooks :3002, voice :3003
 ```
@@ -51,6 +51,8 @@ opts them into `UPDATE`/`DELETE`. See [packages/db/README.md](packages/db/README
 | `pnpm typecheck` | `tsc --noEmit`, strict + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` | yes |
 | `pnpm lint` | typescript-eslint strict type-checked + Naaradh rules (below) | yes |
 | `pnpm lint:pii` | Repo-wide scan for raw phone numbers in **every** text file (JSON, SQL, CSV, MD…). Prints matches masked. | yes |
+| `pnpm env:check` | Every service could boot from what `infra/` provides it, and `.env.example` matches the schemas | yes (in `pnpm test`) |
+| `pnpm env:list <service\|vercel>` | Which variables one surface needs and where each value comes from — read from its own zod schema and the key-holder map | — |
 | `pnpm test` | Unit | yes |
 | `pnpm test:compliance` | Compliance regression suite — **must pass before any merge** | yes |
 | `pnpm test:contracts` | Engine adapter contract tests | yes |
@@ -97,12 +99,12 @@ linters honour it.
 | **Promotional calling (Phase 4, ADR-0010)** — abandoned checkouts cached and swept (45-min idle, 24-h deadline, one call, 7-day cooldown per phone), consent only from Naaradh's own checkout/cart checkbox with the wording version in the ledger, DLT content template required on every Indian promotional script and copied onto each call, post-delivery feedback, script A/B with per-arm metrics, recovery attribution (measured, never billed), promotional-only pause on a promotional complaint, weekly 2% QA sample | done, `apps/workers/test/int/promotional.test.ts` (24 cases) + 192 gate regressions; **no promotional call can be placed** until a DND scrub provider (Q-02), counsel-approved wording (Q-08) and DLT templates (Q-23) exist |
 | **Non-Shopify sources (Phase 5, ADR-0011)** — one cart-ingestion contract (`PUT /v1/carts/{ref}`, `POST /v1/carts/{ref}/completed`) that WooCommerce, one-click checkouts and bespoke stores all use, under the same promotional rules as ADR-0010; `plugins/woocommerce` (GPL) reports orders and carts server-side, adds the consent checkbox on the classic and block checkouts, and writes results back as order notes through a signature-verified REST route | done; PHP has no runner in CI, so its matrix is manual (`docs/go-live/09-woocommerce-and-appointments.md`) |
 | **Appointments (Phase 5, ADR-0011)** — `packages/calendar` (port + Cal.com adapter `[VERIFY]` + deterministic fake), `get_slots`/`book_slot` agent tools that can only offer times the provider returned and only book against the caller's own number, one reminder call per appointment inside the −24 h/−2 h envelope, provider cancellations pushed from the reconcile tick, merchant Appointments page and staff Calendars page | done, 12 calendar unit tests + 8 tool cases in `apps/voice/test/int/voice.test.ts` + reminder/erasure cases in `apps/workers/test/int/promotional.test.ts` |
-| Vendor adapters (Bolna / OmniDimension / Retell) | none, deliberately — the India engine is decided by the Phase 0 bake-off (ADR-0001) |
+| Vendor adapters — `bolna`, `omnidim` (India), `retell` (US/EU), each from the vendor's published API; unsigned vendors have their outcome read back from the vendor's own record (E-23) | built, `[VERIFY]` throughout: no adapter has placed a real call. Which Indian engine is primary is still ADR-0001's decision (`docs/go-live/03-voice-engine.md`) |
 
 ### Running the pipeline locally
 
 ```bash
-pnpm keys:dev >> .env.local          # phone keys, engine webhook key, a Shopify secret
+pnpm env:local                       # or: cp .env.example .env.local && pnpm keys:dev >> .env.local
 pnpm services:up && pnpm db:migrate && pnpm db:seed
 pnpm --filter @naaradh/hooks dev     # :3002
 pnpm --filter @naaradh/api dev       # :3001

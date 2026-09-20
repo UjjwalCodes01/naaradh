@@ -179,6 +179,8 @@ export class SimulatorAdapter implements VoiceEngineAdapter {
       recordingToggle: false,
       signedWebhooks: true,
       reportsDisclosure: true,
+      progressEvents: true,
+      callLookup: true,
     };
   }
 

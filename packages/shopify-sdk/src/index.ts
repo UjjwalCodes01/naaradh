@@ -57,3 +57,8 @@ export {
 export { refreshOfflineToken, type RefreshedToken } from './oauth.js';
 export { SHOPIFY_SCOPES, SHOPIFY_SCOPE_STRING } from './scopes.js';
 export { ordersCreatedSince, toWebhookShape, type GqlOrder } from './reconcile.js';
+export {
+  FLOW_TRIGGER_HANDLE,
+  fireCallCompletedTrigger,
+  type CallCompletedTrigger,
+} from './flow.js';

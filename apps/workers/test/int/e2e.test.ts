@@ -569,6 +569,72 @@ describe('vendor failure modes (AGENTS §5.3)', () => {
   });
 });
 
+describe('an engine that does not sign its webhooks (invariant 9, E-23)', () => {
+  it('the outcome and billing come from the FETCHED record — never from what the webhook body claims', async () => {
+    const { orderId } = await postOrder('+916000000099'); // plain happy path on the simulator
+    await drain();
+    advance(3);
+    await dispatchOnce(ctx);
+    const intent = await intentByOrder(orderId);
+    const [attempt] = await attemptsFor(intent?.id ?? '');
+
+    // As an unsigned vendor would deliver it: not verified, and claiming a billable "confirmed".
+    await service.query(
+      `update webhook_events set signature_valid = false where tenant_id = $1 and status <> 'processed'`,
+      [TENANT],
+    );
+    const sim = ctx.registry.get('simulator');
+    const fetchCall = sim.fetchCall.bind(sim);
+    let fetched = 0;
+    sim.fetchCall = async (ref) => {
+      fetched += 1;
+      return {
+        ...(await fetchCall(ref)),
+        attemptId: attempt?.id ?? null,
+        // What the vendor's own record says happened: the customer cancelled.
+        result: {
+          humanSpeechSec: 9,
+          recordingUrl: null,
+          transcript: null,
+          extracted: { outcome: 'cancelled', cancel_reason: 'changed_mind', confidence: 0.95 },
+          detectedLocale: null,
+          vendorCost: null,
+        },
+      };
+    };
+    try {
+      await drain();
+    } finally {
+      sim.fetchCall = fetchCall;
+    }
+    expect(fetched).toBe(1);
+    expect(await outcomeFor(attempt?.id ?? '')).toMatchObject({ outcome: 'cancelled' });
+  });
+
+  it('a body that names another call than the one we dispatched is ignored and audited', async () => {
+    const { orderId } = await postOrder('+916000000098');
+    await drain();
+    advance(3);
+    await dispatchOnce(ctx);
+    const intent = await intentByOrder(orderId);
+    const [attempt] = await attemptsFor(intent?.id ?? '');
+    await service.query(
+      `update webhook_events
+          set signature_valid = false,
+              payload = jsonb_set(payload, '{ref,callId}', '"sim_call_someone_elses"')
+        where tenant_id = $1 and status <> 'processed' and topic = 'call.ended'`,
+      [TENANT],
+    );
+    await drain();
+    expect(await outcomeFor(attempt?.id ?? '')).toBeUndefined();
+    const audited = await service.query<{ n: number }>(
+      `select count(*)::int as n from audit_log where tenant_id = $1 and action = 'results.unsigned_mismatch' and target_id = $2`,
+      [TENANT, attempt?.id ?? ''],
+    );
+    expect(audited.rows[0]?.n).toBe(1);
+  });
+});
+
 describe('uninstall (E-48)', () => {
   it('pauses the tenant and cancels everything waiting', async () => {
     const { orderId } = await postOrder(FAKE_IN.customerAlt);

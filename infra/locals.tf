@@ -92,6 +92,7 @@ locals {
   optional_secrets = [
     "SHOPIFY_WEBHOOK_SECRETS", # per-shop overrides; unset → SHOPIFY_API_SECRET for all shops
     "BOLNA_API_KEY",           # engines: undecided until ADR-0001; simulator needs no key
+    "BOLNA_TOOL_TOKEN",        # the bearer Bolna's agent presents on tool calls and caller lookups
     "OMNIDIM_API_KEY",
     "RETELL_API_KEY",
     "RAZORPAY_KEY_ID", # direct INR billing (P2-BILL-3); unset → routes answer 503 / postings wait
@@ -100,7 +101,6 @@ locals {
     "STRIPE_SECRET_KEY", # direct USD billing (P6-BILL-1); unset → routes answer 503 / postings wait
     "STRIPE_WEBHOOK_SECRET",
     "REGION_SYNC_PRIVATE_KEY", # this region's directory signing key (ADR-0012 am. 1); unset → single region
-    "WEBHOOK_SIGNING_KEY",
     # Staging only (SIMULATOR_ALLOWED=true there): signs the simulator engine's webhooks and tool
     # calls. Production refuses the simulator, so this secret never exists there.
     "SIMULATOR_WEBHOOK_SECRET",
@@ -140,6 +140,7 @@ locals {
     # Binds engine webhook/tool URLs to a tenant; every worker role's env schema requires it.
     ENGINE_WEBHOOK_KEY       = concat(["hooks", "voice"], local.workers)
     BOLNA_API_KEY            = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
+    BOLNA_TOOL_TOKEN         = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
     SIMULATOR_WEBHOOK_SECRET = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
     OMNIDIM_API_KEY          = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
     RETELL_API_KEY           = ["hooks", "voice", "workers-dispatcher", "workers-results", "workers-reconcile"]
@@ -162,8 +163,7 @@ locals {
     # verifies peers with their PUBLIC keys (REGION_PEER_KEYS, plain env — not a secret).
     REGION_SYNC_PRIVATE_KEY = ["workers-reconcile"]
 
-    POSTMARK_TOKEN      = ["web", "workers-notifications"]
-    WEBHOOK_SIGNING_KEY = ["workers-deliveries"]
+    POSTMARK_TOKEN = ["web", "workers-notifications"]
   }
 
   # Workers that call the Shopify Admin API (write-backs, cancellations, billing usage records,

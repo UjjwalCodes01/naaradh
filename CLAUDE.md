@@ -102,6 +102,8 @@ pnpm test:int                  # testcontainers integration
 pnpm test:compliance           # compliance regression suite (must pass before any merge)
 pnpm test:contracts            # engine adapter contract tests (recorded payloads)
 pnpm lint && pnpm typecheck    # eslint + tsc --noEmit
+pnpm env:check                 # every service can boot from infra/; templates match the schemas
+pnpm env:list <service|vercel> # which env vars one surface needs, and where each value comes from
 pnpm build                     # turbo build
 pnpm tf:plan ENV=stage         # terraform plan for an env (read-only)
 ```
@@ -110,7 +112,9 @@ Local dependencies: Docker (Postgres 16, Redis 7 via `docker-compose.yml`), Node
 
 ## Environment variables (names only — values live in Secret Manager / `.env.local`, never committed)
 
-`DATABASE_URL`, `DATABASE_SERVICE_URL`, `DATABASE_MIGRATOR_URL`, `REDIS_URL`, `GCP_PROJECT`, `GCP_REGION`, `PUBSUB_EMULATOR_HOST` (local), `RECORDINGS_BUCKET`, `PHONE_HASH_KEY`, `PHONE_ENC_PUBLIC_KEY`, `PHONE_ENC_PRIVATE_KEY` (dispatcher/results only), `STAFF_ENC_PUBLIC_KEY`, `STAFF_ENC_PRIVATE_KEY` (voice only), `ENGINE_WEBHOOK_KEY`, `VOICE_BASE_URL`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SHOPIFY_SCOPES`, `ENGINE_DEFAULT_IN`, `ENGINE_DEFAULT_US`, `BOLNA_API_KEY`, `OMNIDIM_API_KEY`, `RETELL_API_KEY`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_PLAN_IDS`, `SHOPIFY_TOKEN_KEY`, `STRIPE_SECRET_KEY`, `POSTMARK_TOKEN`, `MAIL_FROM`, `APP_URL`, `DASHBOARD_URL`, `SHOPIFY_TOKEN_KEY`, `IAP_AUDIENCE`, `CONSOLE_ORIGIN`, `WEBHOOK_SIGNING_KEY` (outbound to merchants), `KILL_SWITCH_GLOBAL` (bootstrap only), `LOG_LEVEL`.
+`DATABASE_URL`, `DATABASE_SERVICE_URL`, `DATABASE_MIGRATOR_URL`, `REDIS_URL`, `GCP_PROJECT`, `GCP_REGION`, `PUBSUB_EMULATOR_HOST` (local), `RECORDINGS_BUCKET`, `PHONE_HASH_KEY`, `PHONE_ENC_PUBLIC_KEY`, `PHONE_ENC_PRIVATE_KEY` (dispatcher/results only), `STAFF_ENC_PUBLIC_KEY`, `STAFF_ENC_PRIVATE_KEY` (voice only), `ENGINE_WEBHOOK_KEY`, `VOICE_BASE_URL`, `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_APP_URL`, `SHOPIFY_SCOPES`, `ENGINE_DEFAULT_IN`, `ENGINE_DEFAULT_US`, `BOLNA_API_KEY`, `OMNIDIM_API_KEY`, `RETELL_API_KEY`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_PLAN_IDS`, `SHOPIFY_TOKEN_KEY`, `STRIPE_SECRET_KEY`, `POSTMARK_TOKEN`, `MAIL_FROM`, `APP_URL`, `DASHBOARD_URL`, `SHOPIFY_TOKEN_KEY`, `IAP_AUDIENCE`, `CONSOLE_ORIGIN`, `LOG_LEVEL`.
+
+`pnpm env:list <service|vercel>` prints the current, authoritative list per surface (from each service's zod schema and `infra/locals.tf`); `pnpm env:check` fails when a service could not boot from what `infra/` provides, or when a template drifts from a schema.
 
 ## How to work in this repo
 

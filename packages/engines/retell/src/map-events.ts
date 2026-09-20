@@ -1,5 +1,6 @@
 import type {
   AnsweredBy,
+  EndedResult,
   EndReason,
   EngineCallSnapshot,
   EngineEvent,
@@ -146,7 +147,11 @@ function attemptIdOf(call: RetellCall): string | null {
   return typeof id === 'string' ? id : null;
 }
 
-function ended(body: RetellWebhook, vendor: string, at: Date): EngineEvent {
+function ended(
+  body: RetellWebhook,
+  vendor: string,
+  at: Date,
+): Extract<EngineEvent, { type: 'call.ended' }> {
   const call = body.call;
   const connectedCall = connected(call);
   const cost = call.call_cost?.combined_cost;
@@ -175,8 +180,12 @@ function ended(body: RetellWebhook, vendor: string, at: Date): EngineEvent {
   };
 }
 
-/** Maps a VERIFIED webhook body. Throws on a shape we do not understand (the route answers 400). */
-export function mapWebhook(body: RetellWebhook, vendor: string, now: Date): EngineEvent {
+/**
+ * Maps a VERIFIED webhook body. Throws on a shape we do not understand (the route answers
+ * 400); returns null for event types we do not use (transcript updates, transfer events), which
+ * are acknowledged so Retell does not retry them.
+ */
+export function mapWebhook(body: RetellWebhook, vendor: string, now: Date): EngineEvent | null {
   const call = body.call;
   if (typeof call.call_id !== 'string' || call.call_id === '')
     throw new Error('retell webhook without call.call_id');
@@ -199,7 +208,7 @@ export function mapWebhook(body: RetellWebhook, vendor: string, now: Date): Engi
     case 'call_analyzed':
       return ended(body, vendor, endedAt);
     default:
-      throw new Error(`retell webhook event ${body.event} is not handled`);
+      return null;
   }
 }
 
@@ -237,5 +246,23 @@ export function snapshotOf(
     endReason: done ? endReason(call) : null,
     startedAt: typeof call.start_timestamp === 'number' ? new Date(call.start_timestamp) : null,
     endedAt: typeof call.end_timestamp === 'number' ? new Date(call.end_timestamp) : null,
+    attemptId: attemptIdOf(call),
+    // The outcome arrives with Retell's analysis: until then a connected call is not final.
+    result: !done
+      ? null
+      : connected(call) && (call.call_analysis === null || call.call_analysis === undefined)
+        ? null
+        : resultOf(ended({ event: 'call_analyzed', call }, vendor, new Date(0))),
+  };
+}
+
+function resultOf(e: Extract<EngineEvent, { type: 'call.ended' }>): EndedResult {
+  return {
+    humanSpeechSec: e.humanSpeechSec,
+    recordingUrl: e.recordingUrl,
+    transcript: e.transcript,
+    extracted: e.extracted,
+    detectedLocale: e.detectedLocale,
+    vendorCost: e.vendorCost,
   };
 }

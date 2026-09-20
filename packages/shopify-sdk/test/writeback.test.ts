@@ -6,6 +6,7 @@ import {
   createAdminClient,
 } from '../src/admin-client.js';
 import { ShopifyUserError, applyOrderWriteback, cancelOrder, toOrderGid } from '../src/orders.js';
+import { FLOW_TRIGGER_HANDLE, fireCallCompletedTrigger } from '../src/flow.js';
 import { fakeShopify } from './fake-shopify.js';
 
 const SHOP = 'client-a-dev.myshopify.com';
@@ -179,5 +180,43 @@ describe('order write-back operations', () => {
     expect(toOrderGid('gid://shopify/Order/5001')).toBe('gid://shopify/Order/5001');
     expect(() => toOrderGid('#1001')).toThrow(ShopifyRequestError);
     expect(() => toOrderGid('B-77')).toThrow(ShopifyRequestError);
+  });
+});
+
+describe('Shopify Flow trigger "Naaradh call completed" (P2-SHOP-7)', () => {
+  const input = {
+    orderId: '5001',
+    outcome: 'confirmed',
+    confidence: 0.9512,
+    attempts: 1,
+    needsReview: false,
+  };
+
+  it('carries the order and the outcome only — no phone, no transcript', async () => {
+    const fake = fakeShopify({ orders: ['5001'] });
+    await fireCallCompletedTrigger(client(fake), input);
+    expect(fake.flowTriggers).toEqual([
+      {
+        handle: FLOW_TRIGGER_HANDLE,
+        payload: {
+          order_id: 5001,
+          outcome: 'confirmed',
+          confidence: 0.95,
+          attempts: 1,
+          needs_review: false,
+        },
+      },
+    ]);
+  });
+
+  it('a refusal surfaces as a user error; a non-Shopify order ref fires nothing', async () => {
+    const fake = fakeShopify({ orders: ['5001'] });
+    fake.userErrors.set('NaaradhFlowTrigger', 'Invalid handle');
+    await expect(fireCallCompletedTrigger(client(fake), input)).rejects.toBeInstanceOf(
+      ShopifyUserError,
+    );
+    const quiet = fakeShopify({ orders: [] });
+    await fireCallCompletedTrigger(client(quiet), { ...input, orderId: 'woo-77' });
+    expect(quiet.flowTriggers).toEqual([]);
   });
 });

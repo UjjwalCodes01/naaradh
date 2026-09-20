@@ -6,17 +6,29 @@ import { Storage } from '@google-cloud/storage';
  * it as JSON. Object names carry tenant and attempt ids only — never a phone number.
  */
 export interface RecordingStore {
-  persistRecording(tenantId: string, attemptId: string, sourceUrl: string): Promise<string>;
+  /** `headers`: the engine adapter's own credentials for ITS recording host, when it needs them. */
+  persistRecording(
+    tenantId: string,
+    attemptId: string,
+    sourceUrl: string,
+    headers?: Readonly<Record<string, string>>,
+  ): Promise<string>;
   persistTranscript(tenantId: string, attemptId: string, transcript: unknown): Promise<string>;
   delete(uri: string): Promise<void>;
 }
 
 export type Fetcher = (
   url: string,
+  headers?: Readonly<Record<string, string>>,
 ) => Promise<{ ok: boolean; status: number; body: Buffer; contentType: string | null }>;
 
-export const nodeFetcher: Fetcher = async (url) => {
-  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(60_000) });
+export const nodeFetcher: Fetcher = async (url, headers) => {
+  // fetch drops Authorization when a redirect leaves the origin, so a key never follows one.
+  const res = await fetch(url, {
+    redirect: 'follow',
+    signal: AbortSignal.timeout(60_000),
+    ...(headers === undefined ? {} : { headers }),
+  });
   return {
     ok: res.ok,
     status: res.status,
@@ -32,8 +44,8 @@ export function gcsRecordingStore(
   const storage = new Storage();
   const bucket = storage.bucket(bucketName);
   return {
-    async persistRecording(tenantId, attemptId, sourceUrl) {
-      const res = await fetcher(sourceUrl);
+    async persistRecording(tenantId, attemptId, sourceUrl, headers) {
+      const res = await fetcher(sourceUrl, headers);
       if (!res.ok) throw new Error(`recording download failed: HTTP ${String(res.status)}`);
       const ext = res.contentType?.includes('wav') === true ? 'wav' : 'mp3';
       const name = `${tenantId}/${attemptId}/recording.${ext}`;
@@ -74,8 +86,8 @@ export function memoryRecordingStore(
     }));
   return {
     objects,
-    async persistRecording(tenantId, attemptId, sourceUrl) {
-      const res = await fetchIt(sourceUrl);
+    async persistRecording(tenantId, attemptId, sourceUrl, headers) {
+      const res = await fetchIt(sourceUrl, headers);
       if (!res.ok) throw new Error(`recording download failed: HTTP ${String(res.status)}`);
       const uri = `mem://recordings/${tenantId}/${attemptId}/recording.mp3`;
       objects.set(uri, res.body);

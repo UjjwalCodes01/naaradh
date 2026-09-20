@@ -26,7 +26,6 @@ export const SHOPIFY_TOPICS = new Set([
   'fulfillments/update',
   'checkouts/create',
   'checkouts/update',
-  'customers/update',
   'app/uninstalled',
   'app_subscriptions/update',
   'app_subscriptions/approaching_capped_amount',

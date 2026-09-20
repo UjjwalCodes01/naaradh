@@ -1,0 +1,17 @@
+{
+  "name": "@naaradh/engine-bolna",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "Bolna adapter — India primary candidate (ADR-0001 bake-off, P1-ENG-3). HTTP over fetch, no vendor SDK. Written from Bolna's published API reference (docs.bolna.ai, Sep 2026); everything marked [VERIFY] must be confirmed against recorded payloads on the first test calls (docs/go-live/03-voice-engine.md).",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@naaradh/engines-core": "workspace:*",
+    "@naaradh/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@naaradh/engine-harness": "workspace:*"
+  }
+}

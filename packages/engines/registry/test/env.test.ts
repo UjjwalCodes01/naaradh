@@ -52,13 +52,60 @@ describe('refineEngineEnv', () => {
     ).toEqual([]);
   });
 
-  it('an engine with no adapter yet is refused at boot, in any environment', () => {
+  it('an engine chosen without its API key fails at boot, in any environment', () => {
     expect(issues({ NODE_ENV: 'development', ENGINE_DEFAULT_IN: 'bolna' })).toEqual([
-      'ENGINE_DEFAULT_IN',
+      'BOLNA_API_KEY',
     ]);
     expect(issues({ NODE_ENV: 'development', ENGINE_SECONDARY_IN: 'omnidim' })).toEqual([
-      'ENGINE_SECONDARY_IN',
+      'OMNIDIM_API_KEY',
     ]);
+    expect(
+      issues({
+        NODE_ENV: 'development',
+        ENGINE_DEFAULT_IN: 'bolna',
+        ENGINE_SECONDARY_IN: 'omnidim',
+        BOLNA_API_KEY: 'bn-0123456789abcdef',
+        OMNIDIM_API_KEY: 'od-0123456789abcdef',
+      }),
+    ).toEqual([]);
+  });
+
+  it('Bolna inbound needs the token that authenticates its caller lookup', () => {
+    const base = {
+      NODE_ENV: 'development',
+      ENGINE_DEFAULT_IN: 'bolna',
+      BOLNA_API_KEY: 'bn-0123456789abcdef',
+      BOLNA_INBOUND: 'true',
+    };
+    expect(issues(base)).toEqual(['BOLNA_TOOL_TOKEN']);
+    expect(issues({ ...base, BOLNA_TOOL_TOKEN: 't'.repeat(40) })).toEqual([]);
+    expect(issues({ ...base, BOLNA_TOOL_TOKEN: 'short' })).toEqual(['BOLNA_TOOL_TOKEN']);
+  });
+
+  it('the registry builds the Indian adapters; their limits are declared, not assumed', async () => {
+    const { EngineRegistry } = await import('../src/index.js');
+    const env = schema.parse({
+      NODE_ENV: 'development',
+      ENGINE_DEFAULT_IN: 'bolna',
+      ENGINE_SECONDARY_IN: 'omnidim',
+      BOLNA_API_KEY: 'bn-0123456789abcdef',
+      BOLNA_TOOL_TOKEN: 't'.repeat(40),
+      BOLNA_LLM: 'openai/gpt-4.1-mini',
+      BOLNA_VOICES:
+        '{"hi-IN":{"provider":"sarvam","voice":"x","voice_id":"x","model":"bulbul:v3","language":"hi"}}',
+      OMNIDIM_API_KEY: 'od-0123456789abcdef',
+    });
+    const registry = new EngineRegistry({ env });
+    expect(registry.get('bolna').capabilities()).toMatchObject({
+      signedWebhooks: false,
+      midCallTools: true,
+      inbound: false,
+    });
+    expect(registry.get('omnidim').capabilities()).toMatchObject({
+      midCallTools: false,
+      inbound: false,
+      callLookup: false,
+    });
   });
 
   it('production with real engines needs neither', () => {

@@ -4,6 +4,7 @@ import {
   ShopifyUserError,
   applyOrderWriteback,
   createAdminClient,
+  fireCallCompletedTrigger,
 } from '@naaradh/shopify-sdk';
 import type { SecretResolver } from '../deliveries/secrets.js';
 import type { ShopifyWriteback } from './writeback.js';
@@ -25,6 +26,12 @@ export function shopifyWriteback(deps: {
   readonly secrets: SecretResolver;
   readonly apiVersion: string;
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Fire the Shopify Flow trigger "Naaradh call completed" after each order is written
+   * (P2-SHOP-7). Off until the trigger extension has been released with `shopify app deploy`.
+   */
+  readonly flowTrigger?: boolean;
+  readonly onFlowTriggerError?: (error: unknown) => void;
 }): ShopifyWriteback {
   return {
     async apply(_tenantId, store, orderIds, plan) {
@@ -43,6 +50,21 @@ export function shopifyWriteback(deps: {
           metafields: plan.metafields,
           cancelOrder: plan.cancelOrder,
         });
+        if (deps.flowTrigger === true) {
+          // A convenience for the merchant's automations, never a reason to fail or repeat the
+          // write-back that already landed on the order.
+          try {
+            await fireCallCompletedTrigger(client, {
+              orderId,
+              outcome: plan.metafields['cod_status'] ?? '',
+              confidence: Number(plan.metafields['confidence'] ?? 0),
+              attempts: Number(plan.metafields['attempts'] ?? 0),
+              needsReview: plan.needsReview || plan.tags.includes('naaradh:cancel-review'),
+            });
+          } catch (error) {
+            deps.onFlowTriggerError?.(error);
+          }
+        }
       }
     },
   };

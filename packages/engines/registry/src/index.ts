@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { NaaradhError } from '@naaradh/shared';
 import type { VoiceEngineAdapter } from '@naaradh/engines-core';
+import { BolnaAdapter, type BolnaVoice } from '@naaradh/engine-bolna';
+import { OmnidimAdapter } from '@naaradh/engine-omnidim';
 import { RetellAdapter } from '@naaradh/engine-retell';
 import { SimulatorAdapter, type SimulatorOptions } from '@naaradh/engine-simulator';
 
@@ -9,9 +11,29 @@ import { SimulatorAdapter, type SimulatorOptions } from '@naaradh/engine-simulat
  * env schema here, and a case in `createAdapter`. Nothing else in the repo changes — that is
  * the whole point of invariant 13.
  *
- * India primary/secondary are undecided until ADR-0001. Retell (US/UK/EU, P6-ENG-1) exists and
- * is chosen with ENGINE_DEFAULT_US=retell once the account is live.
+ * All three vendor adapters exist, each written from the vendor's published API and not yet
+ * run against a real account ([VERIFY] throughout; go-live 03 and 10). WHICH Indian engine is
+ * primary is still ADR-0001's decision — the bake-off now runs through these adapters:
+ * `ENGINE_DEFAULT_IN=bolna|omnidim`. Retell serves US/UK/EU (`ENGINE_DEFAULT_US=retell`).
  */
+
+/** `{"hi-IN": …}` style JSON env values. */
+const jsonObject = <T>(name: string) =>
+  z
+    .string()
+    .optional()
+    .transform((v, ctx) => {
+      if (v === undefined || v.trim() === '') return undefined;
+      try {
+        const parsed = JSON.parse(v) as unknown;
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed))
+          return parsed as Record<string, T>;
+      } catch {
+        // fall through
+      }
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `${name} must be a JSON object` });
+      return z.NEVER;
+    });
 
 export const KNOWN_VENDORS = ['simulator', 'bolna', 'omnidim', 'retell'] as const;
 export type Vendor = (typeof KNOWN_VENDORS)[number];
@@ -37,27 +59,39 @@ export const engineEnv = {
   OMNIDIM_API_KEY: z.string().optional(),
   RETELL_API_KEY: z.string().optional(),
   /** Voice per locale for Retell agents, JSON: {"en-US":"11labs-Adrian"}. [VERIFY] ids. */
-  RETELL_VOICES: z
-    .string()
-    .optional()
-    .transform((v, ctx) => {
-      if (v === undefined || v.trim() === '') return undefined;
-      try {
-        const parsed = JSON.parse(v) as unknown;
-        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed))
-          return parsed as Record<string, string>;
-      } catch {
-        // fall through
-      }
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'RETELL_VOICES must be a JSON object' });
-      return z.NEVER;
-    }),
+  RETELL_VOICES: jsonObject<string>('RETELL_VOICES'),
   RETELL_MODEL: z.string().optional(),
+  /**
+   * The bearer Bolna presents when its agent calls one of our tools or asks who is calling
+   * (Bolna signs nothing). ≥ 32 random characters; unset → Bolna agents get no tools.
+   */
+  BOLNA_TOOL_TOKEN: z.string().min(32).optional(),
+  /** Inbound on Bolna stays off until it has been seen working on a real call (Q-34). */
+  BOLNA_INBOUND: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  /** The telephony account connected to Bolna, which the numbers belong to. */
+  BOLNA_TELEPHONY_PROVIDER: z.enum(['plivo', 'exotel', 'twilio', 'vobiz', 'sip-trunk']).optional(),
+  /** `provider/model` of the LLM behind Bolna agents, e.g. `openai/gpt-4.1-mini`. */
+  BOLNA_LLM: z
+    .string()
+    .regex(/^[a-z0-9-]+\/.+$/)
+    .optional(),
+  /** Voice per locale, JSON: {"hi-IN":{"provider":"sarvam","voice":"…","voice_id":"…","model":"bulbul:v3","language":"hi"}}. */
+  BOLNA_VOICES: jsonObject<BolnaVoice>('BOLNA_VOICES'),
+  /** Voice per locale, JSON: {"hi-IN":{"provider":"sarvam","voice_id":"…"}}. */
+  OMNIDIM_VOICES: jsonObject<{ provider: string; voice_id: string }>('OMNIDIM_VOICES'),
+  OMNIDIM_MODEL: z.string().optional(),
 };
 
 /** SIMULATOR_ALLOWED is optional for callers that build the env by hand (tests, registries). */
-export type EngineEnv = Omit<z.infer<z.ZodObject<typeof engineEnv>>, 'SIMULATOR_ALLOWED'> & {
+export type EngineEnv = Omit<
+  z.infer<z.ZodObject<typeof engineEnv>>,
+  'SIMULATOR_ALLOWED' | 'BOLNA_INBOUND'
+> & {
   readonly SIMULATOR_ALLOWED?: boolean;
+  readonly BOLNA_INBOUND?: boolean;
 };
 
 /**
@@ -73,25 +107,23 @@ export function refineEngineEnv(env: EngineEnv & { NODE_ENV: string }, ctx: z.Re
     env.ENGINE_SECONDARY_IN,
     env.ENGINE_SECONDARY_US,
   ];
-  // Any environment: an engine with no adapter yet fails at boot, not inside the dispatcher's
-  // gate transaction on the first call (where it would also strand a concurrency lease).
-  for (const [i, v] of configured.entries())
-    if (v !== undefined && (NOT_IMPLEMENTED as readonly string[]).includes(v))
+  // Any environment: an engine chosen without its credentials fails at boot, not on a call.
+  for (const [vendor, key] of [
+    ['retell', 'RETELL_API_KEY'],
+    ['bolna', 'BOLNA_API_KEY'],
+    ['omnidim', 'OMNIDIM_API_KEY'],
+  ] as const)
+    if (configured.includes(vendor) && (env[key] ?? '').length < 16)
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: [
-          ['ENGINE_DEFAULT_IN', 'ENGINE_DEFAULT_US', 'ENGINE_SECONDARY_IN', 'ENGINE_SECONDARY_US'][
-            i
-          ] ?? 'ENGINE_DEFAULT_IN',
-        ],
-        message: `${v} has no adapter yet (ADR-0001); add packages/engines/${v} first`,
+        path: [key],
+        message: `${vendor} is configured as an engine but ${key} is not set`,
       });
-  // Any environment: an engine chosen without its credentials fails at boot, not on a call.
-  if (configured.includes('retell') && (env.RETELL_API_KEY ?? '').length < 16)
+  if (env.BOLNA_INBOUND && env.BOLNA_TOOL_TOKEN === undefined)
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ['RETELL_API_KEY'],
-      message: 'retell is configured as an engine but RETELL_API_KEY is not set',
+      path: ['BOLNA_TOOL_TOKEN'],
+      message: 'BOLNA_INBOUND=true needs BOLNA_TOOL_TOKEN (it authenticates the caller lookup)',
     });
   if (env.NODE_ENV !== 'production') return;
   const usesSimulator = (
@@ -116,9 +148,6 @@ export function refineEngineEnv(env: EngineEnv & { NODE_ENV: string }, ctx: z.Re
       message: 'the shared development secret is not allowed in production',
     });
 }
-
-/** Vendors the env accepts by name but for which no adapter package exists yet. */
-const NOT_IMPLEMENTED = ['bolna', 'omnidim'] as const;
 
 export interface RegistryOptions {
   readonly env: EngineEnv;
@@ -162,15 +191,32 @@ export class EngineRegistry {
             ? {}
             : { model: this.options.env.RETELL_MODEL }),
         });
-      case 'bolna':
+      case 'bolna': {
+        const env = this.options.env;
+        const [provider, ...model] = (env.BOLNA_LLM ?? '').split('/');
+        return new BolnaAdapter({
+          apiKey: env.BOLNA_API_KEY ?? '',
+          toolToken: env.BOLNA_TOOL_TOKEN,
+          inboundEnabled: env.BOLNA_INBOUND ?? false,
+          ...(env.BOLNA_TELEPHONY_PROVIDER === undefined
+            ? {}
+            : { telephonyProvider: env.BOLNA_TELEPHONY_PROVIDER }),
+          ...(env.BOLNA_LLM === undefined || provider === undefined
+            ? {}
+            : { llm: { provider, model: model.join('/') } }),
+          ...(env.BOLNA_VOICES === undefined ? {} : { voices: env.BOLNA_VOICES }),
+        });
+      }
       case 'omnidim':
-        throw new NaaradhError(
-          'ENGINE_UNAVAILABLE',
-          `${vendor} adapter is not implemented — blocked on ADR-0001 (bake-off)`,
-          {
-            context: { vendor },
-          },
-        );
+        return new OmnidimAdapter({
+          apiKey: this.options.env.OMNIDIM_API_KEY ?? '',
+          ...(this.options.env.OMNIDIM_VOICES === undefined
+            ? {}
+            : { voices: this.options.env.OMNIDIM_VOICES }),
+          ...(this.options.env.OMNIDIM_MODEL === undefined
+            ? {}
+            : { model: this.options.env.OMNIDIM_MODEL }),
+        });
     }
   }
 }

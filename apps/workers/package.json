@@ -10,6 +10,7 @@
     "rotate:shopify-token-key": "node --import tsx src/maintenance/rotate-shopify-token-key.ts",
     "rotate:phone-enc-key": "node --import tsx src/maintenance/rotate-phone-enc-key.ts",
     "rotate:staff-enc-key": "node --import tsx src/maintenance/rotate-staff-enc-key.ts",
+    "inbound:attach": "node --env-file-if-exists=../../.env.local --import tsx src/maintenance/inbound-attach.ts",
     "dnc:load": "node --env-file-if-exists=../../.env.local --import tsx src/maintenance/dnc-load.ts",
     "lint": "eslint src test"
   },

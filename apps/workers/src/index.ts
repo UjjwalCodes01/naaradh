@@ -71,6 +71,16 @@ const secretsResolver =
       })
     : baseSecrets;
 
+/** Every configured engine — secondaries too — gets the same concurrency limit and spend caps. */
+const ENGINES = [
+  env.ENGINE_DEFAULT_IN,
+  env.ENGINE_DEFAULT_US,
+  env.ENGINE_SECONDARY_IN,
+  env.ENGINE_SECONDARY_US,
+].filter((e): e is NonNullable<typeof e> => e !== undefined);
+const perEngine = (value: number): Record<string, number> =>
+  Object.fromEntries(ENGINES.map((e) => [e, value]));
+
 const ctx: WorkerContext = {
   app: app.db,
   service: service.db,
@@ -90,21 +100,12 @@ const ctx: WorkerContext = {
       defaultUs: env.ENGINE_DEFAULT_US,
       secondaryIn: env.ENGINE_SECONDARY_IN ?? null,
       secondaryUs: env.ENGINE_SECONDARY_US ?? null,
-      maxConcurrency: {
-        [env.ENGINE_DEFAULT_IN]: env.ENGINE_MAX_CONCURRENCY,
-        [env.ENGINE_DEFAULT_US]: env.ENGINE_MAX_CONCURRENCY,
-      },
+      maxConcurrency: perEngine(env.ENGINE_MAX_CONCURRENCY),
     },
     dataRegion: env.DATA_REGION,
-    engineDailyCapPaise: {
-      [env.ENGINE_DEFAULT_IN]: env.ENGINE_DAILY_CAP_PAISE,
-      [env.ENGINE_DEFAULT_US]: env.ENGINE_DAILY_CAP_PAISE,
-    },
+    engineDailyCapPaise: perEngine(env.ENGINE_DAILY_CAP_PAISE),
     globalDailyCapPaise: env.GLOBAL_DAILY_CAP_PAISE,
-    engineDailyCapUsdCents: {
-      [env.ENGINE_DEFAULT_IN]: env.ENGINE_DAILY_CAP_USD_CENTS,
-      [env.ENGINE_DEFAULT_US]: env.ENGINE_DAILY_CAP_USD_CENTS,
-    },
+    engineDailyCapUsdCents: perEngine(env.ENGINE_DAILY_CAP_USD_CENTS),
     globalDailyCapUsdCents: env.GLOBAL_DAILY_CAP_USD_CENTS,
   },
   // P6-CMP-1: US/UK recipients are screened against the loaded registries; everything else
@@ -140,9 +141,17 @@ const ctx: WorkerContext = {
       : createStripeClient({ secretKey: env.STRIPE_SECRET_KEY }),
   shopify:
     (env.SHOPIFY_WRITEBACK ?? (env.NODE_ENV === 'production' ? 'live' : 'recording')) === 'live'
-      ? shopifyWriteback({ secrets: secretsResolver, apiVersion: env.SHOPIFY_ADMIN_API_VERSION })
+      ? shopifyWriteback({
+          secrets: secretsResolver,
+          apiVersion: env.SHOPIFY_ADMIN_API_VERSION,
+          flowTrigger: env.SHOPIFY_FLOW_TRIGGER,
+          onFlowTriggerError: (error) => {
+            log.warn({ err: error }, 'shopify flow trigger failed (write-back unaffected)');
+          },
+        })
       : recordingWriteback(),
   dataRegion: env.DATA_REGION,
+  dndRegistryRegions: env.DND_REGISTRY_REGIONS,
   secrets: secretsResolver,
   // ADR-0011: appointment calendars. A cancellation decided on a call reaches the provider
   // through the reconcile tick; without credentials the registry simply refuses.

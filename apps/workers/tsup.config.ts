@@ -9,6 +9,7 @@ export default defineConfig({
     'rotate-phone-enc-key': 'src/maintenance/rotate-phone-enc-key.ts',
     'rotate-staff-enc-key': 'src/maintenance/rotate-staff-enc-key.ts',
     'dnc-load': 'src/maintenance/dnc-load.ts',
+    'inbound-attach': 'src/maintenance/inbound-attach.ts',
   },
   format: ['esm'],
   target: 'node22',

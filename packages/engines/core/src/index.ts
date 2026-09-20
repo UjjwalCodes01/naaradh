@@ -193,6 +193,16 @@ export type EndReason =
   | 'carrier_temp_fail'
   | 'engine_error';
 
+/** What the vendor's own record says the call produced — everything `call.ended` carries. */
+export interface EndedResult {
+  readonly humanSpeechSec: number | null;
+  readonly recordingUrl: string | null;
+  readonly transcript: readonly Turn[] | null;
+  readonly extracted: Readonly<Record<string, unknown>> | null;
+  readonly detectedLocale: string | null;
+  readonly vendorCost: { readonly minor: number; readonly currency: string } | null;
+}
+
 export interface EngineCallSnapshot {
   readonly ref: EngineCallRef;
   readonly status: 'queued' | 'ringing' | 'in_progress' | 'ended' | 'failed' | 'not_found';
@@ -202,6 +212,45 @@ export interface EngineCallSnapshot {
   readonly endReason: EndReason | null;
   readonly startedAt: Date | null;
   readonly endedAt: Date | null;
+  /** Our attempt id, when the vendor's record echoes the metadata we sent. */
+  readonly attemptId?: string | null;
+  /**
+   * The outcome, transcript, recording and cost as fetched from the vendor's API. Present once
+   * the call has ended AND the vendor has finished its post-processing; null while it has not
+   * (ask again). For an unsigned vendor this — never the webhook body — is what outcomes and
+   * billing are written from (invariant 9, E-23), and it is what lets a call whose webhook
+   * never arrived still produce its real outcome (E-21).
+   */
+  readonly result?: EndedResult | null;
+}
+
+/**
+ * The `call.ended` event a fetched snapshot stands for. Used where the vendor's API, not a
+ * webhook, is the source: unsigned webhooks (E-23) and reconciliation (E-21).
+ */
+export function endedFromSnapshot(
+  snap: EngineCallSnapshot,
+  base: { readonly eventId: string; readonly attemptId: string | null; readonly at: Date },
+): Extract<EngineEvent, { type: 'call.ended' }> {
+  const r = snap.result ?? null;
+  return {
+    type: 'call.ended',
+    eventId: base.eventId,
+    ref: snap.ref,
+    at: snap.endedAt ?? base.at,
+    sequence: null,
+    attemptId: base.attemptId,
+    reason: snap.endReason ?? 'completed',
+    answeredBy: snap.answeredBy ?? 'unknown',
+    durationSec: snap.durationSec ?? 0,
+    billableSec: snap.billableSec,
+    humanSpeechSec: r?.humanSpeechSec ?? null,
+    recordingUrl: r?.recordingUrl ?? null,
+    transcript: r?.transcript ?? null,
+    extracted: r?.extracted ?? null,
+    detectedLocale: r?.detectedLocale ?? null,
+    vendorCost: r?.vendorCost ?? null,
+  };
 }
 
 export interface HealthStatus {
@@ -225,12 +274,32 @@ export interface EngineCapabilities {
   readonly signedWebhooks: boolean;
   /** Whether call.ended carries the disclosure timestamps, or the adapter must infer them. */
   readonly reportsDisclosure: boolean;
+  /**
+   * Whether the vendor reports a call while it is live (ringing, answered). False = one event
+   * when the call is over: the attempt goes straight from DIALING to its terminal state, and
+   * the reconcile poller is what notices a call whose only event was lost (E-21).
+   */
+  readonly progressEvents: boolean;
+  /**
+   * Whether `findCallByIdempotencyKey` can actually find a call. False = the vendor echoes our
+   * ids only on its post-call webhook: after an uncertain dispatch the reconciler waits out the
+   * longest possible call for that webhook before it concludes no call exists and re-dials —
+   * two minutes of silence proves nothing for such a vendor (invariant 10).
+   */
+  readonly callLookup: boolean;
 }
 
 export interface VoiceEngineAdapter {
   readonly vendor: string;
 
   capabilities(): EngineCapabilities;
+
+  /**
+   * Headers needed to download a recording from `url`, for vendors whose recording links sit
+   * behind their API key. MUST return `{}` for any host that is not the vendor's own, so a
+   * crafted URL in a webhook can never be sent our credentials.
+   */
+  recordingRequestHeaders?(url: string): Readonly<Record<string, string>>;
 
   createAgent(spec: AgentSpec): Promise<EngineAgentRef>;
   updateAgent(ref: EngineAgentRef, spec: AgentSpec): Promise<void>;
@@ -246,8 +315,11 @@ export interface VoiceEngineAdapter {
   /** Only present when `capabilities().cancel` is true (E-40). */
   cancelCall?(ref: EngineCallRef): Promise<void>;
 
-  /** Point a number we own at our inbound-context endpoint (provisioning, not per call). */
-  attachInboundNumber?(e164: string, inboundUrl: string): Promise<void>;
+  /**
+   * Point a number we own at our inbound-context endpoint (provisioning, not per call). Engines
+   * that answer with a fixed agent per number create that agent here and return it.
+   */
+  attachInboundNumber?(input: InboundAttachment): Promise<EngineAgentRef | null>;
 
   // --- Inbound + mid-call tools (ADR-0006). The adapter TRANSLATES; apps/voice DECIDES. ---
 
@@ -258,6 +330,7 @@ export interface VoiceEngineAdapter {
   parseInboundRequest(
     headers: Readonly<Record<string, string | undefined>>,
     rawBody: Buffer,
+    http?: EngineHttpRequestInfo,
   ): InboundCallRequest;
 
   /** Our decision (answer / forward / closed message) in the vendor's response format. */
@@ -267,6 +340,7 @@ export interface VoiceEngineAdapter {
   parseToolCall(
     headers: Readonly<Record<string, string | undefined>>,
     rawBody: Buffer,
+    http?: EngineHttpRequestInfo,
   ): ToolCallRequest;
 
   /** A tool result (and any call action it carries, e.g. transfer) in the vendor's format. */
@@ -276,8 +350,15 @@ export interface VoiceEngineAdapter {
    * Normalises a vendor webhook. MUST verify the signature and throw SignatureInvalidError
    * when it does not match; for unsigned vendors (`signedWebhooks: false`) the caller
    * re-fetches with `fetchCall` before writing any outcome or billing row (E-23).
+   *
+   * Returns null for a verified delivery that says nothing we track (a vendor that posts on
+   * every internal status change, or an event type we do not use): it is acknowledged, never
+   * answered with an error the vendor would retry.
    */
-  parseWebhook(headers: Readonly<Record<string, string | undefined>>, rawBody: Buffer): EngineEvent;
+  parseWebhook(
+    headers: Readonly<Record<string, string | undefined>>,
+    rawBody: Buffer,
+  ): EngineEvent | null;
 
   /** Source of truth after an uncertain dispatch or a missing webhook (E-21). */
   fetchCall(ref: EngineCallRef): Promise<EngineCallSnapshot>;
@@ -293,6 +374,31 @@ export interface VoiceEngineAdapter {
 // ---------------------------------------------------------------------------
 // Inbound + tool types (ADR-0006)
 // ---------------------------------------------------------------------------
+
+/**
+ * The request line, for vendors that put what we need in the URL instead of the body (a GET
+ * with query parameters, or a tool whose name exists only in the path we gave the vendor).
+ */
+export interface EngineHttpRequestInfo {
+  readonly method: string;
+  /** Path without the query string, e.g. `/tools/bolna/ten_x.tag/lookup_orders`. */
+  readonly path: string;
+  readonly query: Readonly<Record<string, string>>;
+  /**
+   * OUR number, when the URL carries one we bound into it at provisioning and the route has
+   * verified its tag. For vendors whose per-call request names the caller but not the number
+   * that was dialled (invariant 16: the tenant comes only from the called number).
+   */
+  readonly boundCalledE164?: string;
+}
+
+export interface InboundAttachment {
+  readonly e164: string;
+  /** Our inbound-context URL for this number (apps/voice builds and signs it). */
+  readonly inboundUrl: string;
+  /** Tenant-bound tools, events URL, voice, locale and limits for the number's agent. */
+  readonly agent: AgentSpec;
+}
 
 export interface InboundCallRequest {
   readonly vendor: string;

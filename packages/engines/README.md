@@ -9,10 +9,10 @@
 | `omnidim` | India candidate (direct API, not OmniRelay) | after ADR-0001 |
 | `retell` | US/EU | P6-ENG-1 |
 
-One vendor package exists: `retell` (US/EU, Phase 6 — built from the published API, `[VERIFY]`
-against recorded payloads). No Indian vendor package exists yet, deliberately: the India engine
-is undecided until the Phase 0 bake-off produces **ADR-0001** (P0-ENG-6). Picking one now would
-be guessing at the answer to the question the bake-off exists to settle.
+Three vendor packages exist — `bolna` and `omnidim` (India), `retell` (US/EU) — each built from
+the vendor's published API and marked `[VERIFY]` until recorded payloads replace the stand-in
+fixtures (docs/go-live/03, 10). Which Indian engine is primary remains **ADR-0001**'s decision
+(P0-ENG-6); having both adapters lets the bake-off run through Naaradh itself.
 
 Each vendor package ships `client.ts`, `map-events.ts`, `map-errors.ts`, `fixtures/*.json`
 (sanitised recorded payloads — fake numbers only) and `contract.test.ts`.

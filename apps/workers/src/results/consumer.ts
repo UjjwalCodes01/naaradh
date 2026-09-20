@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm';
 import { schema, withTenant, type Tx } from '@naaradh/db';
-import type { EngineEvent } from '@naaradh/engines-core';
+import { endedFromSnapshot, type EngineEvent } from '@naaradh/engines-core';
 import { audit } from '@naaradh/pipeline';
 import type { EventMessage } from '../bus.js';
 import type { WorkerContext } from '../context.js';
@@ -31,33 +31,78 @@ export async function handleEngineEvent(ctx: WorkerContext, message: EventMessag
   if (event === null || event.tenantId === null) return;
   if (event.status === 'processed') return;
   const tenantId = event.tenantId;
-  const ev = reviveEvent(event.payload);
-  if (ev === null) {
+  const claimed = reviveEvent(event.payload);
+  if (claimed === null) {
     await markWebhookProcessed(ctx.service, event.id, 'unparseable_event');
     return;
   }
 
   try {
     const note = await withTenant(ctx.app, tenantId, async (tx) => {
-      const attempt = await findAttempt(tx, tenantId, ev);
+      const attempt = await findAttempt(tx, tenantId, claimed);
       if (attempt === null)
         throw new Error(
-          `attempt not found for ${ev.ref.vendor}/${ev.ref.callId} (attempt ${ev.attemptId ?? '-'})`,
+          `attempt not found for ${claimed.ref.vendor}/${claimed.ref.callId} (attempt ${claimed.attemptId ?? '-'})`,
         );
 
-      // E-23: unsigned vendor → the payload is a hint; confirm against the vendor's API.
-      if (!event.signatureValid && ev.type === 'call.ended') {
-        const snap = await ctx.registry.get(attempt.engine).fetchCall(ev.ref);
-        if (snap.status !== 'ended' || snap.endReason !== ev.reason) {
+      // E-23: unsigned vendor → the payload is a hint. What is written comes from the vendor's
+      // API: the fetched record replaces the claimed one wherever the adapter can fetch it.
+      let ev: EngineEvent = claimed;
+      if (
+        !event.signatureValid &&
+        (claimed.type === 'call.ended' || claimed.type === 'call.failed')
+      ) {
+        const snap = await ctx.registry.get(attempt.engine).fetchCall(claimed.ref);
+        const mismatch = async (why: string): Promise<string> => {
           await audit(tx, {
             tenantId,
             actorType: 'worker',
             action: 'results.unsigned_mismatch',
             targetType: 'call_attempt',
             targetId: attempt.id,
-            after: { claimed: ev.reason, fetched: snap.endReason, status: snap.status },
+            after: {
+              why,
+              claimed: claimed.type === 'call.ended' ? claimed.reason : claimed.code,
+              fetched: snap.endReason,
+              status: snap.status,
+            },
           });
+          ctx.log.warn(
+            { attempt_id: attempt.id, engine: attempt.engine, why },
+            'unsigned engine event contradicted by the fetched record',
+          );
           return 'unsigned_mismatch_ignored';
+        };
+        // A body cannot point another call's result at this attempt: the call id must be the
+        // one the dispatcher recorded, and the vendor's record (where it names the attempt) must
+        // name this one.
+        if (attempt.engineCallId !== null && attempt.engineCallId !== claimed.ref.callId)
+          return mismatch('call_id');
+        if (
+          snap.attemptId !== undefined &&
+          snap.attemptId !== null &&
+          snap.attemptId !== attempt.id
+        )
+          return mismatch('attempt');
+        if (snap.status === 'not_found') return mismatch('not_found');
+        if (snap.result !== undefined) {
+          if (snap.status === 'ended') {
+            // Ended, but the vendor is still writing the transcript/extraction: the reconcile
+            // poller finishes it from the same record (E-21) rather than recording blanks now.
+            if (snap.result === null) return 'unsigned_not_final';
+            ev = endedFromSnapshot(snap, {
+              eventId: claimed.eventId,
+              attemptId: attempt.id,
+              at: claimed.at,
+            });
+          } else if (snap.status !== 'failed' || claimed.type !== 'call.failed') {
+            return snap.status === 'failed' ? mismatch('status') : 'unsigned_not_final';
+          }
+        } else if (
+          claimed.type === 'call.ended' &&
+          (snap.status !== 'ended' || snap.endReason !== claimed.reason)
+        ) {
+          return mismatch('reason');
         }
       }
 

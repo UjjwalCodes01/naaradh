@@ -519,6 +519,24 @@ module "monitoring" {
       severity = "WARNING"
       runbook  = "billing-postings.md"
     }
+    dnc_registry_stale = {
+      match    = "dnc registry missing or stale"
+      summary  = "A national do-not-call list is missing, stale or about to expire: marketing calls there are refused"
+      severity = "WARNING"
+      runbook  = "dnc-registry.md"
+    }
+    unsigned_mismatch = {
+      match    = "unsigned engine event contradicted by the fetched record"
+      summary  = "An unsigned engine webhook did not match the vendor's own record (forged or mis-mapped)"
+      severity = "WARNING"
+      runbook  = "stuck-attempts.md"
+    }
+    region_directory_push_failed = {
+      match    = "directory push"
+      summary  = "Region directory could not be pushed to a peer (stale routing of Shopify webhooks)"
+      severity = "WARNING"
+      runbook  = "region-directory.md"
+    }
     gross_margin_low = {
       match    = "gross margin below 40%"
       summary  = "Tenant gross margin below 40% (E-33)"

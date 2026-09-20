@@ -32,6 +32,8 @@ export interface FakeShopify {
   readonly failures: ('429' | '503' | 'throttled' | '401' | 'network')[];
   /** Operation name → userError message to return from that mutation (persistent until deleted). */
   readonly userErrors: Map<string, string>;
+  /** Shopify Flow triggers fired (P2-SHOP-7). */
+  readonly flowTriggers: { handle: unknown; payload: unknown }[];
   /** Tokens accepted; anything else gets 401. */
   readonly tokens: Set<string>;
   readonly subscriptions: Map<string, FakeSubscription>;
@@ -62,6 +64,7 @@ export function fakeShopify(
     calls: [],
     failures: [],
     userErrors: new Map(),
+    flowTriggers: [],
     tokens: new Set([options.token ?? 'shpat_test']),
     lastRequest: null,
     subscriptions: new Map(),
@@ -137,6 +140,9 @@ export function fakeShopify(
           }
           return json(200, { data: { metafieldsSet: { metafields: [], userErrors: errors } } });
         }
+        case 'NaaradhFlowTrigger':
+          state.flowTriggers.push({ handle: v['handle'], payload: v['payload'] });
+          return json(200, { data: { flowTriggerReceive: { userErrors: errors } } });
         case 'NaaradhOrderState': {
           const o = order(v['id']);
           return json(200, {

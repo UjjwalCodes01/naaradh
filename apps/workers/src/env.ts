@@ -90,6 +90,11 @@ export const workersEnvSchema = z
      * production and recording everywhere else — dev and CI never write to a real store.
      */
     SHOPIFY_WRITEBACK: z.enum(['live', 'recording']).optional(),
+    /** Fire the Flow trigger after a write-back (P2-SHOP-7); on once its extension is deployed. */
+    SHOPIFY_FLOW_TRIGGER: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
     /** Razorpay (direct Indian merchants, P2-BILL-3). Unset → Razorpay postings wait. */
     RAZORPAY_KEY_ID: z.string().optional(),
     RAZORPAY_KEY_SECRET: z.string().optional(),

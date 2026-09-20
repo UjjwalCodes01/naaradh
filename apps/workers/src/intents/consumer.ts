@@ -24,7 +24,7 @@ import {
   reverseAttribution,
   upsertOrder,
 } from '@naaradh/pipeline';
-import { addDays, newId } from '@naaradh/shared';
+import { addDays, isValidZone, newId } from '@naaradh/shared';
 import { ERASURE_COMPLETION_TARGET_DAYS } from '@naaradh/compliance';
 import { notifyApproachingCap, syncShopifySubscription } from '../billing/index.js';
 import type { EventMessage } from '../bus.js';
@@ -114,6 +114,8 @@ export async function handleShopifyEvent(ctx: WorkerContext, message: EventMessa
           return handleCustomerRedact(ctx, tx, tenantId, event.topic, event.payload, now);
         case 'shop/redact':
           return handleShopRedact(tx, tenantId, event.externalAccount, now);
+        case 'shop/update':
+          return handleShopUpdate(tx, tenantId, event.payload);
         default:
           return `ignored:${event.topic}`;
       }
@@ -516,6 +518,33 @@ async function handleOrderUpdated(
 }
 
 /** E-48: stop dispatch within 60 s, schedule the purge for shop/redact (48 h). */
+/**
+ * `shop/update`: the store's own time zone changed. Summaries, the dashboard and appointment
+ * reminders follow the merchant's zone (calling windows never do — they follow the RECIPIENT,
+ * invariant 2). Nothing else from the shop object is used or stored.
+ */
+async function handleShopUpdate(tx: Tx, tenantId: string, payload: unknown): Promise<string> {
+  const zone = (payload as { iana_timezone?: unknown } | null)?.iana_timezone;
+  if (typeof zone !== 'string' || !isValidZone(zone)) return 'shop_update:no_timezone';
+  const [tenant] = await tx
+    .select({ timezone: schema.tenants.timezone })
+    .from(schema.tenants)
+    .where(eq(schema.tenants.id, tenantId))
+    .limit(1);
+  if (tenant === undefined || tenant.timezone === zone) return 'shop_update:unchanged';
+  await tx.update(schema.tenants).set({ timezone: zone }).where(eq(schema.tenants.id, tenantId));
+  await audit(tx, {
+    tenantId,
+    actorType: 'shopify',
+    action: 'tenant.timezone_changed',
+    targetType: 'tenant',
+    targetId: tenantId,
+    before: { timezone: tenant.timezone },
+    after: { timezone: zone },
+  });
+  return `shop_update:timezone`;
+}
+
 async function handleUninstalled(
   ctx: WorkerContext,
   tx: Tx,

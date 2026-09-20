@@ -157,6 +157,33 @@ export function verifyVoiceToolTag(key: string, vendor: string, tenantTag: strin
 }
 
 // ---------------------------------------------------------------------------
+// Inbound lookups from engines that tell us who is calling but not which number was dialled:
+//   https://voice.naaradh.com/inbound/<vendor>?called=<our E.164>&tag=<hmac>
+// We build this URL when a number is attached to the engine, so the called number — the only
+// source of the tenant (invariant 16) — is ours and cannot be swapped by whoever calls the URL.
+// A separate tag domain ('inbound:'), so no other signed URL can be replayed here.
+// ---------------------------------------------------------------------------
+
+export function inboundLookupPath(key: string, vendor: string, e164: string): string {
+  const tag = engineWebhookTag(key, `inbound:${vendor}`, e164);
+  return `/inbound/${vendor}?called=${encodeURIComponent(e164)}&tag=${tag}`;
+}
+
+/** The bound number when `called` + `tag` verify; null otherwise. */
+export function verifyInboundLookup(
+  key: string,
+  vendor: string,
+  called: string | undefined,
+  tag: string | undefined,
+): string | null {
+  if (called === undefined || tag === undefined || tag.length !== 32) return null;
+  // A `+` in a query string decodes to a space.
+  const e164 = called.trim().replace(/^(?=\d)/, '+');
+  if (!/^\+[1-9]\d{7,14}$/.test(e164)) return null;
+  return timingSafeEqualString(engineWebhookTag(key, `inbound:${vendor}`, e164), tag) ? e164 : null;
+}
+
+// ---------------------------------------------------------------------------
 // Region directory snapshots (ADR-0012 amendment 1): Ed25519, one key pair per region.
 //   X-Naaradh-Region:    the sender's region
 //   X-Naaradh-Signature: t=<unix>,sig=<base64url(ed25519(t + '.' + body))>
