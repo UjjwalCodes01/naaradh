@@ -323,7 +323,7 @@ Everything above has a compliance regression test in `compliance/test/regression
 
 ## 12. Testing and CI gates
 
-CI on every PR: `lint`, `lint:pii`, `typecheck`, `test` (unit), `test:int` (Testcontainers), `test:compliance` (regression), `test:contracts` (engine adapters), `gitleaks`, `trivy` (containers), `terraform validate/plan` (read-only), Shopify GraphQL codegen check (no drift), OpenAPI drift check.
+CI on every PR: `lint`, `lint:pii`, `lint:context`, `typecheck`, `test` (unit), `test:int` (Testcontainers), `test:compliance` (regression), `test:contracts` (engine adapters), `gitleaks`, `trivy` (containers), `terraform validate/plan` (read-only), Shopify GraphQL codegen check (no drift), OpenAPI drift check.
 
 Required new tests by area:
 - Compliance: one positive + one negative per gate touched; boundary tests at 08:59/09:00/20:59/21:00 IST and at `event_ts + 29m59s` / `+30m01s`.

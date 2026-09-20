@@ -52,6 +52,7 @@ opts them into `UPDATE`/`DELETE`. See [db/README.md](db/README.md).
 | `pnpm typecheck` | `tsc --noEmit`, strict + `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` | yes |
 | `pnpm lint` | typescript-eslint strict type-checked + Naaradh rules (below) | yes |
 | `pnpm lint:pii` | Repo-wide scan for raw phone numbers in **every** text file (JSON, SQL, CSV, MD…). Prints matches masked. | yes |
+| `pnpm lint:context` | Every import reachable from a deployed service survives `.dockerignore` — fails in seconds what an image build would fail in twenty minutes | yes |
 | `pnpm env:check` | Every service could boot from what `infra/` provides it, and `.env.example` matches the schemas | yes (in `pnpm test`) |
 | `pnpm env:list <service\|vercel>` | Which variables one surface needs and where each value comes from — read from its own zod schema and the key-holder map | — |
 | `pnpm test` | Unit | yes |

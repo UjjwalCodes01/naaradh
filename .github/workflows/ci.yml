@@ -32,6 +32,10 @@ jobs:
       - run: pnpm lint
       - name: lint:pii (invariant 8 — no raw phone numbers in committed text)
         run: pnpm lint:pii
+      # Fails in seconds what the image jobs below would otherwise fail in twenty minutes:
+      # a service importing a file .dockerignore keeps out of the build context.
+      - name: lint:context (every import of a deployed service reaches the image)
+        run: pnpm lint:context
       - run: pnpm format:check
       - run: pnpm test
       - run: pnpm build

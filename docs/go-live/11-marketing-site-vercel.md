@@ -27,6 +27,12 @@ The repo is a pnpm workspace, so `web` builds its workspace dependencies
 (`@naaradh/pipeline` for the plan catalogue and the legal content, `@naaradh/shared`) from
 source. Nothing else in the monorepo is built.
 
+**Root directory is a project setting, not a file in the repo**, so moving the app in git does
+not move it: a project created while the dashboard lived at `apps/web` keeps pointing there and
+every deploy fails with "The specified Root Directory does not exist" until the setting is
+changed (Project → Settings → Build and Deployment → Root Directory). Nothing in CI can catch
+that — the Vercel check simply goes red on a commit whose code is fine.
+
 ## 2. Environment variables
 
 Project → Settings → Environment Variables. Two, for **Production and Preview** both

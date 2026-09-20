@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "lint:pii": "node scripts/lint-pii.mjs",
+    "lint:context": "node scripts/check-docker-context.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",

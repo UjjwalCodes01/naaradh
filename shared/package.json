@@ -6,6 +6,7 @@
   "comment": "Source-only workspace package: exports point at TypeScript. Consumers run it through tsx in dev and bundle it with tsup (noExternal) for production, so there is no build step and no dist to go stale.",
   "exports": {
     ".": "./src/index.ts",
+    "./fake-phones": "./src/fake-phones.ts",
     "./test/fake-phones": "./test/fake-phones.ts"
   },
   "dependencies": {

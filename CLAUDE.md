@@ -100,7 +100,7 @@ calendar/      # appointment providers (Cal.com) behind one port
 # not application code
 infra/         # terraform modules, env tfvars, cloud armor policies
 docs/          # NAARADH_BUILD_SPEC.md, decisions/, runbooks/, go-live/, legal/
-scripts/       # repo tooling run by hand: env:local, keys:dev, lint:pii
+scripts/       # repo tooling run by hand: env:local, keys:dev, lint:pii, lint:context
 tools/         # the custom eslint rules that enforce the invariants above
 plugins/       # WooCommerce plugin (PHP, GPL)
 docker/        # local Postgres init (roles, extensions)
@@ -124,6 +124,7 @@ pnpm test:int                  # testcontainers integration
 pnpm test:compliance           # compliance regression suite (must pass before any merge)
 pnpm test:contracts            # engine adapter contract tests (recorded payloads)
 pnpm lint && pnpm typecheck    # eslint + tsc --noEmit
+pnpm lint:context              # no service imports a path .dockerignore keeps out of its image
 pnpm env:check                 # every service can boot from infra/; templates match the schemas
 pnpm env:list <service|vercel> # which env vars one surface needs, and where each value comes from
 pnpm build                     # turbo build

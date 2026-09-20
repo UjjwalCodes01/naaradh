@@ -37,7 +37,7 @@ something, it is one folder deep.
 |---|---|
 | `docs/` | The spec, decisions (`docs/decisions/`), runbooks for when something breaks (`docs/runbooks/`), and the go-live guides (`docs/go-live/`) |
 | `infra/` | Terraform: the cloud setup. `infra/envs/*.tfvars` is one file per environment |
-| `scripts/` | Repo tooling you run by hand: `pnpm env:local`, `pnpm keys:dev`, `pnpm lint:pii` |
+| `scripts/` | Repo tooling you run by hand: `pnpm env:local`, `pnpm keys:dev`, `pnpm lint:pii`, `pnpm lint:context` |
 | `tools/` | The custom lint rules that enforce the invariants in CLAUDE.md |
 | `plugins/` | The WooCommerce plugin (PHP) |
 | `docker/` | Local Postgres setup for development |

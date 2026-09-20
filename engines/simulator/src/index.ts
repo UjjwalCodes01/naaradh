@@ -1,6 +1,6 @@
 import { createHmac, randomBytes } from 'node:crypto';
 import { SignatureInvalidError, sha256Hex, timingSafeEqualString } from '@naaradh/shared';
-import { assertFakePhone } from '@naaradh/shared/test/fake-phones';
+import { assertFakePhone } from '@naaradh/shared/fake-phones';
 import {
   EngineDispatchUncertain,
   EngineRateLimited,

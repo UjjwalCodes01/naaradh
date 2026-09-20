@@ -1,6 +1,11 @@
 # Build context for {api,hooks,voice,workers,console,web,shopify}/Dockerfile (context = repo root).
 # Everything here is either rebuilt inside the image, irrelevant to it, or must never reach a
 # registry (secrets, customer data — CLAUDE.md invariant 8, AGENTS.md §11).
+#
+# `pnpm lint:context` (scripts/check-docker-context.mjs) walks every deployed service's imports
+# against these rules, so dropping a path a service needs fails CI in seconds instead of in the
+# image build. The patterns are Docker's, anchored at the context root: `tools` means the root
+# tools/ only, `**/test` means every test/ at any depth.
 
 # VCS, editors, local tooling
 .git

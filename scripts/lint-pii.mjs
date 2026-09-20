@@ -38,6 +38,8 @@ const SKIP_DIRS = new Set([
   '.git',
   'dist',
   'build',
+  '.next',
+  '.react-router',
   '.turbo',
   'coverage',
   '.shopify',
