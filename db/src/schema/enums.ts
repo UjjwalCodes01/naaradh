@@ -341,6 +341,9 @@ export const webhookSource = pgEnum('webhook_source', [
   'shiprocket',
   'razorpay_magic',
   'cashfree',
+  /** CRM lead webhooks (P5-CRM-1/2): a workflow in the merchant's CRM posts a new lead. */
+  'zoho',
+  'hubspot',
 ]);
 
 export const webhookEventStatus = pgEnum('webhook_event_status', [

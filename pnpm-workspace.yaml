@@ -22,6 +22,8 @@ packages:
   - 'calendar' # appointment providers (Cal.com)
   - 'notify' # transactional email
   - 'payments' # Razorpay and Stripe clients
+  - 'occ' # one-click-checkout providers (GoKwik, Shiprocket, Razorpay Magic, Cashfree)
+  - 'crm' # CRM lead sources (Zoho, HubSpot)
 
   # --- not TypeScript ----------------------------------------------------------------------
   - 'plugins/*' # the WooCommerce plugin (PHP)

@@ -5,6 +5,8 @@ import { fastifyLoggerOptions, trustProxyOf } from '@naaradh/shared';
 import type { EngineRegistry } from '@naaradh/engines-registry';
 import type { Publisher } from './pubsub.js';
 import { registerEngineRoutes } from './routes/engine.js';
+import { registerCrmRoutes } from './routes/crm.js';
+import { registerOccRoutes } from './routes/occ.js';
 import { registerRazorpayRoutes } from './routes/razorpay.js';
 import { registerStripeRoutes } from './routes/stripe.js';
 import { registerRegionRoutes, type RegionDeps } from './routes/region.js';
@@ -27,9 +29,14 @@ export interface HooksDeps {
   readonly engineWebhookKey: string;
   /** Null → the Razorpay route answers 404 (not configured in this environment). */
   readonly razorpayWebhookSecret?: string | null;
+  /**
+   * Mints and verifies the per-tenant one-click-checkout URLs (E-14). Null → every /occ route
+   * answers 404, which is the state of any environment without a contracted OCC provider.
+   */
+  readonly providerWebhookKey?: string | null;
   /** Null → the Stripe route answers 404 (not configured in this environment). */
   readonly stripeWebhookSecret?: string | null;
-  /** Tests walk the clock past Stripe's replay window. */
+  /** Tests walk the clock past the Stripe and Cashfree replay windows. */
   readonly nowUnix?: () => number;
   /** DATA_REGION, peers and the directory sync key (ADR-0012 §4). Absent = single region. */
   readonly region?: Omit<RegionDeps, 'db'>;
@@ -90,6 +97,20 @@ export async function buildServer(deps: HooksDeps): Promise<FastifyInstance> {
     webhookKey: deps.engineWebhookKey,
   });
 
+  const nowUnix = deps.nowUnix;
+  registerCrmRoutes(app, {
+    db: deps.db,
+    publisher: deps.publisher,
+    providerWebhookKey: deps.providerWebhookKey ?? null,
+    ...(nowUnix === undefined ? {} : { now: () => new Date(nowUnix() * 1000) }),
+  });
+  registerOccRoutes(app, {
+    db: deps.db,
+    publisher: deps.publisher,
+    providerWebhookKey: deps.providerWebhookKey ?? null,
+    // Same injected clock as the Stripe route, so a test can walk past Cashfree's replay window.
+    ...(nowUnix === undefined ? {} : { now: () => new Date(nowUnix() * 1000) }),
+  });
   registerRazorpayRoutes(app, {
     db: deps.db,
     publisher: deps.publisher,

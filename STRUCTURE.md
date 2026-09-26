@@ -28,6 +28,8 @@ something, it is one folder deep.
 | **`shared/`** | Small utilities: ids, errors, logging, phone hashing and encryption, request signing. | Used by everything; holds no business rules. |
 | **`shopify-sdk/`** | Typed Shopify Admin API calls, webhook parsers, billing. | The only place that knows Shopify's API shape. |
 | **`payments/`** | Razorpay (rupees) and Stripe (dollars) clients and webhook verification. | — |
+| **`occ/`** | One-click checkout providers (GoKwik, Shiprocket, Razorpay Magic, Cashfree): webhook verification and cart mapping. | Those checkouts replace Shopify's, so abandoned carts must come from the provider (E-14). |
+| **`crm/`** | CRM lead sources (Zoho, HubSpot): webhook verification and lead mapping. | A new lead should be called back while it is warm. |
 | **`notify/`** | Transactional email (Postmark) and its templates. | — |
 | **`calendar/`** | Appointment providers (Cal.com) behind one port. | — |
 

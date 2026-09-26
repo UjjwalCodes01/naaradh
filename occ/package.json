@@ -1,0 +1,15 @@
+{
+  "name": "@naaradh/occ",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "One-click-checkout providers behind one port (E-14, P5-OCC-2). Verification and payload mapping only: no database, no dialling, no business rules. Every provider's shape is written from its published documentation and marked [VERIFY] until a recorded payload confirms it.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@naaradh/payments": "workspace:*",
+    "@naaradh/shared": "workspace:*",
+    "zod": "3.24.1"
+  }
+}

@@ -201,12 +201,15 @@ module "pubsub" {
   region         = var.region
   prefix         = "naaradh"
 
-  # hooks/src/pubsub.ts TopicName. provider.events has no consumer yet: Pub/Sub drops
-  # messages published to a topic without subscriptions — add one with its consumer.
+  # hooks/src/pubsub.ts TopicName. Every topic here has a consumer below: Pub/Sub drops messages
+  # published to a topic without subscriptions, so a new topic and its subscription land together.
   topics = ["shopify.events", "engine.events", "provider.events", "billing.events"]
 
   subscriptions = [
     { topic = "shopify.events", worker = "intents", member = "serviceAccount:${module.iam.runtime_emails["workers-intents"]}" },
+    # Abandoned carts from a one-click checkout (E-14) — same worker, its own subscription so an
+    # OCC outage cannot back up Shopify's events.
+    { topic = "provider.events", worker = "intents", member = "serviceAccount:${module.iam.runtime_emails["workers-intents"]}" },
     { topic = "engine.events", worker = "results", member = "serviceAccount:${module.iam.runtime_emails["workers-results"]}" },
     { topic = "billing.events", worker = "billing", member = "serviceAccount:${module.iam.runtime_emails["workers-billing"]}" },
   ]

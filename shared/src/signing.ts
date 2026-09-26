@@ -69,6 +69,71 @@ export function verifyMerchantWebhook(
 }
 
 // ---------------------------------------------------------------------------
+// Tenant-bound webhook URLs for a third party that cannot sign, or whose scheme we do not know:
+//   https://hooks.naaradh.com/<area>/<provider>/<tenant_id>.<tag>
+//
+// The tag is the credential. It is minted from one server-side key, it names exactly one tenant
+// and one provider, and it is checked in constant time before the body is parsed (invariant 9),
+// so a payload cannot be replayed into another merchant's context and a leaked URL for one
+// provider does not work for another. Where the provider does sign, that signature is checked on
+// top — this replaces nothing, it is the floor.
+// ---------------------------------------------------------------------------
+
+/** `HMAC(key, "<area>:<provider>:<tenant_id>")`, truncated to 128 bits. */
+export function providerWebhookTag(
+  key: string,
+  area: string,
+  provider: string,
+  tenantId: string,
+): string {
+  return createHmac('sha256', key)
+    .update(`${area}:${provider}:${tenantId}`)
+    .digest('hex')
+    .slice(0, 32);
+}
+
+export function providerWebhookPath(
+  key: string,
+  area: string,
+  provider: string,
+  tenantId: string,
+): string {
+  return `/${area}/${provider}/${tenantId}.${providerWebhookTag(key, area, provider, tenantId)}`;
+}
+
+/** Parses `<tenant_id>.<tag>` and verifies it. Null on any mismatch — the route 404s. */
+export function verifyProviderWebhookTag(
+  key: string,
+  area: string,
+  provider: string,
+  tenantTag: string,
+): string | null {
+  const dot = tenantTag.lastIndexOf('.');
+  if (dot <= 0) return null;
+  const tenantId = tenantTag.slice(0, dot);
+  const tag = tenantTag.slice(dot + 1);
+  if (!/^ten_[0-9A-HJKMNP-TV-Z]{26}$/.test(tenantId) || tag.length !== 32) return null;
+  return timingSafeEqualString(providerWebhookTag(key, area, provider, tenantId), tag)
+    ? tenantId
+    : null;
+}
+
+/**
+ * The secret a merchant pastes into the provider's dashboard. Derived from the same key and
+ * never stored, so there is no per-tenant secret in the database and rotating the key rotates
+ * every merchant's URL and secret together. Domain-separated from the tag: neither reveals the
+ * other.
+ */
+export function providerSharedSecret(
+  key: string,
+  area: string,
+  provider: string,
+  tenantId: string,
+): string {
+  return createHmac('sha256', key).update(`${area}-secret:${provider}:${tenantId}`).digest('hex');
+}
+
+// ---------------------------------------------------------------------------
 // Engine webhook URLs: https://hooks.naaradh.com/engine/<vendor>/<tenant_id>.<tag>
 // The tag binds the URL to one tenant so a vendor payload cannot be replayed into another
 // tenant's context; the vendor's own signature (verified by the adapter) proves origin.

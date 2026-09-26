@@ -100,6 +100,10 @@ locals {
     "RAZORPAY_WEBHOOK_SECRET",
     "STRIPE_SECRET_KEY", # direct USD billing (P6-BILL-1); unset → routes answer 503 / postings wait
     "STRIPE_WEBHOOK_SECRET",
+    # Mints and verifies the per-tenant one-click-checkout webhook URLs (E-14). Unset → the /occ
+    # routes answer 404 and the dashboard hides the panel, which is correct until a provider is
+    # contracted (P5-OCC-1).
+    "PROVIDER_WEBHOOK_KEY",
     "REGION_SYNC_PRIVATE_KEY", # this region's directory signing key (ADR-0012 am. 1); unset → single region
     # Staging only (SIMULATOR_ALLOWED=true there): signs the simulator engine's webhooks and tool
     # calls. Production refuses the simulator, so this secret never exists there.
@@ -158,6 +162,9 @@ locals {
     RAZORPAY_WEBHOOK_SECRET = ["hooks"]
     STRIPE_SECRET_KEY       = ["api", "web", "workers-billing"]
     STRIPE_WEBHOOK_SECRET   = ["hooks"]
+    # hooks verifies the URL a provider posts to; web shows the merchant the URL and the secret
+    # to paste into the provider's dashboard. Nothing else may derive them.
+    PROVIDER_WEBHOOK_KEY = ["hooks", "web"]
 
     # This region's Ed25519 key for directory snapshots. Only the reconcile worker signs; hooks
     # verifies peers with their PUBLIC keys (REGION_PEER_KEYS, plain env — not a secret).

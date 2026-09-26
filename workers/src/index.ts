@@ -24,6 +24,8 @@ import { inlineSecretResolver, secretManagerResolver } from './deliveries/secret
 import { runDispatcher } from './dispatcher/loop.js';
 import { loadWorkersEnv } from './env.js';
 import { handleShopifyEvent } from './intents/consumer.js';
+import { handleCrmLead } from './intents/crm.js';
+import { handleOccEvent } from './intents/occ.js';
 import { runReconcile } from './reconcile/index.js';
 import { handleEngineEvent } from './results/consumer.js';
 import { gcsRecordingStore, memoryRecordingStore } from './results/recordings.js';
@@ -178,8 +180,16 @@ const bus = createPubSubBus(
 );
 const role = env.WORKER;
 
-if (role === 'intents' || role === 'all')
+if (role === 'intents' || role === 'all') {
   stops.push(await bus.subscribe('shopify.events', 'intents', (m) => handleShopifyEvent(ctx, m)));
+  // Abandoned carts from a one-click checkout (E-14): same worker, same tenant rules, different
+  // wire format. One subscription, so an OCC outage cannot back up Shopify's events.
+  stops.push(
+    await bus.subscribe('provider.events', 'intents', (m) =>
+      m.topic === 'crm/lead' ? handleCrmLead(ctx, m) : handleOccEvent(ctx, m),
+    ),
+  );
+}
 if (role === 'results' || role === 'all')
   stops.push(await bus.subscribe('engine.events', 'results', (m) => handleEngineEvent(ctx, m)));
 if (role === 'dispatcher' || role === 'all')

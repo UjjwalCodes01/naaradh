@@ -29,6 +29,15 @@ export const hooksEnvSchema = z
     RAZORPAY_WEBHOOK_SECRET: z.string().min(8).optional(),
     /** Stripe endpoint signing secret (whsec_…), P6-BILL-1. Unset → the route answers 404. */
     STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_').optional(),
+    /**
+     * Mints and verifies every per-tenant provider webhook URL and the secret a merchant pastes
+     * into the provider: one-click checkouts (`/occ`, GoKwik / Shiprocket / Razorpay Magic /
+     * Cashfree) and CRMs (`/crm`, Zoho / HubSpot). Each area is domain-separated in the
+     * derivation, so one area's URL says nothing about another's. Unset → those routes answer
+     * 404. Rotating it rotates every merchant's URL, so it changes only alongside the re-issue
+     * step in docs/runbooks/secret-rotation.md.
+     */
+    PROVIDER_WEBHOOK_KEY: z.string().min(32).optional(),
     PUBSUB_TOPIC_PREFIX: z.string().default('naaradh'),
     PUBSUB_EMULATOR_HOST: z.string().optional(),
     /** Requests per minute per IP before 429 — defence in depth behind Cloud Armor. */

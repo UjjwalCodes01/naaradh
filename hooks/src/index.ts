@@ -23,6 +23,7 @@ const app = await buildServer({
   engineWebhookKey: env.ENGINE_WEBHOOK_KEY,
   razorpayWebhookSecret: env.RAZORPAY_WEBHOOK_SECRET ?? null,
   stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET ?? null,
+  providerWebhookKey: env.PROVIDER_WEBHOOK_KEY ?? null,
   region: {
     region: env.DATA_REGION,
     peers: env.REGION_PEERS,

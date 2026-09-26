@@ -42,10 +42,33 @@ export const baseEnv = {
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
 };
 
-/** Fastify's `trustProxy` option from TRUST_PROXY_HOPS: never `true`. */
-export function trustProxyOf(hops: number | undefined): false | number {
-  return hops === undefined || hops <= 0 ? false : hops;
+/**
+ * Fastify's `trustProxy` option: a predicate over the proxy chain, never `true`.
+ *
+ * It must be a function, not the hop count itself. Fastify used to read a numeric `trustProxy`
+ * as "trust the nearest N hops"; since 5.x it treats a number as **trust nothing** (a hop count
+ * alone cannot prove who the immediate peer is, so a directly reachable server would let any
+ * client spoof `X-Forwarded-For` by sending enough hops). Passing the number today would
+ * silently make `request.ip` the load balancer's address for every caller, which collapses
+ * every per-IP rate limit and IP allow-list into a single bucket.
+ *
+ * Our services are not directly reachable: Cloud Run ingress is
+ * `INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER` (infra/main.tf), so every request has come through
+ * the global load balancer and the trailing entries really are ours. This restores the old
+ * meaning explicitly: trust exactly `hops` addresses, counting from the socket peer outwards,
+ * and nothing beyond them.
+ */
+export function trustProxyOf(hops: number | undefined): false | TrustProxyHops {
+  if (hops === undefined || hops <= 0) return false;
+  return (_address, hop) => hop < hops;
 }
+
+/**
+ * Fastify's `TrustProxyFunction`, declared here so `@naaradh/shared` stays free of a web
+ * framework dependency. `hop` is 0 for the socket peer and counts outwards along
+ * `X-Forwarded-For`, right to left.
+ */
+export type TrustProxyHops = (address: string, hop: number) => boolean;
 
 export const databaseEnv = {
   /** Pooled endpoint, naaradh_app. */

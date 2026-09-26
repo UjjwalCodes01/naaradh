@@ -465,3 +465,138 @@ resource "google_monitoring_alert_policy" "redis_memory" {
 
   notification_channels = local.channels_by_severity["WARNING"]
 }
+
+# ---------------------------------------------------------------------------------------------
+# Business events (P2-OPS-2). Infrastructure alerts above say a service is unwell; these say the
+# product is. Each filter matches a log line that exists in the code — the message strings are
+# the contract, so a rename breaks the alert and both change together:
+#
+#   workers/src/complaints/index.ts   'tenant auto-paused on complaints (E-05)'
+#                                     'promotional calling paused on a promotional complaint …'
+#   workers/src/dispatcher/loop.ts    'dispatch gated on an operational limit'   (cap:/kill:/…)
+#   workers/src/writebacks/index.ts   'shopify writeback gave up'
+#   workers/src/billing/index.ts      Shopify app_subscriptions/approaching_capped_amount
+#
+# Silence is the failure mode for all of them: nothing here pages because a request failed, but
+# because calls have quietly stopped, or money has.
+# ---------------------------------------------------------------------------------------------
+locals {
+  business_metrics = {
+    complaint_pause = {
+      description = "A tenant or its promotional calling was auto-paused by the complaint counters (E-05)."
+      filter      = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"workers-complaints\" AND (jsonPayload.message:\"auto-paused on complaints\" OR jsonPayload.message:\"promotional calling paused\")"
+      severity    = "CRITICAL"
+      threshold   = 0
+      window      = "600s"
+      doc         = "A merchant has been paused automatically. Confirm the complaints are genuine, then follow docs/runbooks/complaint-received.md. Three in ten days pauses a tenant; five is the global kill switch."
+    }
+    dispatch_limit = {
+      description = "A due call was refused by a spend cap, a kill switch or a concurrency limit."
+      filter      = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"workers-dispatcher\" AND jsonPayload.message=\"dispatch gated on an operational limit\""
+      severity    = "WARNING"
+      threshold   = 20
+      window      = "900s"
+      doc         = "Calls are being refused for an operational reason, not a compliance one. Check `gate_reason` in the entry: `cap:*` means a spend cap (raise it in Settings or let it reset), `kill:*` means a kill switch is on (staff console → Kill switches), `concurrency:*` means the engine's channel limit. Nothing is lost — intents stay queued until they expire — but the merchant sees silence."
+    }
+    writeback_failed = {
+      description = "A Shopify write-back exhausted its retries: the call's outcome never reached the order."
+      filter      = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name:\"workers-\" AND jsonPayload.message=\"shopify writeback gave up\""
+      severity    = "ERROR"
+      threshold   = 0
+      window      = "900s"
+      doc         = "The merchant's order does not show what the customer said. Usually an expired or revoked offline token, or a scope removed during an app update. Re-check the install, then replay from docs/runbooks/writeback-failed.md."
+    }
+    billing_capped = {
+      description = "A Shopify subscription reached or approached its capped amount: usage records stop being accepted."
+      filter      = "resource.type=\"cloud_run_revision\" AND resource.labels.service_name:\"workers-\" AND jsonPayload.message:\"capped amount\""
+      severity    = "ERROR"
+      threshold   = 0
+      window      = "3600s"
+      doc         = "Shopify refuses usage charges past the cap, so billable outcomes stop being billed while calls continue. Ask the merchant to approve a higher cap (Dashboard → Billing). Runbook: docs/runbooks/billing-reconcile.md."
+    }
+  }
+}
+
+resource "google_logging_metric" "business" {
+  for_each = local.business_metrics
+
+  project     = var.project_id
+  name        = "naaradh/${each.key}"
+  description = each.value.description
+  filter      = each.value.filter
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
+resource "google_monitoring_alert_policy" "business" {
+  for_each = local.business_metrics
+
+  project      = var.project_id
+  display_name = "[${var.env}] ${each.key}: ${each.value.description}"
+  combiner     = "OR"
+  severity     = each.value.severity
+
+  conditions {
+    display_name = "${each.key} over ${each.value.window}"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.business[each.key].name}\" AND resource.type=\"cloud_run_revision\""
+      duration        = "0s"
+      comparison      = "COMPARISON_GT"
+      threshold_value = each.value.threshold
+      aggregations {
+        alignment_period     = each.value.window
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  documentation {
+    content   = each.value.doc
+    mime_type = "text/markdown"
+  }
+
+  notification_channels = local.channels_by_severity[each.value.severity]
+}
+
+# ---------------------------------------------------------------------------------------------
+# Certificate expiry. The managed certificates renew themselves; this catches the case where one
+# cannot (a DNS record moved, a domain mapping was deleted) while there is still time to fix it.
+# ---------------------------------------------------------------------------------------------
+resource "google_monitoring_alert_policy" "certificate_expiry" {
+  project      = var.project_id
+  display_name = "[${var.env}] TLS certificate expires within 21 days"
+  combiner     = "OR"
+  severity     = "ERROR"
+
+  conditions {
+    display_name = "ssl_certificate time_until_expiration"
+    condition_threshold {
+      filter          = "metric.type=\"monitoring.googleapis.com/uptime_check/time_until_ssl_cert_expires\" AND resource.type=\"uptime_url\""
+      duration        = "0s"
+      comparison      = "COMPARISON_LT"
+      threshold_value = 21
+      aggregations {
+        alignment_period   = "3600s"
+        per_series_aligner = "ALIGN_MIN"
+      }
+      trigger {
+        count = 1
+      }
+    }
+  }
+
+  documentation {
+    content   = "A managed certificate is not renewing. Check the domain mapping and its DNS record (docs/go-live/05-cloud-infrastructure.md); Google renews at 30 days, so this fires only when renewal has already failed once."
+    mime_type = "text/markdown"
+  }
+
+  notification_channels = local.channels_by_severity["ERROR"]
+}

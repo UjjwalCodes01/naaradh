@@ -1,5 +1,17 @@
 export { audit, scrub, type AuditInput, type ActorType } from './audit.js';
 export {
+  areaOf,
+  disableProvider,
+  enableProvider,
+  listProviderIntegrations,
+  providerCredentials,
+  type EnableProviderInput,
+  type ProviderArea,
+  type ProviderCredentials,
+  type ProviderIntegration,
+  type ProviderKind,
+} from './integrations.js';
+export {
   emitMerchantEvent,
   EMAIL_ALERT_EVENTS,
   MERCHANT_EVENTS,

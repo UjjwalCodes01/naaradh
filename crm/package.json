@@ -1,0 +1,17 @@
+{
+  "name": "@naaradh/crm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "comment": "CRM lead sources behind one port (P5-CRM-1/2): a new lead in Zoho or HubSpot becomes a lead-callback intent. Verification and field mapping only — no database, no dialling, no business rules.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@naaradh/shared": "workspace:*",
+    "zod": "3.24.1"
+  },
+  "devDependencies": {
+    "@naaradh/occ": "workspace:*"
+  }
+}

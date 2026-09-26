@@ -234,7 +234,7 @@ Calls answered, resolution rate (no human), transfer rate, ticket rate, abandon 
 - ✅ P2-INF-1 Cloud Armor rules for `/hooks/*` (vendor IP allow-lists where published, rate limits), WAF preconfigured rules.
 - ✅ P2-INF-2 BigQuery dataset + scheduled export; PII hashing in export. Dataset and table in Terraform; nightly load job in `workers/src/analytics` (Phase 3) — aggregates only, nothing to hash.
 - ✅ P2-OPS-1 Runbooks: `complaint-received.md`, `erasure-request.md`, `billing-dispute.md`, `billing-postings.md`, `cli-health.md` (job + console page, Phase 3), `merchant-access.md`, `staff-console.md`, `deploy.md`.
-- ◐ P2-OPS-2 Alerting: complaint counter increments, spend-cap hits, capped subscriptions, writeback failures, Cloud SQL CPU, cert expiry.
+- ✅ P2-OPS-2 Alerting: complaint counter increments, spend-cap hits, capped subscriptions, writeback failures, cert expiry. *Done (26 Sep 2026):* four log-based metrics and their alert policies in `infra/modules/monitoring` (`complaint_pause`, `dispatch_limit`, `writeback_failed`, `billing_capped`) plus certificate expiry; the dispatcher now logs a gate refused on a cap, a kill switch or a concurrency limit, and `workers/test/alert-filters.test.ts` fails if a filter stops matching the message it watches. Cloud SQL CPU does not apply (Neon, ADR-0004); Redis memory and Pub/Sub backlog cover the same ground.
 
 ### Exit criteria
 - A brand-new dev store installs the app and places a live test call within 10 minutes without engineer help.
@@ -362,11 +362,11 @@ MRR, merchants, outcomes/month, GM per outcome, RTO delta per merchant, recovery
 
 **One-click checkout providers (India)**
 - ◐ P5-OCC-1 Partner/API access with GoKwik, Shiprocket Checkout, Razorpay Magic, Cashfree OCC for abandoned-checkout webhooks and RTO scores. `[OPEN]`
-- ◐ P5-OCC-2 `intents-consumer` sources for each provider; consent flag mapping; gateway name normalisation updates (E-14, E-45).
+- ✅ P5-OCC-2 `intents-consumer` sources for each provider; consent flag mapping; gateway name normalisation updates (E-14, E-45). *Done (26 Sep 2026):* `occ/` maps GoKwik, Shiprocket, Razorpay Magic and Cashfree carts to the Shopify checkout shape; `POST /occ/<provider>/<tenant>.<tag>` verifies a per-tenant URL minted from `PROVIDER_WEBHOOK_KEY` before parsing, and the provider's signature on top where one exists (Cashfree required by default, a wrong signature always refused); the intents worker records the cart through the same `recordCheckout`, so consent, the 45-minute debounce and one call per cart are unchanged. Merchants connect it themselves in Dashboard → Developers. Cashfree's and Razorpay Magic's payloads are from their published references; GoKwik's and Shiprocket's are tolerant and `[VERIFY]` until a real delivery lands (docs/go-live/09 §3). Still open: P5-OCC-1, the partner access itself.
 
 **CRM / Calendar / Automation**
-- ◐ P5-CRM-1 Zoho CRM: new-lead → lead-callback intent; outcome → Activity/Note; consent field mapping.
-- ◐ P5-CRM-2 HubSpot: same as Zoho.
+- ◐ P5-CRM-1 Zoho CRM: new-lead → lead-callback intent; outcome → Activity/Note; consent field mapping. *Lead ingestion done (26 Sep 2026):* `crm/` reads a Zoho workflow webhook by field name (with per-merchant overrides in `integrations.metadata.crm.fields`) and `POST /crm/zoho/<tenant>.<tag>` verifies the per-tenant URL before parsing; the intents worker creates the `lead_callback` intent through the same `createIntent()` the API uses. Open: pushing the **outcome** back as an Activity/Note, which needs per-tenant OAuth — today a merchant receives outcomes through their own webhook endpoint (`POST /v1/webhooks`) or Zapier.
+- ◐ P5-CRM-2 HubSpot: same as Zoho. *Lead ingestion done (26 Sep 2026)* — same route and parser, including HubSpot's `properties: { field: { value } }` shape. Same open half: the outcome push needs OAuth.
 - ✅ P5-CAL-1 Cal.com + Google Calendar tools via engine adapter (`get_slots`, `book_slot`); appointment confirm/book/reschedule scripts; transfer-to-manager path; healthcare guardrails (no clinical advice, no report values).
 - ✅ P5-AUT-1 Zapier/Make/n8n: "New outcome" trigger, "Create intent" action; docs pages.
 - ✅ P5-API-1 SDKs generated from OpenAPI (JS, Python); webhook signature verification snippets.

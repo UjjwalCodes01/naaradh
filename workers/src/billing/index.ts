@@ -269,6 +269,14 @@ export async function syncShopifySubscription(
       at: now,
       actor: ctx.workerId,
     });
+    // Shopify refuses usage charges past the cap, so billable outcomes stop being billed while
+    // the calls keep going out. One structured line per transition, which is what the
+    // billing_capped alert watches (P2-OPS-2, infra/modules/monitoring).
+    if (t?.after === 'capped')
+      ctx.log.warn(
+        { tenant_id: tenantId, subscription: fetched.id },
+        'shopify subscription capped amount reached',
+      );
     return `shopify:${fetched.status}:${t?.after ?? '-'}`;
   });
 }
@@ -287,6 +295,11 @@ export async function notifyApproachingCap(
       at: now,
       data: { subscription: subscriptionGid },
     }),
+  );
+  // Watched by the billing_capped alert: the merchant has days, not hours, to raise the cap.
+  ctx.log.warn(
+    { tenant_id: tenantId, subscription: subscriptionGid },
+    'shopify subscription approaching capped amount',
   );
   return 'approaching_cap_notified';
 }

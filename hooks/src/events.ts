@@ -39,6 +39,9 @@ const KEEP_HEADERS = [
   'x-shopify-triggered-at',
   'x-sim-event-id',
   'x-razorpay-event-id',
+  // One-click-checkout providers (E-14). Never the signature headers themselves.
+  'x-idempotency-key',
+  'x-webhook-timestamp',
 ];
 
 export async function recordWebhook(db: Db, input: RecordInput): Promise<RecordResult> {

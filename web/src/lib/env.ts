@@ -54,6 +54,13 @@ const schema = z
       }),
     /** Stripe (direct USD merchants, P6-BILL-1): the dashboard can start a Checkout session. */
     STRIPE_SECRET_KEY: z.string().optional(),
+    /**
+     * Derives the one-click-checkout webhook URL and secret shown to an owner (E-14). Unset →
+     * the panel is hidden, which is correct until a provider is contracted (P5-OCC-1).
+     */
+    PROVIDER_WEBHOOK_KEY: z.string().min(32).optional(),
+    /** Origin of the hooks service, for the URL a merchant pastes into their provider. */
+    HOOKS_BASE_URL: z.string().url().default('http://localhost:3002'),
     STRIPE_PRICE_IDS: z
       .string()
       .default('{}')

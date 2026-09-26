@@ -6,7 +6,12 @@ import { Redis } from 'ioredis';
 import { sql } from 'drizzle-orm';
 import { createDb, withTenant, type Db } from '@naaradh/db';
 import { RoleClient, startTestPostgres, type TestPostgres } from '@naaradh/db/testing';
-import { liftPromotionalPause, suppress, type DndProvider } from '@naaradh/compliance';
+import {
+  liftPromotionalPause,
+  recordConsent,
+  suppress,
+  type DndProvider,
+} from '@naaradh/compliance';
 import { calendarRegistry } from '@naaradh/calendar';
 import {
   eraseAppointments,
@@ -25,10 +30,13 @@ import {
   sha256Hex,
 } from '@naaradh/shared';
 import { FAKE_IN } from '@naaradh/shared/test/fake-phones';
+import { occSharedSecret, occWebhookPath } from '@naaradh/occ';
+import { crmWebhookPath } from '@naaradh/crm';
 import { EngineRegistry } from '@naaradh/engines-registry';
 import {
   ABANDONED_CART_HI_IN,
   APPOINTMENT_CONFIRM_HI_IN,
+  LEAD_CALLBACK_EN_IN,
   COD_CONFIRM_HI_IN,
   FEEDBACK_HI_IN,
 } from '@naaradh/call-scripts';
@@ -39,6 +47,8 @@ import { runComplaintsOnce } from '../../src/complaints/index.js';
 import { inlineSecretResolver } from '../../src/deliveries/secrets.js';
 import { dispatchOnce } from '../../src/dispatcher/loop.js';
 import { handleShopifyEvent } from '../../src/intents/consumer.js';
+import { handleCrmLead } from '../../src/intents/crm.js';
+import { handleOccEvent } from '../../src/intents/occ.js';
 import { runQaWeekly } from '../../src/qa/index.js';
 import { syncAppointmentsOnce } from '../../src/appointments/index.js';
 import { handleEngineEvent } from '../../src/results/consumer.js';
@@ -57,6 +67,7 @@ const SHOP = 'client-p-promo.myshopify.com';
 const SHOPIFY_SECRET = 'shpss_promo';
 const SIM_SECRET = 'simulator_secret_for_promo_tests';
 const ENGINE_KEY = 'p'.repeat(32);
+const PROVIDER_KEY = 'o'.repeat(32);
 const HASH_KEY = 'q'.repeat(32);
 const WORDING = '2026-09-v1-draft';
 const TEMPLATE_CART = '1107160000000000101';
@@ -81,6 +92,10 @@ const P = {
   appointmentOptedOut: '+916000000063',
   // 002 → the simulator's answered-human-cancelled scenario.
   appointmentCancels: '+916000000002',
+  /** A one-click-checkout cart with no consent anywhere (E-14). */
+  occNoConsent: '+916000000064',
+  /** Same, with a consent grant already in the ledger. */
+  occConsented: '+916000000065',
 } as const;
 
 /** 12:00 IST on Monday 2026-09-14. */
@@ -128,6 +143,10 @@ async function drain(): Promise<void> {
   while (publisher.messages.length > 0) {
     const { topic, message } = publisher.messages.shift() as (typeof publisher.messages)[number];
     if (topic === 'shopify.events') await handleShopifyEvent(ctx, message);
+    else if (topic === 'provider.events')
+      await (message.topic === 'crm/lead'
+        ? handleCrmLead(ctx, message)
+        : handleOccEvent(ctx, message));
     else if (topic === 'engine.events') await handleEngineEvent(ctx, message);
   }
 }
@@ -242,6 +261,8 @@ beforeAll(async () => {
   await script(await useCase('feedback', 'promotional'), FEEDBACK_HI_IN, TEMPLATE_FEEDBACK);
   // ADR-0011: appointment reminders are a SERVICE purpose — no consent, no DLT template.
   await script(await useCase('appointment_confirm', 'service'), APPOINTMENT_CONFIRM_HI_IN, null);
+  // A callback the customer asked for is a service purpose too (P5-CRM-1/2).
+  await script(await useCase('lead_callback', 'service'), LEAD_CALLBACK_EN_IN, null);
   await service.query(
     `insert into numbers (id, tenant_id, e164, region, series, provider, engine, purpose_allowed, status, answer_rate_7d) values ($1, null, $2, 'IN', '10digit', 'simulator', 'simulator', array['transactional','service','promotional']::purpose[], 'active', 0.4)`,
     [newId('number'), FAKE_IN.merchant],
@@ -285,6 +306,9 @@ beforeAll(async () => {
     registry,
     shopifySecretFor: () => SHOPIFY_SECRET,
     engineWebhookKey: ENGINE_KEY,
+    providerWebhookKey: PROVIDER_KEY,
+    // This suite walks a simulated clock; the OCC replay window has to walk with it.
+    nowUnix: () => Math.floor(clock.now().getTime() / 1000),
     rateLimitPerMinute: 100_000,
     logLevel: 'silent',
   });
@@ -1218,5 +1242,191 @@ describe('one deployment serves one region (ADR-0012, E-142)', () => {
     // Without a region (today's single-region deployment) the same sweep sees it.
     const unscoped = await sweepAbandonedCheckouts(svcDb, appDb, ctx.keys, clock.now());
     expect(unscoped.considered).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * E-14 — a merchant whose checkout is not Shopify's. GoKwik, Shiprocket, Razorpay Magic and
+ * Cashfree send no `checkouts/*` webhooks at all, so the cart arrives on the provider's own
+ * endpoint. What matters here is not that it arrives: it is that arriving buys it nothing. The
+ * cart takes the same path, and a promotional call still needs consent in the ledger
+ * (invariant 5), the same 45 idle minutes and the same single call.
+ */
+describe('one-click checkout: an OCC cart is called on exactly the same terms (E-14)', () => {
+  const occPost = async (provider: 'cashfree', data: Record<string, unknown>): Promise<void> => {
+    const body = JSON.stringify({
+      type: 'ABANDONED_CHECKOUT',
+      event_time: clock.now().toISOString(),
+      data,
+    });
+    const ts = String(Math.floor(clock.now().getTime() / 1000));
+    const r = await hooks.inject({
+      method: 'POST',
+      url: occWebhookPath(PROVIDER_KEY, provider, TENANT),
+      payload: body,
+      headers: {
+        'content-type': 'application/json',
+        'x-webhook-timestamp': ts,
+        'x-webhook-signature': createHmac('sha256', occSharedSecret(PROVIDER_KEY, provider, TENANT))
+          .update(ts)
+          .update(Buffer.from(body))
+          .digest('base64'),
+        'x-idempotency-key': `cf-${String(data['cart_id'])}-${ts}`,
+      },
+    });
+    expect(r.statusCode).toBe(200);
+  };
+
+  const cart = (phone: string, cartId: string): Record<string, unknown> => ({
+    cart_id: cartId,
+    total_price: '1899.00',
+    currency: 'INR',
+    phone,
+    customer: { first_name: 'Nikhil', shipping_address: { country_code: 'IN' } },
+    line_items: [{ sku_name: 'Table lamp', quantity: 1 }],
+    created_at: clock.now().toISOString(),
+    updated_at: clock.now().toISOString(),
+  });
+
+  it('enables the provider for this merchant', async () => {
+    await q(`insert into integrations (id, tenant_id, kind, external_id) values ($1, $2, $3, $4)`, [
+      newId('integration'),
+      TENANT,
+      'cashfree',
+      'cf-merchant-1',
+    ]);
+  });
+
+  it('records the cart under the provider as its source', async () => {
+    await occPost('cashfree', cart(P.occNoConsent, 'cf_1'));
+    await drain();
+    const row = await q<{ source: string; status: string; value_minor: string | number }>(
+      `select source, status, value_minor from checkouts where tenant_id = $1 and external_id = 'cf_1'`,
+      [TENANT],
+    );
+    expect(row[0]).toMatchObject({ source: 'cashfree', status: 'open' });
+    // Money read exactly from the provider's decimal string, in paise.
+    expect(Number(row[0]?.value_minor)).toBe(189900);
+  });
+
+  it('never calls it without consent, however the cart arrived (invariant 5)', async () => {
+    advance(46);
+    await sweep();
+    expect(await checkoutRow('cf_1')).toMatchObject({
+      status: 'skipped',
+      skip_reason: 'consent:missing',
+      intent_id: null,
+    });
+    expect(
+      await q(
+        `select 1 from call_intents where tenant_id = $1 and use_case = 'abandoned_cart' and external_ref = 'cf_1'`,
+        [TENANT],
+      ),
+    ).toHaveLength(0);
+  });
+
+  it('with consent in the ledger it becomes exactly one abandoned-cart intent', async () => {
+    await withTenant(appDb, TENANT, (tx) =>
+      recordConsent(tx, {
+        tenantId: TENANT,
+        phoneHash: hash(P.occConsented),
+        purpose: 'promotional',
+        source: 'api',
+        recipientRegion: 'IN',
+        capturedAt: clock.now(),
+        wordingVersion: WORDING,
+      }),
+    );
+    await occPost('cashfree', cart(P.occConsented, 'cf_2'));
+    await drain();
+    advance(46);
+    const r = await sweep();
+    expect(r.scheduled).toBe(1);
+    const row = await checkoutRow('cf_2');
+    expect(row?.status).toBe('scheduled');
+    expect(await intent(row?.intent_id ?? '')).toMatchObject({
+      status: 'SCHEDULED',
+      use_case: 'abandoned_cart',
+    });
+    // Swept once: a second sweep must not queue the same cart again (one call per cart).
+    expect((await sweep()).considered).toBe(0);
+  });
+
+  it('a cart that became an order is never called', async () => {
+    await occPost('cashfree', { ...cart(P.occConsented, 'cf_3'), order_id: 'ord_cf_3' });
+    await drain();
+    advance(46);
+    await sweep();
+    const row = await checkoutRow('cf_3');
+    expect(row?.intent_id).toBeNull();
+    expect(row?.status).not.toBe('scheduled');
+  });
+});
+
+/**
+ * P5-CRM-1/2 — a new lead in the merchant's CRM. It takes the same `createIntent()` the public
+ * API uses, so nothing about a CRM makes a call easier to place than an API call would.
+ */
+describe('CRM lead → one callback intent', () => {
+  it('(a new morning, inside the calling window)', () => {
+    current = new Date('2026-09-16T04:30:00Z');
+  });
+
+  it('enables the CRM for this merchant', async () => {
+    await q(`insert into integrations (id, tenant_id, kind, external_id) values ($1, $2, $3, $4)`, [
+      newId('integration'),
+      TENANT,
+      'zoho',
+      'zoho-org-1',
+    ]);
+  });
+
+  it('turns a lead into a scheduled lead_callback intent', async () => {
+    const lead = JSON.stringify({
+      id: 'lead-7001',
+      First_Name: 'Ananya',
+      Phone: P.occConsented,
+      Lead_Source: 'Website form',
+      Description: 'Wants a quote',
+    });
+    const r = await hooks.inject({
+      method: 'POST',
+      url: crmWebhookPath(PROVIDER_KEY, 'zoho', TENANT),
+      payload: lead,
+      headers: { 'content-type': 'application/json', 'x-idempotency-key': 'zoho-e2e-1' },
+    });
+    expect(r.statusCode).toBe(200);
+    await drain();
+
+    const rows = await q<{ id: string; status: string; use_case: string; external_ref: string }>(
+      `select id, status, use_case, external_ref from call_intents
+        where tenant_id = $1 and use_case = 'lead_callback'`,
+      [TENANT],
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ use_case: 'lead_callback', external_ref: 'lead-7001' });
+    // A service purpose: no consent row is needed, and the gate is what decides the rest.
+    expect(['SCHEDULED', 'GATED']).toContain(rows[0]?.status);
+  });
+
+  it('the same lead delivered twice is still one call (E-52)', async () => {
+    const lead = JSON.stringify({
+      id: 'lead-7001',
+      First_Name: 'Ananya',
+      Phone: P.occConsented,
+      Lead_Source: 'Website form',
+    });
+    await hooks.inject({
+      method: 'POST',
+      url: crmWebhookPath(PROVIDER_KEY, 'zoho', TENANT),
+      payload: lead,
+      headers: { 'content-type': 'application/json', 'x-idempotency-key': 'zoho-e2e-2' },
+    });
+    await drain();
+    expect(
+      await q(`select 1 from call_intents where tenant_id = $1 and use_case = 'lead_callback'`, [
+        TENANT,
+      ]),
+    ).toHaveLength(1);
   });
 });

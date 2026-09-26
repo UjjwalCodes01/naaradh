@@ -28,6 +28,8 @@ const WORKSPACES = [
   'calendar',
   'notify',
   'payments',
+  'occ',
+  'crm',
 ];
 const ALL_WORKSPACE_CODE = WORKSPACES.flatMap((w) => [`${w}/**/*.ts`, `${w}/**/*.tsx`]);
 

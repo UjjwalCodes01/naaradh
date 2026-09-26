@@ -94,6 +94,11 @@ pipeline/      # domain operations shared by api/voice/workers: contacts, intent
 shared/        # zod schemas, E.164 utils, phone hashing/encryption, ids, errors, logger, signing
 shopify-sdk/   # typed GraphQL operations, webhook parsers, gateway table, billing, scopes, tokens
 payments/      # Razorpay + Stripe clients and webhook verification (no SDK)
+occ/           # one-click-checkout providers (GoKwik, Shiprocket, Razorpay Magic, Cashfree):
+               #   webhook verification + cart mapping, because those checkouts send no
+               #   Shopify checkouts/* webhooks (E-14)
+crm/           # CRM lead sources (Zoho, HubSpot): webhook verification + lead mapping; a new
+               #   lead becomes a lead_callback intent through the same createIntent()
 notify/        # transactional email (Postmark over fetch) + templates
 calendar/      # appointment providers (Cal.com) behind one port
 

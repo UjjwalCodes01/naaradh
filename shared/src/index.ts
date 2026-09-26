@@ -51,6 +51,10 @@ export {
   verifyRegionSnapshot,
   verifyShopifyHmac,
   engineWebhookTag,
+  providerSharedSecret,
+  providerWebhookPath,
+  providerWebhookTag,
+  verifyProviderWebhookTag,
   engineWebhookPath,
   verifyEngineWebhookTag,
   voiceToolPath,
@@ -103,6 +107,7 @@ export {
   regionPeersEnv,
   shopifyTokenKeyring,
   trustProxyOf,
+  type TrustProxyHops,
   type ShopifyTokenKeyring,
   type ShopifyTokenKeyringEnv,
 } from './env.js';

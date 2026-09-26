@@ -131,15 +131,53 @@ consent and record-keeping obligations checked by counsel before it goes live. `
 
 ## 3. One-click checkouts (GoKwik, Shiprocket, Razorpay Magic, Cashfree)
 
-Still blocked on partner access (Q-09), and deliberately not guessed at: those stores send no
-abandoned-checkout webhook Naaradh can read. Two ways forward, in order of preference:
+These stores send no Shopify `checkouts/*` webhook at all — the checkout is not Shopify's — so
+the cart has to come from the provider. **The ingestion is built** (`occ/`, `POST /occ/...`): what
+is still missing is the commercial half, because two of the four will not send you anything until
+they have wired your URL up on their side (Q-09).
 
-1. **Partner/API access** from the provider → then a small ingestion adapter is written for their
-   payloads, reusing the same cart path.
-2. **Today, with no partner deal:** the merchant's own glue (a script, a Zap, their developer)
-   posts the cart to `PUT /v1/carts/{ref}` with the consent wording version, and
-   `POST /v1/carts/{ref}/completed` when the order lands. Everything after that — the 45-minute
-   wait, consent, DND, the one-call-a-week rule — is Naaradh's, unchanged.
+### Turning it on for a merchant
 
-Until one of those exists, those stores get COD confirmation, feedback and the support line, and
-their Results page honestly shows zero checkouts (E-111).
+1. **Set `PROVIDER_WEBHOOK_KEY` once per environment** (`openssl rand -hex 32`, Secret Manager, then
+   list it in `enabled_optional_secrets` — [07](07-secrets-and-configuration.md)). Until it is
+   set, `/occ/*` answers 404 and the dashboard panel is hidden, which is the correct state today.
+2. **The merchant turns the provider on** in Dashboard → Developers → One-click checkout. That
+   screen shows the URL and the signing secret to paste into the provider's dashboard. Both are
+   derived from the key, so nothing per-merchant is stored and rotating the key re-issues every
+   merchant's URL at once.
+3. **Who to ask, per provider:**
+   - **Cashfree** — the merchant enables the abandoned-checkout webhook themselves and sets a
+     custom secret; ask them to use the secret we show. Signed, so leave the policy on *Require a
+     signed webhook*.
+   - **Razorpay Magic** — the merchant enables it under Magic Checkout → Setup & Settings →
+     Platform Settings. Razorpay documents no signature for this webhook, so the URL is the
+     credential: treat it like a password.
+   - **GoKwik** and **Shiprocket** — their integration team adds the URL to the merchant's
+     account; the merchant cannot do it from their dashboard. Ask for a **sample payload** at the
+     same time (see below).
+4. **Send a test cart** and check Dashboard → Results: the cart appears, and with no consent on
+   file it is skipped with `consent:missing`. That is the system working — `abandoned_cart` is
+   promotional, so a recovery call still needs consent from the checkbox or the ledger.
+
+### The one engineering step left, per provider
+
+Cashfree's and Razorpay Magic's payloads are mapped from their published references; **GoKwik and
+Shiprocket publish none**, so their mapping accepts the key spellings they are reported to use and
+is marked `[VERIFY]` in `occ/src/generic-cart.ts`. The first real delivery from each provider
+settles it:
+
+```bash
+# the raw body of the last cart that could not be read, for this provider
+select payload, error from webhook_events
+ where source = 'gokwik' and status = 'processed' and error like 'bad_payload%'
+ order by received_at desc limit 5;
+```
+
+An unreadable cart answers 202 and records *which field was missing*, so this is a five-minute fix
+rather than an investigation. Send that payload to the engineer; the tolerant mapping is replaced
+with an exact schema and a recorded fixture.
+
+**If you have no partner deal at all**, the merchant's own glue (a script, a Zap, their developer)
+can still post the cart to `PUT /v1/carts/{ref}` with the consent wording version, and
+`POST /v1/carts/{ref}/completed` when the order lands. Everything after that — the 45-minute wait,
+consent, DND, the one-call-a-week rule — is Naaradh's, unchanged.
