@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Image from 'next/image';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { accountBanner, roleAtLeast, type Role } from '@naaradh/pipeline';
@@ -41,7 +42,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-56 shrink-0 border-r border-slate-200 bg-white p-4 md:block">
-        <Link href="/app" className="block text-lg font-semibold">
+        <Link href="/app" className="flex items-center gap-2 text-lg font-semibold">
+          <Image src="/brand/mark.png" alt="" width={512} height={512} className="h-6 w-6" />
           Naaradh
         </Link>
         <p className="mt-1 truncate text-xs text-slate-500" title={s.tenantName}>
@@ -71,7 +73,8 @@ export default async function DashboardLayout({ children }: { children: ReactNod
       </aside>
       <div className="min-w-0 flex-1">
         <div className="border-b border-slate-200 bg-white px-4 py-3 md:hidden">
-          <Link href="/app" className="font-semibold">
+          <Link href="/app" className="inline-flex items-center gap-2 font-semibold">
+            <Image src="/brand/mark.png" alt="" width={512} height={512} className="h-5 w-5" />
             Naaradh
           </Link>
           <span className="ml-2 text-xs text-slate-500">{s.tenantName}</span>

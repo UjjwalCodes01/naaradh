@@ -1,7 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema, type Tx } from '@naaradh/db';
-import { NaaradhError, newId } from '@naaradh/shared';
+import { MAIL, NaaradhError, newId } from '@naaradh/shared';
 import { audit } from '../audit.js';
 import { auditActor, type Actor } from '../admin/actor.js';
 import { PLANS } from './plans.js';
@@ -87,7 +87,7 @@ export async function assertBilledDirectly(tx: Tx, tenantId: string): Promise<vo
   if (active.length > 0)
     throw new NaaradhError(
       'CONFLICT',
-      'this account already has an active subscription — write to billing@naaradh.com to change plans',
+      `this account already has an active subscription — write to ${MAIL.billing} to change plans`,
     );
 }
 

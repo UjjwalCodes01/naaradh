@@ -3,6 +3,7 @@ import { ActionForm } from '@/components/action-form';
 import { inputClass } from '@/components/ui';
 import { requestDoNotCall } from './actions';
 import { SitePage } from '@/components/site/ui';
+import { MAIL } from '@naaradh/shared';
 
 export const metadata: Metadata = {
   title: 'Do not call',
@@ -60,8 +61,7 @@ export default function DoNotCall() {
           </ActionForm>
         </div>
         <p className="text-xs text-muted">
-          You can also email dnc@naaradh.com. To ask for your data to be deleted, see the privacy
-          policy.
+          You can also email {MAIL.dnc}. To ask for your data to be deleted, see the privacy policy.
         </p>
       </div>
     </SitePage>

@@ -44,17 +44,72 @@ that cites them. **Loosening a rule without that answer is not allowed.**
 
 1. Create the Retell account (company email, 2FA), fund it, create an API key → Secret Manager
    `RETELL_API_KEY` in `naaradh-prod-us` (and `naaradh-prod-eu` if EU calls use the same account).
+   New accounts get $10 of trial credit, which is enough for the whole bake-off.
+
+   Four account settings to get right **before** the first call, because each one is a
+   compliance answer you will be asked for later:
+
+   - **Sign the BAA and the DPA** at `click-agreements.retellai.com` — self-serve, no fee, and
+     the DPA includes the EU Standard Contractual Clauses. Do this before any EU personal data
+     exists. File both alongside the other counterparty agreements.
+   - **Set data retention to the shortest offered (one day).** It is configurable per agent, from
+     1 day to 2 years. We persist the recording and transcript into our own CMEK bucket while
+     handling `call_ended`, so the vendor's copy is a cache — keeping it for two years creates a
+     second store of customer audio that we would have to answer for (ADR-0014).
+   - **Set the PII storage control** per agent (everything / exclude PII / basic attributes).
+     Start at the strictest setting the bake-off can live with and record which one you chose.
+   - **Note the concurrency limit: 20 concurrent calls** by default on pay-as-you-go, per
+     workspace. Raise it in Settings → Limits before a campaign, not during one. Bursting above
+     it costs **$0.10/min on the whole call**, which would silently wreck a margin.
+
 2. Buy or port **one** test number in Retell (Twilio/Telnyx underneath) and add it in the staging
    console. No webhook is configured by hand: the dispatcher creates each Retell agent with its
    tenant-bound webhook URL on `hooks.stage.naaradh.com`.
+
+   **Retell sells US and Canada numbers only** ($2/month standard; toll-free $5/month plus
+   $0.06/min inbound). A **UK or EU number cannot be bought here** — it has to be bought from
+   Twilio/Telnyx and imported, or reached over a SIP trunk (§"Custom telephony"). Plan the UK
+   launch around that: the number comes first, from the carrier, and Retell is pointed at it.
 3. Place one call per contract scenario to a team member's phone: happy path, no answer, busy,
    voicemail, opt-out, mid-call tool, agent hang-up. Save each webhook body and tool-call body.
 4. Sanitise them (fake numbers from `shared/test/fake-phones.ts`, no names, no
    recordings) and replace the shapes in `engines/retell/test/fake-retell.ts`. Settle
    every `[VERIFY]` in `engines/retell/src/` — signature header, cost units, reason
    names, tool body — and close Q-31's items one by one.
-5. Ask Retell in writing about inbound (per-call dynamic variables from an answer URL), warm
-   transfer and cancelling a queued call. Until they work, the adapter keeps declaring them off.
+5. **Prove the three switched-off capabilities, one call each** (Q-31). All the code exists and
+   is tested against the stand-in; each flag turns on only after you have watched it work.
+
+   | Flag | The call to make | What proves it |
+   |---|---|---|
+   | `RETELL_INBOUND=true` | Attach the test number (`pnpm --filter @naaradh/workers inbound:attach`), then ring it from a mobile | Retell POSTs to the inbound URL **before** connecting; the greeting you hear is the one `admitInbound()` chose, not the one stored on the agent. Then ring it outside opening hours: you hear the closed message and the call ends — never a dead line. |
+   | `RETELL_TRANSFER=true` | Ask the agent for a human while a verified transfer target is in hours | The agent dials the target from `{{naaradh_transfer_to}}`; the number never appears in the transcript. Check `transfer_started` / `transfer_bridged` arrive as webhooks. |
+   | `RETELL_CANCEL=true` | Place a call, then cancel the order while it is ringing (E-40) | `POST /v2/stop-call` returns 204 and the phone stops ringing. Try it again on the same call: a call Retell cannot find must not become an error. |
+
+   Two things to check while you are there, because both are assumptions in the code:
+   - **`reject` is never sent.** Confirm a refused call is always *heard*. If a closed message
+     ever arrives as silence or a carrier tone, that is E-92 and it blocks the US support line.
+   - **The recording URL dies in about ten minutes.** Confirm the file is in GCS by the time the
+     call appears in the dashboard. A failed persist is logged on the attempt and never retried —
+     by the time a retry ran, Retell would have deleted the audio.
+
+### What we deliberately do not switch on
+
+Retell's platform includes a knowledge base, CRM sync, live A/B testing, an agent-editing
+copilot, its own analytics and QA, and human takeover of a live call. **None of them are used**,
+and the reasons are written down in [ADR-0014](../decisions/ADR-0014-what-we-rent-from-a-voice-engine.md):
+each one moves the record of what happened outside our database, our RLS and our audit trail.
+If a merchant asks for one, that is a product decision and a new ADR — never a dashboard toggle.
+
+### A web call, before any number exists
+
+`createWebCall` starts a call the merchant hears in their own browser: no number, no carrier, no
+DLT, nothing dialled, and the greeting is still the approved first utterance, so the disclosure
+is spoken as always. It is the cheapest way to let someone hear their agent during onboarding,
+and it is the one part of the bake-off you can run on day one with no telephony at all.
+
+The adapter method is built and tested. The browser half is **not** decided: joining needs
+Retell's own browser client, and invariant 13 allows no vendor SDK outside `engines/<vendor>/`
+(Q-36). Settle that before promising merchants a "hear your agent" button.
 
 ## 3. Google Cloud projects (P6-INF-1)
 

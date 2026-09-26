@@ -77,4 +77,4 @@ export function verify(secret, header, rawBody, now = Date.now() / 1000) {
 ### Errors
 
 Every error is `{"error": {"code", "message", "details?", "request_id"}}`. Quote `request_id`
-when writing to support@naaradh.com.
+when writing to info@naaradh.com.

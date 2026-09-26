@@ -190,7 +190,8 @@ Checklist (SPEC §8.6, `[VERIFY current list]`):
       irreversible)
 - [ ] Listing: name, tagline, description, screenshots, a demo video, pricing that matches the
       Billing API plans exactly, FAQ
-- [ ] Privacy policy URL (`https://naaradh.com/privacy`), support email (support@naaradh.com),
+- [ ] Privacy policy URL (`https://naaradh.com/privacy`), support email (info@naaradh.com —
+      Shopify requires it to be answered),
       support URL (`https://naaradh.com/contact`)
 - [ ] Embedded, App Bridge, session tokens, Polaris; works on mobile admin; loads in < 3 s
 - [ ] Clean install on a fresh dev store, no broken links, uninstall cleans up

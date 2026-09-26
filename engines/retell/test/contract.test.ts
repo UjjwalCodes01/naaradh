@@ -41,8 +41,8 @@ const toolCall = (args: Record<string, unknown>) => ({
   call: { call_id: 'call_000042', metadata: { call_id: 'att_01TESTATTEMPTAAAAAAAAAAAAA' } },
 });
 
-describe('retell: what it declares it cannot do', () => {
-  it('no inbound, no warm transfer, no cancel; signed webhooks; disclosure inferred', () => {
+describe('retell: switched off by default (Q-31)', () => {
+  it('declares no inbound, no transfer, no cancel until each is seen working', () => {
     expect(make().capabilities()).toMatchObject({
       inbound: false,
       warmTransfer: false,
@@ -54,8 +54,203 @@ describe('retell: what it declares it cannot do', () => {
     });
   });
 
-  it('an inbound request is refused loudly, never half-answered (E-92)', () => {
-    expect(() => make().parseInboundRequest()).toThrow(/not supported/);
+  it('every switched-off entry point refuses loudly, naming its flag', async () => {
+    const a = make();
+    const d = signed(inboundBody());
+    expect(() => a.parseInboundRequest(d.headers, d.rawBody, http())).toThrow(/RETELL_INBOUND/);
+    expect(() => a.formatInboundResponse(ANSWER)).toThrow(/RETELL_INBOUND/);
+    await expect(a.attachInboundNumber(attachment())).rejects.toThrow(/RETELL_INBOUND/);
+    await expect(a.cancelCall({ vendor: 'retell', callId: 'call_000001' })).rejects.toThrow(
+      /RETELL_CANCEL/,
+    );
+    await expect(
+      a.prepareTransfer({ vendor: 'retell', callId: 'call_000001' }, FAKE_US.transferTarget, null),
+    ).rejects.toThrow(/RETELL_TRANSFER/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Q-31: what Retell's documentation says it can do. Written, tested against the stand-in, and
+// OFF in every environment until one recorded call proves each one.
+// ---------------------------------------------------------------------------------------------
+
+const makeOn = () => {
+  const fake = fakeRetell(KEY, now);
+  return Object.assign(
+    new RetellAdapter({
+      apiKey: KEY,
+      fetchImpl: fake.fetchImpl,
+      now,
+      timeoutMs: 200,
+      inbound: true,
+      transfer: true,
+      cancel: true,
+    }),
+    { fake },
+  );
+};
+
+const OUR_NUMBER = FAKE_US.customer;
+const inboundBody = (over: Record<string, unknown> = {}) => ({
+  event: 'call_inbound',
+  call_inbound: {
+    call_id: 'call_inb_1',
+    from_number: FAKE_US.noWrittenConsent,
+    to_number: OUR_NUMBER,
+    event_timestamp: NOW.getTime(),
+    ...over,
+  },
+});
+const http = (bound = OUR_NUMBER) => ({
+  method: 'POST',
+  path: '/inbound/retell/ten_x.tag',
+  query: {},
+  boundCalledE164: bound,
+});
+const ANSWER = {
+  kind: 'answer' as const,
+  attemptId: 'att_01TESTATTEMPTAAAAAAAAAAAAA',
+  firstUtterance: 'Hello, this is an AI assistant. This call is recorded.',
+  systemPrompt: 'You are the support line.',
+  variables: { brand: 'Client A' },
+  tools: [],
+  maxDurationSec: 300,
+  locale: 'en-US' as const,
+  voiceId: null,
+  webhookUrl: 'https://hooks.example/engine/retell/ten_x.tag',
+};
+const attachment = () => ({
+  e164: OUR_NUMBER,
+  inboundUrl: 'https://voice.example/inbound/retell/ten_x.tag',
+  agent: {
+    name: 'Client A support',
+    locale: 'en-US' as const,
+    systemPrompt: 'You are the support line.',
+    firstUtterance: 'Hello, this is an AI assistant. This call is recorded.',
+    voiceId: 'default',
+    maxDurationSec: 300,
+    webhookUrl: 'https://hooks.example/engine/retell/ten_x.tag',
+  },
+});
+
+describe('retell inbound, when switched on (Q-31)', () => {
+  it('reads the preallocated call id, the caller and the number we bound into the URL', () => {
+    const d = signed(inboundBody());
+    expect(makeOn().parseInboundRequest(d.headers, d.rawBody, http())).toMatchObject({
+      vendor: 'retell',
+      vendorCallId: 'call_inb_1',
+      calledE164: OUR_NUMBER,
+      callerE164: FAKE_US.noWrittenConsent,
+    });
+  });
+
+  it('refuses an unsigned or wrongly signed delivery before parsing it (invariant 9)', () => {
+    const d = signed(inboundBody(), 'someone_elses_key');
+    expect(() => makeOn().parseInboundRequest(d.headers, d.rawBody, http())).toThrow(
+      SignatureInvalidError,
+    );
+  });
+
+  it('refuses a body naming a number this URL was not minted for (invariant 16)', () => {
+    const d = signed(inboundBody({ to_number: FAKE_US.hawaii }));
+    expect(() => makeOn().parseInboundRequest(d.headers, d.rawBody, http())).toThrow(
+      /not minted for/,
+    );
+  });
+
+  it('a withheld caller id is null, not a guess (E-80)', () => {
+    const d = signed(inboundBody({ from_number: 'anonymous' }));
+    expect(makeOn().parseInboundRequest(d.headers, d.rawBody, http()).callerE164).toBeNull();
+  });
+
+  it('answers with this call’s prompt, greeting and our attempt id', () => {
+    const res = makeOn().formatInboundResponse(ANSWER);
+    const body = JSON.parse(res.body) as {
+      call_inbound: { dynamic_variables: Record<string, string>; metadata: Record<string, string> };
+    };
+    expect(res.status).toBe(200);
+    expect(body.call_inbound.dynamic_variables).toMatchObject({
+      naaradh_system_prompt: ANSWER.systemPrompt,
+      naaradh_first_utterance: ANSWER.firstUtterance,
+      brand: 'Client A',
+    });
+    expect(body.call_inbound.metadata).toMatchObject({ call_id: ANSWER.attemptId });
+  });
+
+  it('a refusal is spoken, never a rejected call (E-92)', () => {
+    const res = makeOn().formatInboundResponse({
+      kind: 'closed',
+      message: 'Sorry, the line is closed right now.',
+      locale: 'en-US',
+    });
+    const body = JSON.parse(res.body) as {
+      call_inbound: { reject?: boolean; dynamic_variables: Record<string, string> };
+    };
+    // `reject: true` exists in Retell's API and is deliberately never sent: the caller would
+    // hear a carrier failure instead of the reason.
+    expect(body.call_inbound.reject).toBeUndefined();
+    expect(body.call_inbound.dynamic_variables['naaradh_first_utterance']).toBe(
+      'Sorry, the line is closed right now.',
+    );
+  });
+
+  it('a forward carries the destination as a variable the agent dials', () => {
+    const res = makeOn().formatInboundResponse({
+      kind: 'forward',
+      toE164: FAKE_US.transferTarget,
+      announcement: 'Putting you through to the team.',
+    });
+    const body = JSON.parse(res.body) as {
+      call_inbound: { dynamic_variables: Record<string, string> };
+    };
+    expect(body.call_inbound.dynamic_variables['naaradh_transfer_to']).toBe(FAKE_US.transferTarget);
+  });
+
+  it('attaching a number gives it an agent whose prompt and greeting are only variables', async () => {
+    const a = makeOn();
+    const ref = await a.attachInboundNumber(attachment());
+    expect(ref).toMatchObject({ vendor: 'retell', agentId: 'agent_test_1' });
+    const llm = a.fake.requests.find((r) => r.path === '/create-retell-llm')?.body as
+      | Record<string, unknown>
+      | undefined;
+    expect(llm?.['general_prompt']).toBe('{{naaradh_system_prompt}}');
+    expect(llm?.['begin_message']).toBe('{{naaradh_first_utterance}}');
+    const bind = a.fake.requests.find((r) => r.path.startsWith('/update-phone-number/'));
+    expect(bind?.body).toMatchObject({
+      inbound_agent_id: 'agent_test_1',
+      inbound_webhook_url: 'https://voice.example/inbound/retell/ten_x.tag',
+    });
+  });
+});
+
+describe('retell cancel and transfer, when switched on (Q-31)', () => {
+  it('cancels a live call (E-40)', async () => {
+    const a = makeOn();
+    const placed = await a.placeCall(baseRequest());
+    await a.cancelCall(placed);
+    expect(a.fake.requests.some((r) => r.path === `/v2/stop-call/${placed.callId}`)).toBe(true);
+  });
+
+  it('a call the vendor cannot find is already over, not an error', async () => {
+    await expect(
+      makeOn().cancelCall({ vendor: 'retell', callId: 'call_never_existed' }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('sets the transfer destination on the live call, from our side only', async () => {
+    const a = makeOn();
+    await a.prepareTransfer(
+      { vendor: 'retell', callId: 'call_000042' },
+      FAKE_US.transferTarget,
+      'Customer asks about a refund.',
+    );
+    const patch = a.fake.requests.find((r) => r.path === '/v2/update-live-call/call_000042');
+    expect(patch?.body).toMatchObject({
+      fields_to_override: {
+        override_dynamic_variables: { naaradh_transfer_to: FAKE_US.transferTarget },
+      },
+      call_control: { additional_context: 'Customer asks about a refund.' },
+    });
   });
 });
 
@@ -258,5 +453,45 @@ describe('retell: mapping details', () => {
       humanSpeechSec: 6.5,
       billableSec: 30,
     });
+  });
+});
+
+describe('retell inbound: the delivery must be usable at all', () => {
+  it('refuses a body with no preallocated call id — there would be nothing to dedupe on', () => {
+    const d = signed(inboundBody({ call_id: undefined }));
+    expect(() => makeOn().parseInboundRequest(d.headers, d.rawBody, http())).toThrow(/call_id/);
+  });
+
+  it('refuses a delivery with no bound number in the URL (invariant 16)', () => {
+    const d = signed(inboundBody());
+    expect(() =>
+      makeOn().parseInboundRequest(d.headers, d.rawBody, {
+        method: 'POST',
+        path: '/inbound/retell/ten_x.tag',
+        query: {},
+      }),
+    ).toThrow(/bound number/);
+  });
+});
+
+describe('retell web call: hearing your agent before a number exists', () => {
+  it('starts a browser call and returns a short-lived join token', async () => {
+    const a = makeOn();
+    expect(a.capabilities().webCall).toBe(true);
+    const session = await a.createWebCall({
+      agentRef: { vendor: 'retell', agentId: 'agent_test_1' },
+      variables: { brand: 'Client A' },
+      metadata: { call_id: 'att_01TESTATTEMPTAAAAAAAAAAAAA' },
+    });
+    expect(session).toMatchObject({ vendor: 'retell', callId: 'web_000001' });
+    expect(session.accessToken).not.toBe('');
+    expect(session.expiresAt.getTime()).toBeGreaterThan(NOW.getTime());
+    // It carries the same variables a phone call would, so the greeting — and therefore the
+    // disclosure — is the approved one (invariant 7).
+    const sent = a.fake.requests.find((r) => r.path === '/v3/create-web-call')?.body as
+      | Record<string, unknown>
+      | undefined;
+    expect(sent?.['retell_llm_dynamic_variables']).toMatchObject({ brand: 'Client A' });
+    expect(sent?.['agent_id']).toBe('agent_test_1');
   });
 });

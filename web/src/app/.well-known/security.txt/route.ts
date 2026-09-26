@@ -1,3 +1,5 @@
+import { MAIL } from '@naaradh/shared';
+
 /**
  * RFC 9116 security.txt (SPEC §14, §7 mailboxes): how to report a vulnerability.
  *
@@ -6,7 +8,7 @@
  * scanners and researchers. Acknowledgments is deliberately omitted (no hall of fame yet).
  */
 const SECURITY_TXT = [
-  'Contact: mailto:security@naaradh.com',
+  `Contact: mailto:${MAIL.security}`,
   'Expires: 2027-09-13T00:00:00.000Z',
   'Preferred-Languages: en, hi',
   'Policy: https://naaradh.com/security',

@@ -6,6 +6,8 @@
  * billed (invariant 11). Changing behaviour means changing this file in the same PR.
  */
 
+import { MAIL } from '@naaradh/shared';
+
 export interface LegalSection {
   readonly heading: string;
   readonly paragraphs?: readonly string[];
@@ -213,7 +215,7 @@ export const LEGAL: Readonly<Record<string, LegalPage>> = {
       {
         heading: 'Reporting a vulnerability',
         paragraphs: [
-          'Write to security@naaradh.com. Please do not test against merchants’ live stores or real phone numbers.',
+          `Write to ${MAIL.security}. Please do not test against merchants’ live stores or real phone numbers.`,
         ],
       },
     ],
@@ -289,12 +291,12 @@ export const LEGAL: Readonly<Record<string, LegalPage>> = {
       {
         heading: 'Email',
         bullets: [
-          'Support: support@naaradh.com',
-          'Sales: sales@naaradh.com',
-          'Privacy and grievances: privacy@naaradh.com',
-          'Do-not-call: dnc@naaradh.com (or use the do-not-call page)',
-          'Security: security@naaradh.com',
-          'Legal: legal@naaradh.com',
+          `Support: ${MAIL.support}`,
+          `Sales: ${MAIL.sales}`,
+          `Privacy and grievances: ${MAIL.privacy}`,
+          `Do-not-call: ${MAIL.dnc} (or use the do-not-call page)`,
+          `Security: ${MAIL.security}`,
+          `Legal: ${MAIL.legal}`,
         ],
       },
     ],
@@ -310,7 +312,7 @@ export const LEGAL: Readonly<Record<string, LegalPage>> = {
         heading: 'Grievance Officer',
         paragraphs: [
           'Name and designation: to be published on incorporation.',
-          'Email: privacy@naaradh.com — include the phone number or order the grievance is about, and how to reach you. We acknowledge within 48 hours.',
+          `Email: ${MAIL.privacy} — include the phone number or order the grievance is about, and how to reach you. We acknowledge within 48 hours.`,
         ],
       },
       {

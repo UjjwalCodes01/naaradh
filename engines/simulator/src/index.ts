@@ -181,6 +181,8 @@ export class SimulatorAdapter implements VoiceEngineAdapter {
       reportsDisclosure: true,
       progressEvents: true,
       callLookup: true,
+      // The simulator dials nothing anyway; a browser call would prove nothing extra.
+      webCall: false,
     };
   }
 

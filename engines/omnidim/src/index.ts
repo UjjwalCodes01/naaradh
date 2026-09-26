@@ -103,6 +103,8 @@ export class OmnidimAdapter implements VoiceEngineAdapter {
       reportsDisclosure: false,
       progressEvents: false,
       callLookup: false,
+      // OmniDimension's calls are telephony only.
+      webCall: false,
     };
   }
 

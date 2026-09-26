@@ -21,6 +21,7 @@ import { field, run, type ActionResult } from '@/lib/actions';
 import { env } from '@/lib/env';
 import { now } from '@/lib/server';
 import { actorOf, inTenant, requireSession } from '@/lib/session';
+import { MAIL } from '@naaradh/shared';
 
 /** Direct (non-Shopify) merchants subscribe through Razorpay; Shopify stores are refused (App Store rule). */
 export async function subscribeRazorpay(
@@ -33,7 +34,7 @@ export async function subscribeRazorpay(
     if (e.RAZORPAY_KEY_ID === undefined || e.RAZORPAY_KEY_SECRET === undefined)
       return {
         ok: false,
-        message: 'Online subscription is not available yet — write to billing@naaradh.com.',
+        message: `Online subscription is not available yet — write to ${MAIL.billing}.`,
       };
     const input = SubscribeInput.parse({
       plan_code: field(form, 'plan_code') || null,
@@ -61,7 +62,7 @@ export async function subscribeRazorpay(
       if (error instanceof RazorpayError)
         return {
           ok: false,
-          message: 'Razorpay refused the subscription. Contact billing@naaradh.com.',
+          message: `Razorpay refused the subscription. Contact ${MAIL.billing}.`,
         };
       throw error;
     }
@@ -83,7 +84,7 @@ export async function subscribeStripe(_prev: ActionResult, form: FormData): Prom
     if (e.STRIPE_SECRET_KEY === undefined)
       return {
         ok: false,
-        message: 'Online subscription is not available yet — write to billing@naaradh.com.',
+        message: `Online subscription is not available yet — write to ${MAIL.billing}.`,
       };
     const input = SubscribeInput.parse({
       plan_code: field(form, 'plan_code') || null,
@@ -110,7 +111,7 @@ export async function subscribeStripe(_prev: ActionResult, form: FormData): Prom
       if (error instanceof StripeRetryableError)
         return { ok: false, message: 'Stripe is unavailable. Try again in a minute.' };
       if (error instanceof StripeError)
-        return { ok: false, message: 'Stripe refused the checkout. Contact billing@naaradh.com.' };
+        return { ok: false, message: `Stripe refused the checkout. Contact ${MAIL.billing}.` };
       throw error;
     }
     await inTenant(s, (tx) => recordStripeCheckout(tx, actorOf(s), input, session, currency));

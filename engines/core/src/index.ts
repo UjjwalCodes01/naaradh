@@ -287,6 +287,32 @@ export interface EngineCapabilities {
    * two minutes of silence proves nothing for such a vendor (invariant 10).
    */
   readonly callLookup: boolean;
+  /**
+   * Whether the vendor can run a call in a browser, with no phone number and no carrier leg.
+   * It is still a call: the AI and recording disclosure is the first thing said (invariant 7),
+   * and nothing about it is billable to a merchant. What it cannot prove is deliverability —
+   * no ringing, no carrier, no answer rate — so it demonstrates a script, never a number.
+   */
+  readonly webCall: boolean;
+}
+
+export interface WebCallRequest {
+  readonly agentRef: EngineAgentRef;
+  /** Filled into the agent's prompt and greeting, exactly as on a phone call. */
+  readonly variables: Readonly<Record<string, string>>;
+  /** Stored on the vendor's call record; carries our attempt id back on the webhook. */
+  readonly metadata: Readonly<Record<string, string>>;
+}
+
+export interface WebCallSession {
+  readonly vendor: string;
+  readonly callId: string;
+  /**
+   * What the browser joins with. Short-lived, single-call, and a credential: it is returned to
+   * one signed-in owner, never logged, never stored, never put in a merchant webhook.
+   */
+  readonly accessToken: string;
+  readonly expiresAt: Date;
 }
 
 export interface VoiceEngineAdapter {
@@ -314,6 +340,25 @@ export interface VoiceEngineAdapter {
 
   /** Only present when `capabilities().cancel` is true (E-40). */
   cancelCall?(ref: EngineCallRef): Promise<void>;
+
+  /**
+   * Start a call the merchant hears in their own browser (`capabilities().webCall`). Used to
+   * let someone hear their agent before any number exists — an onboarding step, not a product
+   * surface: it places nothing, so no gate, no consent and no window apply to it.
+   */
+  createWebCall?(req: WebCallRequest): Promise<WebCallSession>;
+
+  /**
+   * Tell the engine where a transfer this call is about to make should go, immediately before
+   * the tool result that asks for it is returned.
+   *
+   * Some vendors take the destination from a per-call variable rather than from the model, which
+   * is the only shape compatible with invariant 19: the caller never names a number, and the
+   * destination is chosen server-side from the tenant's verified, in-hours targets. Absent, or
+   * `capabilities().warmTransfer` false, means the vendor cannot be told a destination mid-call
+   * and a transfer request becomes a callback ticket instead (E-86).
+   */
+  prepareTransfer?(ref: EngineCallRef, toE164: string, warmSummary: string | null): Promise<void>;
 
   /**
    * Point a number we own at our inbound-context endpoint (provisioning, not per call). Engines

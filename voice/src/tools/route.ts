@@ -59,14 +59,33 @@ export function registerToolRoutes(app: FastifyInstance, deps: VoiceDeps): void 
         request.log,
         started,
       );
-      const res = adapter.formatToolResult(result);
+      // A transfer goes to a number we chose from the tenant's verified targets (invariant 19).
+      // Engines that take the destination from a per-call variable have to be told it before the
+      // agent acts on the result; if that fails the agent must not attempt the transfer at all.
+      let outcome = result;
+      if (result.action?.kind === 'transfer' && adapter.prepareTransfer !== undefined) {
+        try {
+          await adapter.prepareTransfer(
+            { vendor, callId: call.vendorCallId },
+            result.action.toE164,
+            result.action.warmSummary,
+          );
+        } catch (error) {
+          request.log.error(
+            { err: error, vendor, tenant_id: tenantId, attempt_id: attemptId },
+            'transfer destination could not be set; the agent is told the tool failed',
+          );
+          outcome = { ok: false, data: {}, say: null, action: null };
+        }
+      }
+      const res = adapter.formatToolResult(outcome);
       request.log.info(
         {
           vendor,
           tenant_id: tenantId,
           attempt_id: attemptId,
           tool,
-          ok: result.ok,
+          ok: outcome.ok,
           ms: Date.now() - started,
         },
         'tool call',

@@ -31,7 +31,7 @@ owner; make someone else owner first. Audit: `user.disabled`, `user.signed_out`.
 1. Team → Remove the person (or "Sign out everywhere" for yourself).
 2. Access log → "Show every change" for what the session did (recording plays, settings changes,
    API keys created). Revoke any key it created (Developers).
-3. Tell security@naaradh.com; staff can pause the tenant from the console while you look.
+3. Tell info@naaradh.com; staff can pause the tenant from the console while you look.
 
 ## Merchant emails (alerts, daily summary)
 

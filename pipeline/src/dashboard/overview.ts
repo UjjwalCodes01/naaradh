@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, isNotNull, sql } from 'drizzle-orm';
 import { schema, type Tx } from '@naaradh/db';
-import { addDays } from '@naaradh/shared';
+import { addDays, MAIL } from '@naaradh/shared';
 import { explainGate } from './explain.js';
 
 /**
@@ -163,7 +163,7 @@ export function accountBanner(t: {
     return {
       tone: 'bad',
       title: 'Account suspended',
-      body: 'Naaradh has suspended calling for this account. Contact support@naaradh.com.',
+      body: `Naaradh has suspended calling for this account. Contact ${MAIL.support}.`,
     };
   if (t.status === 'paused') {
     const reason = t.pausedReason ?? '';
@@ -173,7 +173,7 @@ export function accountBanner(t: {
         ? 'The Shopify app was uninstalled. Reinstall it to resume.'
         : reason.startsWith('billing')
           ? 'Calling paused for billing. See Billing.'
-          : 'Calling is paused. Contact support@naaradh.com for details.';
+          : `Calling is paused. Contact ${MAIL.support} for details.`;
     return { tone: 'bad', title: 'Calling paused', body };
   }
   if (t.billingStatus === 'capped')

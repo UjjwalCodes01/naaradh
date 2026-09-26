@@ -62,6 +62,24 @@ export const engineEnv = {
   RETELL_VOICES: jsonObject<string>('RETELL_VOICES'),
   RETELL_MODEL: z.string().optional(),
   /**
+   * The three Retell capabilities its documentation describes but nobody here has seen work
+   * (Q-31): the inbound-call webhook, a transfer destination set per call, and stop-call. Each
+   * ships false and is switched on per environment after one recorded call proves it — the same
+   * discipline as BOLNA_INBOUND.
+   */
+  RETELL_INBOUND: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  RETELL_TRANSFER: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  RETELL_CANCEL: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  /**
    * The bearer Bolna presents when its agent calls one of our tools or asks who is calling
    * (Bolna signs nothing). ≥ 32 random characters; unset → Bolna agents get no tools.
    */
@@ -88,10 +106,13 @@ export const engineEnv = {
 /** SIMULATOR_ALLOWED is optional for callers that build the env by hand (tests, registries). */
 export type EngineEnv = Omit<
   z.infer<z.ZodObject<typeof engineEnv>>,
-  'SIMULATOR_ALLOWED' | 'BOLNA_INBOUND'
+  'SIMULATOR_ALLOWED' | 'BOLNA_INBOUND' | 'RETELL_INBOUND' | 'RETELL_TRANSFER' | 'RETELL_CANCEL'
 > & {
   readonly SIMULATOR_ALLOWED?: boolean;
   readonly BOLNA_INBOUND?: boolean;
+  readonly RETELL_INBOUND?: boolean;
+  readonly RETELL_TRANSFER?: boolean;
+  readonly RETELL_CANCEL?: boolean;
 };
 
 /**
@@ -190,6 +211,9 @@ export class EngineRegistry {
           ...(this.options.env.RETELL_MODEL === undefined
             ? {}
             : { model: this.options.env.RETELL_MODEL }),
+          inbound: this.options.env.RETELL_INBOUND === true,
+          transfer: this.options.env.RETELL_TRANSFER === true,
+          cancel: this.options.env.RETELL_CANCEL === true,
         });
       case 'bolna': {
         const env = this.options.env;

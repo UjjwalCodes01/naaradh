@@ -205,6 +205,29 @@ export function fakeRetell(apiKey: string, now: () => Date): FakeRetell {
         });
       return json(201, { ...full, call_status: 'registered' });
     }
+    if (method === 'POST' && path === '/v3/create-web-call') {
+      seq += 1;
+      const id = `web_${String(seq).padStart(6, '0')}`;
+      calls.set(id, callFor(id, body, HAPPY));
+      return json(201, {
+        call_id: id,
+        access_token: 'tok_browser_join_0001',
+        transport: 'gateway',
+        expires_at: now().getTime() + 60_000,
+      });
+    }
+
+    // Q-31 routes: documented, never yet seen working against the real API.
+    if (method === 'POST' && path.startsWith('/v2/stop-call/')) {
+      const id = decodeURIComponent(path.slice('/v2/stop-call/'.length));
+      // Retell answers 422 for a call it cannot find under this key.
+      return calls.has(id)
+        ? new Response(null, { status: 204 })
+        : json(422, { error: 'not found' });
+    }
+    if (method === 'PATCH' && path.startsWith('/v2/update-live-call/'))
+      return json(200, { success: true });
+
     if (method === 'GET' && path.startsWith('/v2/get-call/')) {
       const call = calls.get(decodeURIComponent(path.slice('/v2/get-call/'.length)));
       return call === undefined ? json(404, { error: 'not found' }) : json(200, call);

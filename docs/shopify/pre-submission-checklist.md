@@ -11,7 +11,7 @@ requirements page, which changes — read it the same day.
 - [ ] Legal pages final (not "pending counsel"): `/privacy`, `/terms`, `/dpa`, `/aup`, `/refunds`; versions recorded in `web/src/content/legal.ts`
 - [ ] Production app has **Public distribution** selected (irreversible — Partner Dashboard → App distribution)
 - [ ] Production environment applied and deployed: `shopify`, `hooks`, `web`, workers all green; `SHOPIFY_BILLING_TEST=false`; `SHOPIFY_WRITEBACK=live`
-- [ ] Support mailbox `support@naaradh.com` answered; `https://naaradh.com/contact` live
+- [ ] Support mailbox `info@naaradh.com` answered; `https://naaradh.com/contact` live
 
 ## Install and onboarding (10 minutes, no engineer)
 

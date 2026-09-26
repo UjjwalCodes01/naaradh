@@ -142,6 +142,8 @@ export class BolnaAdapter implements VoiceEngineAdapter {
       reportsDisclosure: false,
       progressEvents: true,
       callLookup: true,
+      // Bolna's calls are telephony only.
+      webCall: false,
     };
   }
 
@@ -535,7 +537,7 @@ export class BolnaAdapter implements VoiceEngineAdapter {
       // lookup) are a new invocation and must not replay the first answer.
       toolCallId: createHash('sha256')
         .update(
-          `${callId} ${tool} ${JSON.stringify(args)} ${String(Math.floor(this.now().getTime() / 5_000))}`,
+          `${callId}\u0000${tool}\u0000${JSON.stringify(args)}\u0000${String(Math.floor(this.now().getTime() / 5_000))}`,
         )
         .digest('hex')
         .slice(0, 32),

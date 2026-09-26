@@ -44,6 +44,7 @@ describe('omnidim: what it declares', () => {
       reportsDisclosure: false,
       progressEvents: false,
       callLookup: false,
+      webCall: false,
     });
   });
 

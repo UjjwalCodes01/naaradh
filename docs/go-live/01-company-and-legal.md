@@ -81,7 +81,8 @@ data-handling policy, and an **incident response plan** (required for Shopify Le
 ## 6. People and roles to name
 
 - **Grievance Officer** (DPDP) — a named person; published at `/grievance`, reachable at
-  privacy@naaradh.com.
+  info@naaradh.com (the one live mailbox; `privacy@` becomes an alias later — see
+  [06](06-email-and-payments.md)).
 - **Staff with console access** — Google accounts in a group allowed through IAP (see
   [05](05-cloud-infrastructure.md#8-staff-console-access-iap)).
 - **Production approvers** — reviewers of the GitHub `production` environment.

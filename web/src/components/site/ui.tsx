@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { ArrowRightIcon, CheckIcon } from './icons';
@@ -8,27 +9,29 @@ export const WRAP = 'mx-auto w-full max-w-[1600px] px-6 lg:px-10 xl:px-14';
 /** An outlined card on the cream page. */
 export const CARD = 'rounded-[24px] border border-line';
 
-/** The wordmark: a leaf, then the name. Used in the header, the footer and the OG image. */
+/**
+ * The wordmark: the mark, then the name.
+ *
+ * Two artworks, because one cannot do both jobs: the mark is dark green and disappears on the
+ * forest footer, so dark surfaces get the tile, which carries its own background. The name stays
+ * live text — it scales with the layout, it is selectable, and it is what a screen reader reads.
+ */
 export function Logo({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
+  const light = tone === 'light';
   return (
     <span
       className={`inline-flex items-center gap-2 text-[21px] font-extrabold tracking-tight ${
-        tone === 'dark' ? 'text-forest' : 'text-cream'
+        light ? 'text-cream' : 'text-forest'
       }`}
     >
-      <svg viewBox="0 0 24 24" className="h-5 w-5" aria-hidden>
-        <path
-          d="M12 21c0-5 1.8-8.4 5.4-10.2-.3 4.6-2.1 7.6-5.4 9"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.7"
-          strokeLinecap="round"
-        />
-        <path
-          d="M19.5 3.6c.6 5.4-1 9-4.8 10.8-2.6 1.2-5.2.4-6-1.8-.8-2.3.6-4.8 3.4-6 2.3-1 4.8-1.7 7.4-3Z"
-          fill="currentColor"
-        />
-      </svg>
+      <Image
+        src={light ? '/brand/tile.png' : '/brand/mark.png'}
+        alt=""
+        width={512}
+        height={512}
+        className={light ? 'h-6 w-6 rounded-[6px]' : 'h-6 w-6'}
+        priority
+      />
       Naaradh
     </span>
   );

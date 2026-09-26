@@ -4,18 +4,29 @@
 
 P0-INF-3. Workspace on naaradh.com gives the team mail and the Google Cloud organisation.
 
-**Mailboxes or groups the product and legal pages already point to:**
+**Every public page points at one mailbox today: `info@naaradh.com`.** Role addresses read better
+and two of them answer legal duties, but an address that bounces is worse than a plain one — a
+DPDP grievance, a do-not-call request and a vulnerability report all have to arrive.
 
-| Address | Used for |
-|---|---|
-| `support@` | Merchant support; App Store support email |
-| `sales@` | Enterprise enquiries (pricing page) |
-| `billing@` | Razorpay subscription problems (dashboard message) |
-| `privacy@` | DPDP grievances and data requests (`/grievance`, `/privacy`) |
-| `dnc@` | Do-not-call requests by email (`/do-not-call`) — staff act on them in the console |
-| `security@` | Vulnerability reports (`/security`); also publish `/.well-known/security.txt` |
-| `legal@` | Legal notices |
-| `staff@` (group) | People allowed into the staff console via IAP |
+They are still kept apart in the code (`shared/src/contact.ts`), so turning each one on is a
+one-line change that the contact page, the privacy policy, the grievance page, the dashboard and
+`security.txt` all follow:
+
+| Address | Used for | Status |
+|---|---|---|
+| `info@` | Everything below, until the aliases exist | **live — the only one** |
+| `support@` | Merchant support; App Store support email | alias to add |
+| `sales@` | Enterprise enquiries (pricing page) | alias to add |
+| `billing@` | Razorpay subscription problems (dashboard message) | alias to add |
+| `privacy@` | DPDP grievances and data requests (`/grievance`, `/privacy`) | alias to add |
+| `dnc@` | Do-not-call requests by email (`/do-not-call`) — staff act on them in the console | alias to add |
+| `security@` | Vulnerability reports (`/security`); also published in `/.well-known/security.txt` | alias to add |
+| `legal@` | Legal notices | alias to add |
+| `staff@` (group) | People allowed into the staff console via IAP | needed for IAP |
+
+Whoever reads `info@` is, in practice, the grievance officer and the security contact. Say so on
+the grievance page once a name is published, and keep the 48-hour acknowledgement promise the
+page already makes.
 
 DNS for mail (SPEC §7.1): MX to Google; SPF `v=spf1 include:_spf.google.com include:<postmark> -all`;
 DKIM for Workspace and Postmark; DMARC `v=DMARC1; p=quarantine; rua=mailto:dmarc@naaradh.com`.
@@ -86,7 +97,7 @@ usage records. Test charges on development stores.
 
 ## 6. Checklist
 
-- [ ] Workspace, mailboxes/groups above, SPF/DKIM/DMARC, 2SV enforced
+- [ ] Workspace, `info@` + `staff@` group, SPF/DKIM/DMARC, 2SV enforced (other aliases later)
 - [ ] Postmark servers (staging, prod), mail.naaradh.com verified, account approved, tokens in Secret Manager
 - [ ] Razorpay KYC done, GSTIN added, Subscriptions on, plans created, `RAZORPAY_PLAN_IDS` set
 - [ ] Razorpay keys + webhook secret in Secret Manager; webhook pointing at hooks
