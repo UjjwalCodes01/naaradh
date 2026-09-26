@@ -482,8 +482,8 @@ importers:
         specifier: 1.2.1
         version: 1.2.1(react-dom@19.3.0(react@19.3.0))(react-router@7.18.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(react@19.3.0)
       '@shopify/shopify-app-session-storage':
-        specifier: 5.0.1
-        version: 5.0.1(@shopify/shopify-api@13.1.0)
+        specifier: 7.0.0
+        version: 7.0.0(@shopify/shopify-api@13.1.0)
       drizzle-orm:
         specifier: 0.45.3
         version: 0.45.3(@opentelemetry/api@1.9.1)(@types/pg@8.23.1)(pg@8.23.0)
@@ -2447,6 +2447,11 @@ packages:
     resolution: {integrity: sha512-VL66qkz2w1x5hH14v+swFZAnN36VrFuVi/Lc6FkLTJxCSvSu4fPNYn04kjIxGykgsRb7trLBXC7mF3j8yDUFeA==}
     peerDependencies:
       '@shopify/shopify-api': ^13.0.0
+
+  '@shopify/shopify-app-session-storage@7.0.0':
+    resolution: {integrity: sha512-dvbHwCHgUjiw8wJiBV/GHRZwX2wwqeYeHd2l9z5TjFbk5k/K0bTPPsaCWkU9o0E231GeGIrwagUgci6UPrMcbw==}
+    peerDependencies:
+      '@shopify/shopify-api': ^15.0.0
 
   '@shopify/storefront-api-client@1.0.10':
     resolution: {integrity: sha512-A0ItFW58L5+y/jnnJDEsmt2YcQSt2BG+pNoQOYRpPBJaOLpTj7A13q1QVrE5XYVGZCA6ZQ6FqAtgosHHrkut0Q==}
@@ -6384,6 +6389,10 @@ snapshots:
       react-router: 7.18.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
 
   '@shopify/shopify-app-session-storage@5.0.1(@shopify/shopify-api@13.1.0)':
+    dependencies:
+      '@shopify/shopify-api': 13.1.0
+
+  '@shopify/shopify-app-session-storage@7.0.0(@shopify/shopify-api@13.1.0)':
     dependencies:
       '@shopify/shopify-api': 13.1.0
 
