@@ -33,19 +33,44 @@ export interface LoginLink {
   readonly token: string;
 }
 
-/** One link per account the email belongs to; an empty list for strangers. */
-export async function issueLoginLinks(
+/** An account whose owner requires single sign-on: no link is issued, the email points there. */
+export interface SsoNotice {
+  readonly userId: string;
+  readonly tenantId: string;
+  readonly tenantName: string;
+  readonly slug: string;
+}
+
+/**
+ * One link per account the email belongs to, except accounts that require single sign-on for
+ * this person (P7-ENT-1) — those come back as notices, and no token is created. Both lists are
+ * empty for strangers; the caller answers the browser the same way either way.
+ */
+export async function issueSignInOptions(
   db: Db,
   input: { readonly email: string; readonly ipHash: string | null; readonly now: Date },
-): Promise<LoginLink[]> {
+): Promise<{ links: LoginLink[]; sso: SsoNotice[] }> {
   const email = Email.safeParse(input.email);
-  if (!email.success) return [];
-  const candidates = await db.execute<{ user_id: string; tenant_id: string; tenant_name: string }>(
-    sql`select * from web_login_candidates(${email.data})`,
-  );
+  if (!email.success) return { links: [], sso: [] };
+  const candidates = await db.execute<{
+    user_id: string;
+    tenant_id: string;
+    tenant_name: string;
+    sso_slug: string | null;
+  }>(sql`select * from web_login_candidates(${email.data})`);
   const expires = new Date(input.now.getTime() + LOGIN_TOKEN_TTL_MIN * 60_000);
   const links: LoginLink[] = [];
+  const sso: SsoNotice[] = [];
   for (const c of candidates.rows) {
+    if (c.sso_slug !== null) {
+      sso.push({
+        userId: c.user_id,
+        tenantId: c.tenant_id,
+        tenantName: c.tenant_name,
+        slug: c.sso_slug,
+      });
+      continue;
+    }
     const token = secret();
     const r = await db.execute<{ ok: boolean }>(
       sql`select create_login_token(${newId('loginToken')}, ${c.user_id}, ${sha256Hex(token)}, ${expires}, ${input.ipHash}, ${input.now}) as ok`,
@@ -53,7 +78,15 @@ export async function issueLoginLinks(
     if (r.rows[0]?.ok === true)
       links.push({ userId: c.user_id, tenantId: c.tenant_id, tenantName: c.tenant_name, token });
   }
-  return links;
+  return { links, sso };
+}
+
+/** One link per account the email belongs to; an empty list for strangers. */
+export async function issueLoginLinks(
+  db: Db,
+  input: { readonly email: string; readonly ipHash: string | null; readonly now: Date },
+): Promise<LoginLink[]> {
+  return (await issueSignInOptions(db, input)).links;
 }
 
 export interface OpenedSession {

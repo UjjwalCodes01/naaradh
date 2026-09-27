@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getSettings, listUseCases } from '@naaradh/pipeline';
 import { ActionForm } from '@/components/action-form';
 import { Badge, Card, Label, PageHeader, inputClass } from '@/components/ui';
@@ -15,7 +16,19 @@ export default async function Settings() {
   );
   return (
     <div className="space-y-6">
-      <PageHeader title="Settings" />
+      <PageHeader
+        title="Settings"
+        actions={
+          s.role === 'owner' ? (
+            <Link
+              href="/app/settings/sso"
+              className="text-sm font-medium text-indigo-700 hover:underline"
+            >
+              Single sign-on
+            </Link>
+          ) : undefined
+        }
+      />
       <Card title="What Naaradh calls for">
         <ul className="divide-y divide-slate-100">
           {useCases.map((u) => (

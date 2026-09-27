@@ -97,6 +97,7 @@ beforeAll(async () => {
     'carts:write',
     'appointments:read',
     'appointments:write',
+    'audit:read',
   ]);
   await insertKey(publicKey, 'public', ['intents:create']);
   await insertKey(revokedKey, 'secret', ['intents:create'], 'revoked');
@@ -1428,5 +1429,165 @@ describe('carts and appointments for non-Shopify platforms (ADR-0011)', () => {
       headers: auth(secretKey.key),
     });
     expect(r.json()).toEqual({ calendars: [] });
+  });
+});
+
+// ---- P7-INB-1 schedule routes and P7-ENT-1 audit export -----------------------------------------
+
+describe('time-of-day schedule routes (P7-INB-1)', () => {
+  let numberId = '';
+  let profileId = '';
+  const put = (payload: unknown, key = secretKey.key) =>
+    app.inject({
+      method: 'PUT',
+      url: `/v1/numbers/${numberId}/schedule`,
+      payload: payload as Record<string, unknown>,
+      headers: auth(key),
+    });
+
+  beforeAll(async () => {
+    profileId =
+      (
+        await service.query<{ id: string }>(
+          `select id from inbound_profiles where tenant_id = $1 limit 1`,
+          [TENANT],
+        )
+      ).rows[0]?.id ?? '';
+    if (profileId === '') {
+      profileId = newId('inboundProfile');
+      await service.query(
+        `insert into inbound_profiles (id, tenant_id, name, status, locale, greeting, business_hours, tools_enabled, pinned_facts, closed_message)
+         values ($1, $2, 'Night', 'draft', 'en-IN', $3, $4, '{search_knowledge}', '{}', $5)`,
+        [
+          profileId,
+          TENANT,
+          DEFAULT_INBOUND_GREETINGS['en-IN'],
+          JSON.stringify({ zone: 'Asia/Kolkata', days: [1], open: '09:00', close: '18:00' }),
+          DEFAULT_CLOSED_MESSAGES['en-IN'],
+        ],
+      );
+    }
+    numberId = newId('number');
+    await service.query(
+      `insert into numbers (id, tenant_id, e164, region, series, provider, engine, purpose_allowed, inbound_enabled, inbound_profile_id, status)
+       values ($1, $2, '+916000000299', 'IN', '10digit', 'simulator', 'simulator', array['service']::purpose[], true, $3, 'active')`,
+      [numberId, TENANT, profileId],
+    );
+  });
+
+  const row = {
+    inbound_profile_id: '',
+    zone: 'Asia/Kolkata',
+    days: [1, 2, 3, 4, 5],
+    start_time: '21:00',
+    end_time: '09:00',
+  };
+
+  it('sets and reads back a schedule', async () => {
+    const r = await put({ schedules: [{ ...row, inbound_profile_id: profileId }] });
+    expect(r.statusCode).toBe(200);
+    const got = await app.inject({
+      method: 'GET',
+      url: `/v1/numbers/${numberId}/schedule`,
+      headers: auth(secretKey.key),
+    });
+    expect(got.json()).toMatchObject({
+      default_profile_id: profileId,
+      schedules: [
+        { inbound_profile_id: profileId, start_time: '21:00', end_time: '09:00', priority: 100 },
+      ],
+    });
+  });
+
+  it('clears the schedule with an empty list', async () => {
+    const r = await put({ schedules: [] });
+    expect(r.json()).toMatchObject({ schedules: [] });
+  });
+
+  it('refuses an unknown zone with a readable message', async () => {
+    const r = await put({
+      schedules: [{ ...row, inbound_profile_id: profileId, zone: 'Nowhere/Land' }],
+    });
+    expect(r.statusCode).toBe(422);
+  });
+
+  it('refuses a profile id that is not this tenant', async () => {
+    const r = await put({ schedules: [{ ...row, inbound_profile_id: newId('inboundProfile') }] });
+    expect(r.statusCode).toBe(404);
+  });
+
+  it('scopes: a key without support:write cannot change routing', async () => {
+    expect((await put({ schedules: [] }, narrowKey.key)).statusCode).toBe(403);
+  });
+});
+
+describe('audit log export (P7-ENT-1)', () => {
+  const OTHER = newId('tenant');
+  const at = '2026-09-20T10:00:00Z';
+
+  beforeAll(async () => {
+    await service.query(
+      `insert into tenants (id, name, country, data_region, status, billing_status) values ($1, 'Other', 'IN', 'in', 'active', 'active')`,
+      [OTHER],
+    );
+    // Five rows sharing one timestamp: a page boundary must fall between them cleanly.
+    for (let i = 0; i < 5; i++)
+      await service.query(
+        `insert into audit_log (id, tenant_id, actor_type, action, target_type, at) values ($1, $2, 'system', $3, 'tenant', $4)`,
+        [newId('audit'), TENANT, `test.same_instant_${String(i)}`, at],
+      );
+    await service.query(
+      `insert into audit_log (id, tenant_id, actor_type, action, target_type, at) values ($1, $2, 'system', 'test.other_tenant', 'tenant', $3)`,
+      [newId('audit'), OTHER, at],
+    );
+  });
+
+  const get = (qs: string, key = secretKey.key) =>
+    app.inject({ method: 'GET', url: `/v1/audit-log?${qs}`, headers: auth(key) });
+  const range = 'from=2026-09-20T00:00:00Z&to=2026-09-21T00:00:00Z';
+
+  it('pages through rows that share a timestamp without skipping or repeating one', async () => {
+    const seen: string[] = [];
+    let after: string | null = null;
+    for (let guard = 0; guard < 10; guard++) {
+      const r = await get(`${range}&limit=2${after === null ? '' : `&after=${after}`}`);
+      expect(r.statusCode).toBe(200);
+      const body = r.json<{ data: { id: string; action: string }[]; next: string | null }>();
+      seen.push(...body.data.filter((d) => d.action.startsWith('test.')).map((d) => d.id));
+      after = body.next;
+      if (after === null) break;
+    }
+    expect(seen).toHaveLength(5);
+    expect(new Set(seen).size).toBe(5);
+  });
+
+  it("never returns another tenant's rows", async () => {
+    const r = await get(`${range}&limit=1000`);
+    const actions = r.json<{ data: { action: string }[] }>().data.map((d) => d.action);
+    expect(actions).not.toContain('test.other_tenant');
+  });
+
+  it('records the export itself, once per export rather than once per page', async () => {
+    const before = await service.query<{ n: number }>(
+      `select count(*)::int as n from audit_log where tenant_id = $1 and action = 'audit_log.exported'`,
+      [TENANT],
+    );
+    const first = await get(`${range}&limit=2`);
+    const next = first.json<{ next: string | null }>().next ?? '';
+    await get(`${range}&limit=2&after=${next}`);
+    const after = await service.query<{ n: number }>(
+      `select count(*)::int as n from audit_log where tenant_id = $1 and action = 'audit_log.exported'`,
+      [TENANT],
+    );
+    expect((after.rows[0]?.n ?? 0) - (before.rows[0]?.n ?? 0)).toBe(1);
+  });
+
+  it('refuses a range longer than a year and a forged cursor', async () => {
+    expect((await get('from=2025-01-01T00:00:00Z&to=2026-09-21T00:00:00Z')).statusCode).toBe(422);
+    expect((await get(`${range}&after=bm90LWEtY3Vyc29y`)).statusCode).toBe(422);
+  });
+
+  it('scopes: audit:read is required', async () => {
+    expect((await get(range, narrowKey.key)).statusCode).toBe(403);
   });
 });

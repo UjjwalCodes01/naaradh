@@ -1,7 +1,11 @@
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema, type Tx } from '@naaradh/db';
-import { BusinessHours } from '@naaradh/compliance';
+import {
+  BusinessHours,
+  MAX_SCHEDULES_PER_NUMBER,
+  type ProfileScheduleInput,
+} from '@naaradh/compliance';
 import { sanitiseMerchantText, validateInboundProfile } from '@naaradh/call-scripts';
 import {
   NaaradhError,
@@ -328,6 +332,143 @@ export async function setProfileStatus(
     after: { status },
   });
   return { id: existing.id, status };
+}
+
+// ---- time-of-day routing (P7-INB-1) ---------------------------------------------------------------
+
+export interface ScheduleView {
+  readonly id: string;
+  readonly inbound_profile_id: string;
+  readonly zone: string;
+  readonly days: number[];
+  readonly start_time: string;
+  readonly end_time: string;
+  readonly priority: number;
+}
+
+/** The number, checked to be this tenant's: RLS hides other tenants' rows, so absent = not ours. */
+async function ownNumber(tx: Tx, actor: Actor, numberId: string) {
+  const [number] = await tx
+    .select({ id: schema.numbers.id, inboundProfileId: schema.numbers.inboundProfileId })
+    .from(schema.numbers)
+    .where(and(eq(schema.numbers.tenantId, actor.tenantId), eq(schema.numbers.id, numberId)))
+    .limit(1);
+  if (number === undefined) throw new NaaradhError('NOT_FOUND', 'number not found');
+  return number;
+}
+
+export async function listNumberSchedules(
+  tx: Tx,
+  actor: Actor,
+  numberId: string,
+): Promise<{ default_profile_id: string | null; schedules: ScheduleView[] }> {
+  const number = await ownNumber(tx, actor, numberId);
+  const rows = await tx
+    .select()
+    .from(schema.numberProfileSchedules)
+    .where(
+      and(
+        eq(schema.numberProfileSchedules.numberId, number.id),
+        isNull(schema.numberProfileSchedules.removedAt),
+      ),
+    )
+    .orderBy(schema.numberProfileSchedules.priority, schema.numberProfileSchedules.id);
+  return {
+    default_profile_id: number.inboundProfileId,
+    schedules: rows.map((r) => ({
+      id: r.id,
+      inbound_profile_id: r.inboundProfileId,
+      zone: r.zone,
+      days: r.days,
+      start_time: r.startTime,
+      end_time: r.endTime,
+      priority: r.priority,
+    })),
+  };
+}
+
+/**
+ * Replaces a number's whole schedule in one transaction — a schedule is read as a set, so a
+ * half-applied edit could briefly route calls to a profile the merchant meant to remove. An
+ * empty list clears it and the number's default answers at all hours.
+ *
+ * Every profile must be this tenant's (the database refuses otherwise; this check gives the
+ * merchant a readable error first) and must exist. A draft or disabled profile is accepted: at
+ * call time it simply falls back to the default, so a merchant can schedule an agent before
+ * activating it.
+ */
+export async function replaceNumberSchedules(
+  tx: Tx,
+  actor: Actor,
+  numberId: string,
+  input: readonly ProfileScheduleInput[],
+): Promise<{ default_profile_id: string | null; schedules: ScheduleView[] }> {
+  if (input.length > MAX_SCHEDULES_PER_NUMBER)
+    throw new NaaradhError(
+      'VALIDATION_FAILED',
+      `a number can carry at most ${String(MAX_SCHEDULES_PER_NUMBER)} schedule rows`,
+    );
+  const number = await ownNumber(tx, actor, numberId);
+  if (number.inboundProfileId === null && input.length > 0)
+    throw new NaaradhError(
+      'VALIDATION_FAILED',
+      'give the number a default inbound profile first — a schedule only narrows the default',
+    );
+  const profileIds = [...new Set(input.map((r) => r.inbound_profile_id))];
+  if (profileIds.length > 0) {
+    const found = await tx
+      .select({ id: schema.inboundProfiles.id })
+      .from(schema.inboundProfiles)
+      .where(
+        and(
+          eq(schema.inboundProfiles.tenantId, actor.tenantId),
+          inArray(schema.inboundProfiles.id, profileIds),
+        ),
+      );
+    const known = new Set(found.map((f) => f.id));
+    const missing = profileIds.filter((id) => !known.has(id));
+    if (missing.length > 0)
+      throw new NaaradhError('NOT_FOUND', 'inbound profile not found', {
+        context: { errors: missing.join(', ') },
+      });
+  }
+
+  const before = await listNumberSchedules(tx, actor, number.id);
+  // Retired, not deleted: the app role holds no DELETE, and the old rows are the record of
+  // which profile answered when.
+  await tx
+    .update(schema.numberProfileSchedules)
+    .set({ removedAt: sql`now()` })
+    .where(
+      and(
+        eq(schema.numberProfileSchedules.numberId, number.id),
+        isNull(schema.numberProfileSchedules.removedAt),
+      ),
+    );
+  if (input.length > 0)
+    await tx.insert(schema.numberProfileSchedules).values(
+      input.map((r) => ({
+        id: newId('profileSchedule'),
+        tenantId: actor.tenantId,
+        numberId: number.id,
+        inboundProfileId: r.inbound_profile_id,
+        zone: r.zone,
+        days: r.days,
+        startTime: r.start_time,
+        endTime: r.end_time,
+        priority: r.priority,
+      })),
+    );
+  const after = await listNumberSchedules(tx, actor, number.id);
+  await audit(tx, {
+    ...auditActor(actor),
+    action: 'number.schedule_replaced',
+    targetType: 'number',
+    targetId: number.id,
+    before: { schedules: before.schedules },
+    after: { schedules: after.schedules },
+  });
+  return after;
 }
 
 // ---- knowledge ------------------------------------------------------------------------------------

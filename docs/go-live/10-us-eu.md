@@ -170,6 +170,23 @@ Retell's own browser client, and invariant 13 allows no vendor SDK outside `engi
    install, and that an order webhook for that store is logged `forwarded` in India and
    `published` in the US (`docs/runbooks/region-directory.md`).
 
+### Status page per region
+
+The spec's decision stands (SPEC §8): `status.naaradh.com` is a **hosted** provider (Better
+Stack or Instatus), never a page served by the infrastructure it reports on — a status page that
+goes down with the outage tells nobody anything.
+
+Each region already has uptime checks on every load-balanced host (`api`, `hooks`, `voice`, and
+`web` once enabled), derived in `infra/main.tf` from that region's `hostnames` — nothing to add
+per region. What is left is the account:
+
+1. One status page, one **component group per region** — India, United States, Europe — each
+   with API, Webhooks, Voice. A US outage must never paint India red.
+2. Point the provider's own monitors at each region's `/healthz` (they probe from outside
+   Google, which is the point), or feed them from the Cloud Monitoring webhook channel.
+3. The on-call runbooks already say "post to status.naaradh.com" (`engine-outage.md`,
+   `on-call.md`); give the on-call rota write access to the page.
+
 ## 8. Before the first US merchant
 
 - [ ] Q-29 closed (counsel's written answer filed) and constants updated if tightened

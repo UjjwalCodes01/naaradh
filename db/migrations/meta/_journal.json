@@ -113,6 +113,20 @@
       "when": 1790427439284,
       "tag": "0015_crm_lead_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1790487137207,
+      "tag": "0016_number_profile_schedules",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1790488376284,
+      "tag": "0017_tenant_sso",
+      "breakpoints": true
     }
   ]
 }

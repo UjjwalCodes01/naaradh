@@ -57,6 +57,30 @@ export function loginEmail(input: {
   };
 }
 
+/**
+ * P7-ENT-1: sent instead of a sign-in link when the account requires single sign-on for this
+ * person. Same subject as a link, so the browser's answer and the mail's arrival look alike.
+ */
+export function ssoRequiredEmail(input: {
+  readonly to: string;
+  readonly accountName: string;
+  readonly url: string;
+}): Message {
+  const paras = [
+    `${input.accountName} signs in to Naaradh through your organisation's single sign-on, so there is no email link for this account.`,
+    'Use the button below, or ask the person who manages your Naaradh account for the sign-in link.',
+    'If you did not ask to sign in, ignore this email.',
+  ];
+  const action = { label: 'Sign in with single sign-on', url: input.url };
+  return {
+    to: input.to,
+    subject: `Sign in to Naaradh — ${input.accountName}`,
+    text: text(paras, action),
+    html: html('Sign in to Naaradh', paras, action),
+    tag: 'login',
+  };
+}
+
 export function inviteEmail(input: {
   readonly to: string;
   readonly accountName: string;

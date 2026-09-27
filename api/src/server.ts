@@ -14,6 +14,7 @@ import { registerCartRoutes } from './routes/carts.js';
 import { registerConsentRoutes } from './routes/consents.js';
 import { registerIntentRoutes } from './routes/intents.js';
 import { registerBillingRoutes } from './routes/billing.js';
+import { registerAuditRoutes } from './routes/audit.js';
 import { registerPrivacyRoutes } from './routes/privacy.js';
 import { registerSupportRoutes } from './routes/support.js';
 import { registerWebhookRoutes } from './routes/webhooks.js';
@@ -146,6 +147,7 @@ export async function buildServer(deps: ApiDeps): Promise<FastifyInstance> {
     staffKey: deps.staffKey,
     clock: deps.clock,
   });
+  registerAuditRoutes(app, { db: deps.db });
 
   return app;
 }

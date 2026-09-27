@@ -1,6 +1,7 @@
 import { memoryMailer } from '@naaradh/notify';
 import { createHmac } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { sql } from 'drizzle-orm';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import { Redis } from 'ioredis';
 import { createDb, withTenant, type Db } from '@naaradh/db';
@@ -9,7 +10,7 @@ import { concurrencyPort, killSwitchPort, setKillSwitch } from '@naaradh/complia
 import type { ToolDefinition, ToolResult } from '@naaradh/engines-core';
 import { EngineRegistry } from '@naaradh/engines-registry';
 import type { InboundTransport, SimulatorAdapter } from '@naaradh/engine-simulator';
-import { upsertOrder } from '@naaradh/pipeline';
+import { replaceNumberSchedules, upsertOrder } from '@naaradh/pipeline';
 import { DEFAULT_CLOSED_MESSAGES, DEFAULT_INBOUND_GREETINGS } from '@naaradh/call-scripts';
 import {
   addMinutes,
@@ -1244,5 +1245,164 @@ describe('tools: appointments (ADR-0011 §6, E-129 to E-132)', () => {
     await setStatus('active');
     expect(slots.result?.ok).toBe(false);
     expect((slots.result?.data as { reason: string }).reason).toBe('no_calendar');
+  });
+});
+
+// ---- P7-INB-1: one number, a different profile by time of day ---------------------------------
+
+describe('time-of-day routing (P7-INB-1)', () => {
+  let NIGHT = '';
+  let numberId = '';
+  const actorT1 = { tenantId: T1, type: 'user' as const, id: 'usr_test' };
+  const at = (utc: string) => {
+    current = new Date(utc);
+  };
+  const answeredBy = async (callId: string) =>
+    (
+      await q<{ inbound_profile_id: string }>(
+        `select inbound_profile_id from call_attempts where engine_call_id = $1`,
+        [callId],
+      )
+    )[0]?.inbound_profile_id;
+  const night = [
+    {
+      inbound_profile_id: '',
+      zone: 'Asia/Kolkata',
+      days: [1, 2, 3, 4, 5, 6, 7],
+      start_time: '20:00',
+      end_time: '08:00',
+      priority: 100,
+    },
+  ];
+
+  beforeAll(async () => {
+    const saved = current;
+    NIGHT = newId('inboundProfile');
+    await service.query(
+      `insert into inbound_profiles (id, tenant_id, name, status, locale, greeting, business_hours, tools_enabled, pinned_facts, closed_message)
+       values ($1, $2, 'After hours', 'active', 'en-IN', $3, $4, $5, '{}', $6)`,
+      [
+        NIGHT,
+        T1,
+        DEFAULT_INBOUND_GREETINGS['en-IN'],
+        JSON.stringify({
+          zone: 'Asia/Kolkata',
+          days: [1, 2, 3, 4, 5, 6, 7],
+          open: '00:00',
+          close: '23:59',
+        }),
+        ['search_knowledge', 'create_ticket'],
+        DEFAULT_CLOSED_MESSAGES['en-IN'],
+      ],
+    );
+    numberId =
+      (await q<{ id: string }>(`select id from numbers where e164 = $1`, [SUPPORT_T1]))[0]?.id ??
+      '';
+    night[0] = { ...night[0]!, inbound_profile_id: NIGHT };
+    await withTenant(appDb, T1, (tx) => replaceNumberSchedules(tx, actorT1, numberId, night));
+    current = saved;
+  });
+
+  afterAll(async () => {
+    await withTenant(appDb, T1, (tx) => replaceNumberSchedules(tx, actorT1, numberId, []));
+  });
+
+  it('the night profile answers at 22:30 IST', async () => {
+    at('2026-09-14T17:00:00Z');
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    expect(call.body?.action).toBe('answer');
+    expect(await answeredBy(call.callId)).toBe(NIGHT);
+  });
+
+  it('the night profile answers in the early hours, from the evening before', async () => {
+    at('2026-09-14T21:00:00Z'); // 02:30 IST Tuesday
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    expect(await answeredBy(call.callId)).toBe(NIGHT);
+  });
+
+  it('the default profile answers at midday, when no schedule matches', async () => {
+    at('2026-09-14T06:30:00Z'); // 12:00 IST
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    expect(call.body?.action).toBe('answer');
+    expect(await answeredBy(call.callId)).toBe(P1);
+  });
+
+  it('a disabled scheduled profile falls back to the default instead of closing the line', async () => {
+    await service.query(`update inbound_profiles set status = 'disabled' where id = $1`, [NIGHT]);
+    at('2026-09-14T17:00:00Z');
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    await service.query(`update inbound_profiles set status = 'active' where id = $1`, [NIGHT]);
+    expect(call.body?.action).toBe('answer');
+    expect(await answeredBy(call.callId)).toBe(P1);
+  });
+
+  it('an engine retry across the boundary keeps the profile it was first given (E-89)', async () => {
+    at('2026-09-14T14:29:00Z'); // 19:59 IST: default
+    const first = await context(SUPPORT_T1, FAKE_IN.customer, { callId: 'sim_in_boundary' });
+    at('2026-09-14T14:31:00Z'); // 20:01 IST: the night window has opened
+    const retry = await context(SUPPORT_T1, FAKE_IN.customer, { callId: 'sim_in_boundary' });
+    expect(retry.body?.attempt_id).toBe(first.body?.attempt_id);
+    expect(await answeredBy('sim_in_boundary')).toBe(P1);
+  });
+
+  it('replacing a schedule retires the old rows instead of deleting them', async () => {
+    await withTenant(appDb, T1, (tx) => replaceNumberSchedules(tx, actorT1, numberId, night));
+    const rows = await q<{ live: number; retired: number }>(
+      `select count(*) filter (where removed_at is null)::int as live,
+              count(*) filter (where removed_at is not null)::int as retired
+         from number_profile_schedules where number_id = $1`,
+      [numberId],
+    );
+    expect(rows[0]?.live).toBe(1);
+    expect(rows[0]?.retired).toBeGreaterThanOrEqual(1);
+  });
+
+  it('the change is audited', async () => {
+    const rows = await q<{ action: string }>(
+      `select action from audit_log where target_id = $1 and action = 'number.schedule_replaced'`,
+      [numberId],
+    );
+    expect(rows.length).toBeGreaterThan(0);
+  });
+
+  it('negative: another tenant cannot see the schedule (RLS)', async () => {
+    const seen = await withTenant(appDb, T2, (tx) =>
+      tx.execute(sql`select count(*)::int as n from number_profile_schedules`),
+    );
+    expect((seen.rows[0] as { n: number }).n).toBe(0);
+  });
+
+  it("negative: a tenant cannot schedule another tenant's number", async () => {
+    await expect(
+      withTenant(appDb, T2, (tx) =>
+        replaceNumberSchedules(tx, { ...actorT1, tenantId: T2 }, numberId, []),
+      ),
+    ).rejects.toThrow(/number not found/);
+  });
+
+  it("negative: the database refuses a row pointing at another tenant's profile", async () => {
+    const t2Profile =
+      (await q<{ id: string }>(`select id from inbound_profiles where tenant_id = $1`, [T2]))[0]
+        ?.id ?? '';
+    // Straight past the pipeline's own check, to prove the trigger holds on its own.
+    await expect(
+      withTenant(appDb, T1, (tx) =>
+        tx.execute(sql`
+          insert into number_profile_schedules (id, tenant_id, number_id, inbound_profile_id, zone, days, start_time, end_time)
+          values (${newId('profileSchedule')}, ${T1}, ${numberId}, ${t2Profile}, 'Asia/Kolkata', array[1]::smallint[], '09:00', '10:00')`),
+      ),
+    ).rejects.toSatisfy((e: unknown) =>
+      /not a profile of tenant/.test(String((e as { cause?: unknown }).cause ?? e)),
+    );
+  });
+
+  it('a schedule is refused on a number with no default profile', async () => {
+    const unrouted =
+      (await q<{ id: string }>(`select id from numbers where e164 = $1`, [UNROUTED]))[0]?.id ?? '';
+    await service.query(`update numbers set tenant_id = $1 where id = $2`, [T1, unrouted]);
+    await expect(
+      withTenant(appDb, T1, (tx) => replaceNumberSchedules(tx, actorT1, unrouted, night)),
+    ).rejects.toThrow(/default inbound profile first/);
+    await service.query(`update numbers set tenant_id = null where id = $1`, [unrouted]);
   });
 });

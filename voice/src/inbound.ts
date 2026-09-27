@@ -1,11 +1,12 @@
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { Redis } from 'ioredis';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { schema, withTenant, type Db, type Tx } from '@naaradh/db';
 import {
   CALLER_ID_ORDER_LOOKBACK_DAYS,
   KEYS,
   admitInbound,
+  scheduledProfileId,
   transferPolicy,
   type AdmissionDeps,
   type ConcurrencyLease,
@@ -135,6 +136,46 @@ interface ResolvedNumber {
   readonly inboundEnabled: boolean;
 }
 
+/**
+ * P7-INB-1: the profile answering this number at `at` — the schedule's choice, else the
+ * number's own default. Runs inside the tenant's context, so RLS already limits it to the
+ * tenant that owns the number; the schedule only chooses among that tenant's profiles.
+ *
+ * A scheduled profile that is not active (the merchant disabled the night agent) falls back to
+ * the default rather than closing the line: a schedule narrows the default, it never takes a
+ * number off the air. Only the default's own state can do that, as before.
+ */
+async function answeringProfile(
+  tx: Tx,
+  numberId: string,
+  defaultProfileId: string | null,
+  at: Date,
+): Promise<ProfileRow | null> {
+  const rows = await tx
+    .select({
+      id: schema.numberProfileSchedules.id,
+      inboundProfileId: schema.numberProfileSchedules.inboundProfileId,
+      zone: schema.numberProfileSchedules.zone,
+      days: schema.numberProfileSchedules.days,
+      startTime: schema.numberProfileSchedules.startTime,
+      endTime: schema.numberProfileSchedules.endTime,
+      priority: schema.numberProfileSchedules.priority,
+    })
+    .from(schema.numberProfileSchedules)
+    .where(
+      and(
+        eq(schema.numberProfileSchedules.numberId, numberId),
+        isNull(schema.numberProfileSchedules.removedAt),
+      ),
+    );
+  const chosen = scheduledProfileId(rows, at, defaultProfileId);
+  if (chosen !== null && chosen !== defaultProfileId) {
+    const scheduled = await loadProfile(tx, chosen);
+    if (scheduled?.status === 'active') return scheduled;
+  }
+  return defaultProfileId === null ? null : loadProfile(tx, defaultProfileId);
+}
+
 /** SECURITY DEFINER lookup: the one query that runs before a tenant context exists. */
 async function resolveNumber(db: Db, e164: string): Promise<ResolvedNumber | null> {
   if (!E164.test(e164)) return null;
@@ -231,8 +272,7 @@ async function decide(
         .where(eq(schema.tenants.id, tenantId))
         .limit(1);
       brand = tenant?.name ?? null;
-      profile =
-        number.inboundProfileId === null ? null : await loadProfile(tx, number.inboundProfileId);
+      profile = await answeringProfile(tx, number.numberId, number.inboundProfileId, now);
 
       // E-89: the engine retried the context webhook — same attempt, same answer, no second slot.
       const existing = await findInboundAttempt(tx, vendor, req.vendorCallId);
@@ -286,7 +326,8 @@ async function decide(
           number: {
             id: number.numberId,
             tenantId,
-            inboundProfileId: number.inboundProfileId,
+            // The profile the schedule chose (P7-INB-1); the number's default when none did.
+            inboundProfileId: profile?.id ?? number.inboundProfileId,
             engine: number.engine,
             status: number.status,
             inboundEnabled: number.inboundEnabled,

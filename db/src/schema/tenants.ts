@@ -36,6 +36,7 @@ import {
   profileStatus,
   purpose,
   scriptStatus,
+  ssoStatus,
   stirShakenAttestation,
   tenantStatus,
   useCaseKind,
@@ -147,6 +148,61 @@ export const users = pgTable(
   (t) => [
     check('users_id_format', idFormat(t.id, 'usr')),
     uniqueIndex('users_tenant_email_uq').on(t.tenantId, t.email),
+  ],
+).enableRLS();
+
+/**
+ * P7-ENT-1: one OpenID Connect identity provider per tenant (Okta, Microsoft Entra, Google
+ * Workspace …) for the dashboard.
+ *
+ * SSO never creates users: it signs in people the tenant already invited, matched by email, and
+ * only for `email_domains`. So a misconfigured or hostile provider can at most sign in this
+ * tenant's own invited users — never another tenant's, and never a stranger.
+ *
+ * Staff reach it through a per-tenant link (`slug`), not by typing an email: discovery by email
+ * domain would let any tenant claim someone else's domain and send its people to a look-alike
+ * sign-in page. The slug is random, so it lists nothing.
+ *
+ * The client secret is sealed (AES-256-GCM, `SSO_SECRET_KEY`, AAD = tenant id): the database
+ * alone cannot sign anyone in, and a sealed secret copied onto another tenant's row fails to open.
+ */
+export const tenantSso = pgTable(
+  'tenant_sso',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    slug: text('slug').notNull(),
+    issuer: text('issuer').notNull(),
+    clientId: text('client_id').notNull(),
+    clientSecretEnc: bytea('client_secret_enc').notNull(),
+    clientSecretIv: bytea('client_secret_iv').notNull(),
+    clientSecretTag: bytea('client_secret_tag').notNull(),
+    clientSecretKid: smallint('client_secret_kid').notNull(),
+    /** Lower-case domains whose addresses this provider may sign in. */
+    emailDomains: text('email_domains').array().notNull(),
+    status: ssoStatus('status').notNull().default('testing'),
+    /**
+     * When on, the emailed sign-in link is withheld from this tenant's users in `email_domains`
+     * — except owners, who always keep it as a way back in if the provider breaks.
+     */
+    enforced: boolean('enforced').notNull().default(false),
+    lastSuccessAt: ts('last_success_at'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check('tenant_sso_id_format', idFormat(t.id, 'sso')),
+    check('tenant_sso_slug_format', sql`${t.slug} ~ '^[a-z0-9]{16}$'`),
+    check('tenant_sso_issuer_https', sql`${t.issuer} ~ '^https://[^/]+'`),
+    check('tenant_sso_domains', sql`cardinality(${t.emailDomains}) between 1 and 20`),
+    check(
+      'tenant_sso_enforced_needs_proof',
+      sql`not ${t.enforced} or (${t.status} = 'active' and ${t.lastSuccessAt} is not null)`,
+    ),
+    uniqueIndex('tenant_sso_tenant_uq').on(t.tenantId),
+    uniqueIndex('tenant_sso_slug_uq').on(t.slug),
   ],
 ).enableRLS();
 
@@ -401,6 +457,64 @@ export const numbers = pgTable(
       sql`${t.inboundProfileId} is null or ${t.tenantId} is not null`,
     ),
     index('numbers_pool_idx').on(t.region, t.status, t.engine),
+  ],
+).enableRLS();
+
+/**
+ * P7-INB-1: one number, different agents by time of day — the day team's profile during
+ * opening hours, an after-hours profile that takes callbacks at night. Each row says "on these
+ * days, between these local times, this profile answers"; when no row matches, the number's own
+ * `inbound_profile_id` answers, so a schedule can only ever narrow the default, never leave a
+ * number unanswered.
+ *
+ * Invariant 16 is untouched: the tenant still comes only from the called number. A schedule only
+ * chooses among that tenant's own profiles, enforced by a trigger (foreign keys bypass RLS).
+ * `end_time` before `start_time` is an overnight window (21:00–09:00); the lower `priority`
+ * wins where two rows overlap.
+ */
+export const numberProfileSchedules = pgTable(
+  'number_profile_schedules',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    numberId: text('number_id')
+      .notNull()
+      .references(() => numbers.id),
+    inboundProfileId: text('inbound_profile_id')
+      .notNull()
+      .references(() => inboundProfiles.id),
+    /** IANA zone the times are read in — the merchant's, not the caller's. */
+    zone: text('zone').notNull(),
+    /** ISO weekdays, 1 = Monday … 7 = Sunday. */
+    days: smallint('days').array().notNull(),
+    /** 'HH:MM', 24-hour. */
+    startTime: text('start_time').notNull(),
+    endTime: text('end_time').notNull(),
+    priority: smallint('priority').notNull().default(100),
+    /**
+     * Set when the merchant replaces the schedule. Rows are retired, never deleted — the app role
+     * holds no DELETE anywhere — which also keeps a record of which profile answered when.
+     */
+    removedAt: ts('removed_at'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check('number_profile_schedules_id_format', idFormat(t.id, 'nps')),
+    check(
+      'number_profile_schedules_times',
+      sql`${t.startTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' and ${t.endTime} ~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' and ${t.startTime} <> ${t.endTime}`,
+    ),
+    check(
+      'number_profile_schedules_days',
+      sql`cardinality(${t.days}) between 1 and 7 and ${t.days} <@ array[1,2,3,4,5,6,7]::smallint[]`,
+    ),
+    check('number_profile_schedules_priority', sql`${t.priority} between 0 and 1000`),
+    index('number_profile_schedules_number_idx')
+      .on(t.numberId, t.priority)
+      .where(sql`${t.removedAt} is null`),
   ],
 ).enableRLS();
 

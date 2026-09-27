@@ -37,6 +37,7 @@ process.stdout.write(
     `ENGINE_WEBHOOK_KEY=${randomBytes(32).toString('hex')}`,
     '# Seals the Shopify offline token in Postgres (ADR-0007): 32 bytes, base64.',
     `SHOPIFY_TOKEN_KEY=${randomBytes(32).toString('base64')}`,
+    `SSO_SECRET_KEY=${randomBytes(32).toString('base64')}`,
     'SHOPIFY_TOKEN_KID=1',
     `SHOPIFY_API_SECRET=${randomBytes(24).toString('hex')}`,
     '',

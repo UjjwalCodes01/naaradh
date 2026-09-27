@@ -114,4 +114,5 @@ export {
 
 export { parseSecretKey, seal, open as openSealed, type Sealed } from './secretbox.js';
 export { isPrivateAddress, webhookUrlProblem } from './webhook-url.js';
+export { EgressRefusedError, assertPublicHttpsUrl, dnsResolver, type Resolver } from './egress.js';
 export { MAIL } from './contact.js';

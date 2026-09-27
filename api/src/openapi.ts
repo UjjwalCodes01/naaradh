@@ -547,6 +547,7 @@ type Tag =
   | 'Billing'
   | 'Privacy'
   | 'Support line'
+  | 'Audit'
   | 'Carts & appointments'
   | 'Reference';
 
@@ -585,6 +586,11 @@ const TAGS: readonly { name: Tag; description: string }[] = [
     name: 'Support line',
     description:
       'Configuration and data of the inbound AI support line (ADR-0006): inbound profiles (who answers, how, with which tools), the knowledge base the agent may quote, verified transfer targets (invariant 19), the tickets the agent raised, and the order cache the agent answers from for non-Shopify merchants.',
+  },
+  {
+    name: 'Audit',
+    description:
+      "The account's own audit trail (P7-ENT-1): every recording played, transcript read, sign-in, permission change and configuration change, for a SIEM or an auditor. Before/after values were scrubbed of personal data when written.",
   },
   {
     name: 'Carts & appointments',
@@ -1488,7 +1494,132 @@ const cartOps: Record<string, PathItemObject> = {
   },
 };
 
+const auditOps: Record<string, PathItemObject> = {
+  '/v1/audit-log': {
+    get: operation('get', {
+      id: 'exportAuditLog',
+      tag: 'Audit',
+      summary: "Export this account's audit log",
+      description:
+        'Oldest first over `[from, to)`, at most 366 days per request, paged with an opaque cursor: pass `next` back as `after` until it is null. Rows that share a timestamp are never skipped or repeated across pages. The first page of each export is itself recorded as `audit_log.exported`.',
+      scope: 'audit:read',
+      params: [
+        {
+          name: 'from',
+          in: 'query',
+          required: true,
+          description: 'ISO 8601 instant, inclusive.',
+          schema: { type: 'string', format: 'date-time' },
+        },
+        {
+          name: 'to',
+          in: 'query',
+          required: true,
+          description: 'ISO 8601 instant, exclusive.',
+          schema: { type: 'string', format: 'date-time' },
+        },
+        {
+          name: 'after',
+          in: 'query',
+          required: false,
+          description: 'The `next` cursor from the previous page.',
+          schema: { type: 'string' },
+        },
+        {
+          name: 'limit',
+          in: 'query',
+          required: false,
+          description: '1–1000, default 1000.',
+          schema: { type: 'integer', minimum: 1, maximum: 1000 },
+        },
+      ],
+      responses: {
+        '200': jsonResponse(
+          'One page.',
+          obj({
+            data: arr(
+              obj({
+                id: str(ID_ULID),
+                at: dateTime(),
+                actor_type: str('user, api_key, staff, engine, system …'),
+                actor: nullable(str('Email for a user, `API key …` for a key.')),
+                action: str('e.g. `recording.accessed`, `user.signed_in`.'),
+                target_type: str(),
+                target_id: nullable(str()),
+                request_id: nullable(str()),
+                before: nullable(freeForm('State before the change, scrubbed of personal data.')),
+                after: nullable(freeForm('State after the change, scrubbed of personal data.')),
+              }),
+            ),
+            next: nullable(str('Cursor for the next page; null on the last page.')),
+          }),
+        ),
+      },
+      errors: ['ValidationFailed'],
+    }),
+  },
+};
+
+const scheduleRowFields = {
+  inbound_profile_id: str('Profile that answers in this window (`ipr_…`), of this account.'),
+  zone: str('IANA time zone the times are read in, e.g. `Asia/Kolkata`.'),
+  days: arr(int(), 'ISO weekdays, 1 = Monday … 7 = Sunday.'),
+  start_time: str('`HH:MM`, 24-hour, inclusive.'),
+  end_time: str(
+    '`HH:MM`, exclusive. Earlier than `start_time` means an overnight window, which belongs to the day it starts on.',
+  ),
+};
+
+const scheduleView: Schema = obj({
+  default_profile_id: nullable(
+    str("The number's own profile, which answers whenever no schedule row matches."),
+  ),
+  schedules: arr(
+    obj({
+      id: str(ID_ULID),
+      ...scheduleRowFields,
+      priority: int('The lowest wins where rows overlap.'),
+    }),
+  ),
+});
+
 const supportOps: Record<string, PathItemObject> = {
+  '/v1/numbers/{id}/schedule': {
+    get: operation('get', {
+      id: 'getNumberSchedule',
+      tag: 'Support line',
+      summary: "Read a number's time-of-day routing",
+      description:
+        "Which inbound profile answers this number at which hours (P7-INB-1). When no row matches, the number's default profile answers — a schedule narrows the default and can never leave a number unanswered.",
+      scope: 'support:read',
+      params: [pathParam('id', 'Number id (`num_…`).')],
+      responses: { '200': jsonResponse('The schedule.', scheduleView) },
+      errors: ['NotFound'],
+    }),
+    put: operation('put', {
+      id: 'replaceNumberSchedule',
+      tag: 'Support line',
+      summary: "Replace a number's time-of-day routing",
+      description:
+        'Replaces the whole schedule at once (at most 20 rows); `[]` clears it. Every profile must belong to this account. A draft or disabled profile is accepted — at call time it falls back to the default, so a profile can be scheduled before it is activated. The number must already have a default profile. Replaced rows are retired, not deleted, and the change is audited.',
+      scope: 'support:write',
+      params: [pathParam('id', 'Number id (`num_…`).')],
+      body: obj({
+        schedules: arr(
+          obj(
+            {
+              ...scheduleRowFields,
+              priority: int('0–1000, default 100. The lowest wins where rows overlap.'),
+            },
+            undefined,
+            { optional: ['priority'] },
+          ),
+        ),
+      }),
+      responses: { '200': jsonResponse('The schedule now in force.', scheduleView) },
+      errors: ['NotFound', 'ValidationFailed'],
+    }),
+  },
   '/v1/inbound-profiles': {
     get: operation('get', {
       id: 'listInboundProfiles',
@@ -2235,6 +2366,7 @@ export function buildOpenApiDocument(): OpenAPIObject {
       ...billingOps,
       ...privacyOps,
       ...supportOps,
+      ...auditOps,
       ...cartOps,
       ...referenceOps,
     },

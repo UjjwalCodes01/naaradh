@@ -36,6 +36,8 @@ export const API_SCOPES = [
   'privacy:write',
   'billing:read',
   'billing:write',
+  // P7-ENT-1: the tenant's own audit log, for a SIEM or an auditor.
+  'audit:read',
 ] as const;
 
 export const ApiKeyInput = z.object({

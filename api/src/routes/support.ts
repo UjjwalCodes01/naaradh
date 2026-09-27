@@ -13,9 +13,11 @@ import {
   deactivateTransferTarget,
   eraseOrders,
   listArticles,
+  listNumberSchedules,
   listProfiles,
   listTickets,
   listTransferTargets,
+  replaceNumberSchedules,
   resolveTicket,
   setProfileStatus,
   updateArticle,
@@ -26,6 +28,7 @@ import {
   type PhoneKeys,
 } from '@naaradh/pipeline';
 import { sanitiseMerchantText } from '@naaradh/call-scripts';
+import { ProfileScheduleInput } from '@naaradh/compliance';
 import { type PhoneRegion } from '@naaradh/shared';
 import { requireScope, type AuthContext } from '../auth.js';
 
@@ -33,6 +36,7 @@ import { requireScope, type AuthContext } from '../auth.js';
  * The support line's configuration and data (ADR-0006, SPEC §9.1):
  *
  *   /v1/inbound-profiles   who answers, how, with which tools            support:write / support:read
+ *   /v1/numbers/:id/schedule  which profile answers at which hours       support:write / support:read
  *   /v1/knowledge          what the agent may say about policies          support:write / support:read
  *   /v1/transfer-targets   the people a call may be handed to             support:write / support:read
  *   /v1/tickets            what the agent could not do                    tickets:read / tickets:write
@@ -124,6 +128,24 @@ export function registerSupportRoutes(app: FastifyInstance, deps: SupportRouteDe
       );
     });
   }
+
+  // ---- time-of-day routing (P7-INB-1) ------------------------------------------------------------------
+
+  app.get<{ Params: { id: string } }>('/v1/numbers/:id/schedule', async (request) => {
+    const auth = requireScope(request, 'support:read');
+    return withTenant(deps.db, auth.tenantId, (tx) =>
+      listNumberSchedules(tx, actorOf(auth, request), request.params.id),
+    );
+  });
+
+  /** The whole schedule, replaced at once; `[]` clears it and the default answers all day. */
+  app.put<{ Params: { id: string } }>('/v1/numbers/:id/schedule', async (request) => {
+    const auth = requireScope(request, 'support:write');
+    const body = z.object({ schedules: z.array(ProfileScheduleInput) }).parse(request.body);
+    return withTenant(deps.db, auth.tenantId, (tx) =>
+      replaceNumberSchedules(tx, actorOf(auth, request), request.params.id, body.schedules),
+    );
+  });
 
   // ---- knowledge ---------------------------------------------------------------------------------------
 

@@ -19,6 +19,11 @@ export const tenantStatus = pgEnum('tenant_status', [
 export const dataRegion = pgEnum('data_region', ['in', 'us', 'eu']);
 
 export const userRole = pgEnum('user_role', ['viewer', 'operator', 'manager', 'owner']);
+/**
+ * P7-ENT-1 single sign-on. `testing` until one person has signed in through it — a
+ * configuration nobody has proved can never be enforced on everyone else.
+ */
+export const ssoStatus = pgEnum('sso_status', ['testing', 'active', 'disabled']);
 
 export const integrationKind = pgEnum('integration_kind', [
   'shopify',

@@ -47,6 +47,8 @@ export const ID_PREFIXES = {
   delivery: 'dlv',
   // inbound (ADR-0006)
   inboundProfile: 'ipr',
+  /** P7-INB-1: which profile answers a number at a given time of day. */
+  profileSchedule: 'nps',
   knowledgeArticle: 'kba',
   order: 'ord',
   ticket: 'tkt',
@@ -55,6 +57,8 @@ export const ID_PREFIXES = {
   // merchant dashboard sign-in (ADR-0009)
   loginToken: 'ltk',
   webSession: 'wss',
+  /** P7-ENT-1: a tenant's OpenID Connect sign-in. */
+  tenantSso: 'sso',
   notification: 'ntf',
   // promotional calling (ADR-0010)
   checkout: 'chk',

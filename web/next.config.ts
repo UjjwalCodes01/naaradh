@@ -39,9 +39,23 @@ const config: NextConfig = {
           { key: 'X-Frame-Options', value: 'DENY' },
           { key: 'X-Content-Type-Options', value: 'nosniff' },
           { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
-          { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
+          // Every powerful feature off. microphone stays off until a browser web call ships (Q-36).
+          {
+            key: 'Permissions-Policy',
+            value:
+              'camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), browsing-topics=()',
+          },
           { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
+          // A page we open cannot reach back into ours through window.opener (tabnabbing, XS-leaks).
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          // Our responses are not readable as subresources by other sites …
+          { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
         ],
+      },
+      {
+        // … except the storefront snippet, which merchants load on their own domains by design.
+        source: '/naaradh.js',
+        headers: [{ key: 'Cross-Origin-Resource-Policy', value: 'cross-origin' }],
       },
     ];
   },

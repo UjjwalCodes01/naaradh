@@ -1,4 +1,10 @@
 import { Storage } from '@google-cloud/storage';
+import {
+  EgressRefusedError,
+  assertPublicHttpsUrl,
+  dnsResolver,
+  type Resolver,
+} from '@naaradh/shared';
 
 /**
  * E-34: vendor recording URLs expire; the recording is copied into OUR bucket within 10
@@ -22,20 +28,88 @@ export type Fetcher = (
   headers?: Readonly<Record<string, string>>,
 ) => Promise<{ ok: boolean; status: number; body: Buffer; contentType: string | null }>;
 
-export const nodeFetcher: Fetcher = async (url, headers) => {
-  // fetch drops Authorization when a redirect leaves the origin, so a key never follows one.
-  const res = await fetch(url, {
-    redirect: 'follow',
-    signal: AbortSignal.timeout(60_000),
-    ...(headers === undefined ? {} : { headers }),
-  });
-  return {
-    ok: res.ok,
-    status: res.status,
-    body: Buffer.from(await res.arrayBuffer()),
-    contentType: res.headers.get('content-type'),
+/**
+ * The URL comes from an engine's call record, and this fetch runs inside our VPC. A signed or
+ * re-fetched record makes a hostile URL unlikely, but "the vendor was compromised" is exactly
+ * the case this exists for: nothing a call record says may reach our own services, the
+ * metadata server or a private address, and no file may be large enough to take a worker down.
+ *
+ * Unlike merchant webhooks (`webhookUrlProblem`), `*.googleapis.com` is allowed: vendors host
+ * recordings on GCS and S3, and a public object there is a legitimate source.
+ */
+export class UnsafeRecordingSourceError extends EgressRefusedError {
+  override readonly name = 'UnsafeRecordingSourceError';
+}
+
+/** A 30-minute stereo 44.1 kHz WAV is ~320 MB; nothing we record is longer than 30 minutes. */
+export const MAX_RECORDING_BYTES = 384 * 1024 * 1024;
+const MAX_REDIRECTS = 3;
+
+export type { Resolver };
+
+export function assertSafeRecordingSource(
+  raw: string,
+  resolve: Resolver = dnsResolver,
+): Promise<URL> {
+  return assertPublicHttpsUrl(raw, 'recording URL', resolve, UnsafeRecordingSourceError);
+}
+
+/** Reads a body, refusing it the moment it passes `max` bytes instead of after buffering it. */
+async function readCapped(res: Response, max: number): Promise<Buffer> {
+  const declared = Number(res.headers.get('content-length') ?? '');
+  if (Number.isFinite(declared) && declared > max)
+    throw new UnsafeRecordingSourceError('recording is larger than the limit');
+  if (res.body === null) return Buffer.alloc(0);
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel();
+      throw new UnsafeRecordingSourceError('recording is larger than the limit');
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
+export function safeFetcher(
+  resolve: Resolver = dnsResolver,
+  doFetch: typeof fetch = fetch,
+  maxBytes = MAX_RECORDING_BYTES,
+): Fetcher {
+  return async (url, headers) => {
+    let current = await assertSafeRecordingSource(url, resolve);
+    const origin = current.origin;
+    // Every hop is checked again; the adapter's credentials go only to the origin they were
+    // issued for, never to wherever a redirect points.
+    for (let hop = 0; ; hop++) {
+      const res = await doFetch(current.href, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(60_000),
+        ...(headers !== undefined && current.origin === origin ? { headers } : {}),
+      });
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location');
+        if (location === null || hop >= MAX_REDIRECTS)
+          throw new UnsafeRecordingSourceError('recording redirects too many times');
+        current = await assertSafeRecordingSource(new URL(location, current).href, resolve);
+        continue;
+      }
+      return {
+        ok: res.ok,
+        status: res.status,
+        body: res.ok ? await readCapped(res, maxBytes) : Buffer.alloc(0),
+        contentType: res.headers.get('content-type'),
+      };
+    }
   };
-};
+}
+
+export const nodeFetcher: Fetcher = safeFetcher();
 
 export function gcsRecordingStore(
   bucketName: string,

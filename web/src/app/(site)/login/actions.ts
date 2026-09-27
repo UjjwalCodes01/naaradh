@@ -1,7 +1,7 @@
 'use server';
 
-import { loginEmail } from '@naaradh/notify';
-import { Email, LOGIN_TOKEN_TTL_MIN, issueLoginLinks } from '@naaradh/pipeline';
+import { loginEmail, ssoRequiredEmail } from '@naaradh/notify';
+import { Email, LOGIN_TOKEN_TTL_MIN, issueSignInOptions } from '@naaradh/pipeline';
 import { sha256Hex } from '@naaradh/shared';
 import { field, run, type ActionResult } from '@/lib/actions';
 import { env } from '@/lib/env';
@@ -26,7 +26,26 @@ export async function requestLoginLink(_prev: ActionResult, form: FormData): Pro
     const okEmail = await allow(`login-email:${sha256Hex(email)}`, 5, 3600, { failClosed: true });
     if (!okIp || !okEmail)
       return { ok: false, message: 'Too many sign-in requests. Try again later.' };
-    const links = await issueLoginLinks(db(), { email, ipHash: await clientIpHash(), now: now() });
+    const { links, sso } = await issueSignInOptions(db(), {
+      email,
+      ipHash: await clientIpHash(),
+      now: now(),
+    });
+    // Accounts that require single sign-on for this person get its link instead of a token
+    // (P7-ENT-1). The browser's answer is the same either way.
+    for (const n of sso) {
+      try {
+        await mailer().send(
+          ssoRequiredEmail({
+            to: email,
+            accountName: n.tenantName,
+            url: `${env().APP_URL}/auth/sso/start/${n.slug}`,
+          }),
+        );
+      } catch (error) {
+        log().error({ err: error, tenant_id: n.tenantId }, 'sso notice email failed');
+      }
+    }
     for (const l of links) {
       const url = `${env().APP_URL}/auth/callback?token=${encodeURIComponent(l.token)}`;
       try {

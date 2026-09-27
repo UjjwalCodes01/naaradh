@@ -59,6 +59,18 @@ const schema = z
      * the panel is hidden, which is correct until a provider is contracted (P5-OCC-1).
      */
     PROVIDER_WEBHOOK_KEY: z.string().min(32).optional(),
+    /**
+     * Seals each tenant's single sign-on client secret in Postgres (P7-ENT-1), 32 random bytes
+     * base64. Only the dashboard holds it: the database alone cannot sign anyone in. Unset →
+     * single sign-on is unavailable and the settings panel says so.
+     */
+    SSO_SECRET_KEY: z
+      .string()
+      .optional()
+      .refine(
+        (v) => v === undefined || Buffer.from(v, 'base64').length === 32,
+        'must be 32 bytes, base64-encoded',
+      ),
     /** Origin of the hooks service, for the URL a merchant pastes into their provider. */
     HOOKS_BASE_URL: z.string().url().default('http://localhost:3002'),
     STRIPE_PRICE_IDS: z

@@ -13,6 +13,7 @@ export {
   esc,
   inviteEmail,
   loginEmail,
+  ssoRequiredEmail,
   type AlertKind,
   type DailySummaryInput,
 } from './templates.js';

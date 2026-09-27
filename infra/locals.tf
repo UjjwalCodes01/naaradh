@@ -105,6 +105,7 @@ locals {
     # contracted (P5-OCC-1).
     "PROVIDER_WEBHOOK_KEY",
     "REGION_SYNC_PRIVATE_KEY", # this region's directory signing key (ADR-0012 am. 1); unset → single region
+    "SSO_SECRET_KEY",          # seals tenants' SSO client secrets (P7-ENT-1); unset → SSO unavailable
     # Staging only (SIMULATOR_ALLOWED=true there): signs the simulator engine's webhooks and tool
     # calls. Production refuses the simulator, so this secret never exists there.
     "SIMULATOR_WEBHOOK_SECRET",
@@ -169,6 +170,9 @@ locals {
     # This region's Ed25519 key for directory snapshots. Only the reconcile worker signs; hooks
     # verifies peers with their PUBLIC keys (REGION_PEER_KEYS, plain env — not a secret).
     REGION_SYNC_PRIVATE_KEY = ["workers-reconcile"]
+
+    # Opens each tenant's sealed SSO client secret (P7-ENT-1). Only the dashboard signs people in.
+    SSO_SECRET_KEY = ["web"]
 
     POSTMARK_TOKEN = ["web", "workers-notifications"]
   }
