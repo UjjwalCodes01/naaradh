@@ -30,7 +30,7 @@
     "@naaradh/engine-simulator": "workspace:*",
     "@naaradh/notify": "workspace:*",
     "@testcontainers/redis": "12.1.0",
-    "tsup": "8.3.5",
-    "tsx": "4.19.2"
+    "tsup": "8.5.1",
+    "tsx": "4.23.15"
   }
 }

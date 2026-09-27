@@ -26,6 +26,6 @@
     "@testcontainers/postgresql": "12.1.0",
     "@types/pg": "8.23.1",
     "drizzle-kit": "0.31.11",
-    "tsx": "4.19.2"
+    "tsx": "4.23.15"
   }
 }
