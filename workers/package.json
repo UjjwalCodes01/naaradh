@@ -15,10 +15,10 @@
     "lint": "eslint src test"
   },
   "dependencies": {
-    "@google-cloud/bigquery": "9.0.3",
-    "@google-cloud/pubsub": "6.0.1",
+    "@google-cloud/bigquery": "9.1.0",
+    "@google-cloud/pubsub": "6.1.0",
     "@google-cloud/secret-manager": "6.1.1",
-    "@google-cloud/storage": "8.1.0",
+    "@google-cloud/storage": "8.2.0",
     "@naaradh/calendar": "workspace:*",
     "@naaradh/compliance": "workspace:*",
     "@naaradh/crm": "workspace:*",
@@ -41,7 +41,7 @@
     "@naaradh/engine-simulator": "workspace:*",
     "@testcontainers/redis": "12.1.0",
     "@types/luxon": "3.7.5",
-    "tsup": "8.3.5",
-    "tsx": "4.19.2"
+    "tsup": "8.5.1",
+    "tsx": "4.23.15"
   }
 }
