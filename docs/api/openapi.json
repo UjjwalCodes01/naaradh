@@ -787,6 +787,27 @@
           "max_duration_sec": {
             "type": "integer"
           },
+          "menu": {
+            "description": "Spoken after the greeting (P7-INB-1). Steers the conversation only; grants nothing.",
+            "items": {
+              "properties": {
+                "key": {
+                  "description": "`0`–`9`",
+                  "type": "string"
+                },
+                "label": {
+                  "description": "What the option is for, max 40 characters.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "key",
+                "label"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "monthly_minute_cap": {
             "type": [
               "integer",
@@ -876,6 +897,7 @@
           "monthly_minute_cap",
           "agent_cancel_enabled",
           "voice_id",
+          "menu",
           "updated_at"
         ],
         "type": "object"
@@ -1640,6 +1662,179 @@
         "summary": "Create or update an appointment",
         "tags": [
           "Carts & appointments"
+        ]
+      }
+    },
+    "/v1/audit-log": {
+      "get": {
+        "description": "Oldest first over `[from, to)`, at most 366 days per request, paged with an opaque cursor: pass `next` back as `after` until it is null. Rows that share a timestamp are never skipped or repeated across pages. The first page of each export is itself recorded as `audit_log.exported`.\n\nScope: `audit:read`.",
+        "operationId": "exportAuditLog",
+        "parameters": [
+          {
+            "description": "ISO 8601 instant, inclusive.",
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "ISO 8601 instant, exclusive.",
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The `next` cursor from the previous page.",
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "1–1000, default 1000.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "data": {
+                      "items": {
+                        "properties": {
+                          "action": {
+                            "description": "e.g. `recording.accessed`, `user.signed_in`.",
+                            "type": "string"
+                          },
+                          "actor": {
+                            "description": "Email for a user, `API key …` for a key.",
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "actor_type": {
+                            "description": "user, api_key, staff, engine, system …",
+                            "type": "string"
+                          },
+                          "after": {
+                            "additionalProperties": true,
+                            "description": "State after the change, scrubbed of personal data.",
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          },
+                          "at": {
+                            "format": "date-time",
+                            "type": "string"
+                          },
+                          "before": {
+                            "additionalProperties": true,
+                            "description": "State before the change, scrubbed of personal data.",
+                            "type": [
+                              "object",
+                              "null"
+                            ]
+                          },
+                          "id": {
+                            "description": "26-character ULID with a type prefix",
+                            "type": "string"
+                          },
+                          "request_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "target_id": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "target_type": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "at",
+                          "actor_type",
+                          "actor",
+                          "action",
+                          "target_type",
+                          "target_id",
+                          "request_id",
+                          "before",
+                          "after"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "next": {
+                      "description": "Cursor for the next page; null on the last page.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "next"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "One page."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "audit:read"
+            ]
+          }
+        ],
+        "summary": "Export this account's audit log",
+        "tags": [
+          "Audit"
         ]
       }
     },
@@ -3556,6 +3751,27 @@
                     "minimum": 60,
                     "type": "integer"
                   },
+                  "menu": {
+                    "default": [],
+                    "description": "Optional IVR-style menu, up to 6 options with unique keys `0`–`9`, read out after the greeting: \"for order status, press or say 1\" where the engine passes keypad presses, \"say 1\" where it does not. A choice only tells the agent the topic — every identity check and transfer rule still applies.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "label"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "monthly_minute_cap": {
                     "anyOf": [
                       {
@@ -3817,6 +4033,27 @@
                     "maximum": 1800,
                     "minimum": 60,
                     "type": "integer"
+                  },
+                  "menu": {
+                    "default": [],
+                    "description": "Optional IVR-style menu, up to 6 options with unique keys `0`–`9`, read out after the greeting: \"for order status, press or say 1\" where the engine passes keypad presses, \"say 1\" where it does not. A choice only tells the agent the topic — every identity check and transfer rule still applies.",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "key": {
+                          "type": "string"
+                        },
+                        "label": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "key",
+                        "label"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   },
                   "monthly_minute_cap": {
                     "anyOf": [
@@ -5000,6 +5237,299 @@
           }
         ],
         "summary": "Replace a knowledge article",
+        "tags": [
+          "Support line"
+        ]
+      }
+    },
+    "/v1/numbers/{id}/schedule": {
+      "get": {
+        "description": "Which inbound profile answers this number at which hours (P7-INB-1). When no row matches, the number's default profile answers — a schedule narrows the default and can never leave a number unanswered.\n\nScope: `support:read`.",
+        "operationId": "getNumberSchedule",
+        "parameters": [
+          {
+            "description": "Number id (`num_…`).",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "default_profile_id": {
+                      "description": "The number's own profile, which answers whenever no schedule row matches.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "schedules": {
+                      "items": {
+                        "properties": {
+                          "days": {
+                            "description": "ISO weekdays, 1 = Monday … 7 = Sunday.",
+                            "items": {
+                              "type": "integer"
+                            },
+                            "type": "array"
+                          },
+                          "end_time": {
+                            "description": "`HH:MM`, exclusive. Earlier than `start_time` means an overnight window, which belongs to the day it starts on.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "26-character ULID with a type prefix",
+                            "type": "string"
+                          },
+                          "inbound_profile_id": {
+                            "description": "Profile that answers in this window (`ipr_…`), of this account.",
+                            "type": "string"
+                          },
+                          "priority": {
+                            "description": "The lowest wins where rows overlap.",
+                            "type": "integer"
+                          },
+                          "start_time": {
+                            "description": "`HH:MM`, 24-hour, inclusive.",
+                            "type": "string"
+                          },
+                          "zone": {
+                            "description": "IANA time zone the times are read in, e.g. `Asia/Kolkata`.",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "inbound_profile_id",
+                          "zone",
+                          "days",
+                          "start_time",
+                          "end_time",
+                          "priority"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "default_profile_id",
+                    "schedules"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The schedule."
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "support:read"
+            ]
+          }
+        ],
+        "summary": "Read a number's time-of-day routing",
+        "tags": [
+          "Support line"
+        ]
+      },
+      "put": {
+        "description": "Replaces the whole schedule at once (at most 20 rows); `[]` clears it. Every profile must belong to this account. A draft or disabled profile is accepted — at call time it falls back to the default, so a profile can be scheduled before it is activated. The number must already have a default profile. Replaced rows are retired, not deleted, and the change is audited.\n\nScope: `support:write`.",
+        "operationId": "replaceNumberSchedule",
+        "parameters": [
+          {
+            "description": "Number id (`num_…`).",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "schedules": {
+                    "items": {
+                      "properties": {
+                        "days": {
+                          "description": "ISO weekdays, 1 = Monday … 7 = Sunday.",
+                          "items": {
+                            "type": "integer"
+                          },
+                          "type": "array"
+                        },
+                        "end_time": {
+                          "description": "`HH:MM`, exclusive. Earlier than `start_time` means an overnight window, which belongs to the day it starts on.",
+                          "type": "string"
+                        },
+                        "inbound_profile_id": {
+                          "description": "Profile that answers in this window (`ipr_…`), of this account.",
+                          "type": "string"
+                        },
+                        "priority": {
+                          "description": "0–1000, default 100. The lowest wins where rows overlap.",
+                          "type": "integer"
+                        },
+                        "start_time": {
+                          "description": "`HH:MM`, 24-hour, inclusive.",
+                          "type": "string"
+                        },
+                        "zone": {
+                          "description": "IANA time zone the times are read in, e.g. `Asia/Kolkata`.",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "inbound_profile_id",
+                        "zone",
+                        "days",
+                        "start_time",
+                        "end_time"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "schedules"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "default_profile_id": {
+                      "description": "The number's own profile, which answers whenever no schedule row matches.",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "schedules": {
+                      "items": {
+                        "properties": {
+                          "days": {
+                            "description": "ISO weekdays, 1 = Monday … 7 = Sunday.",
+                            "items": {
+                              "type": "integer"
+                            },
+                            "type": "array"
+                          },
+                          "end_time": {
+                            "description": "`HH:MM`, exclusive. Earlier than `start_time` means an overnight window, which belongs to the day it starts on.",
+                            "type": "string"
+                          },
+                          "id": {
+                            "description": "26-character ULID with a type prefix",
+                            "type": "string"
+                          },
+                          "inbound_profile_id": {
+                            "description": "Profile that answers in this window (`ipr_…`), of this account.",
+                            "type": "string"
+                          },
+                          "priority": {
+                            "description": "The lowest wins where rows overlap.",
+                            "type": "integer"
+                          },
+                          "start_time": {
+                            "description": "`HH:MM`, 24-hour, inclusive.",
+                            "type": "string"
+                          },
+                          "zone": {
+                            "description": "IANA time zone the times are read in, e.g. `Asia/Kolkata`.",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "inbound_profile_id",
+                          "zone",
+                          "days",
+                          "start_time",
+                          "end_time",
+                          "priority"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "default_profile_id",
+                    "schedules"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The schedule now in force."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthenticated"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationFailed"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/Internal"
+          }
+        },
+        "security": [
+          {
+            "secretKey": [
+              "support:write"
+            ]
+          }
+        ],
+        "summary": "Replace a number's time-of-day routing",
         "tags": [
           "Support line"
         ]
@@ -6723,6 +7253,10 @@
     {
       "description": "Configuration and data of the inbound AI support line (ADR-0006): inbound profiles (who answers, how, with which tools), the knowledge base the agent may quote, verified transfer targets (invariant 19), the tickets the agent raised, and the order cache the agent answers from for non-Shopify merchants.",
       "name": "Support line"
+    },
+    {
+      "description": "The account's own audit trail (P7-ENT-1): every recording played, transcript read, sign-in, permission change and configuration change, for a SIEM or an auditor. Before/after values were scrubbed of personal data when written.",
+      "name": "Audit"
     },
     {
       "description": "Abandoned-cart recovery and appointment reminders for every platform that is not Shopify (ADR-0011): WooCommerce, a one-click checkout, or your own store. Sending a cart is not an instruction to call it — Naaradh calls it only if it has been idle 45 minutes, is under 24 hours old, has a phone and carries a live consent from the wording version Naaradh published. Appointments produce at most one confirmation call, 24 to 2 hours before the appointment, inside the recipient's calling window.",
