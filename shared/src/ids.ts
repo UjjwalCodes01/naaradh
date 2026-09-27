@@ -59,6 +59,9 @@ export const ID_PREFIXES = {
   webSession: 'wss',
   /** P7-ENT-1: a tenant's OpenID Connect sign-in. */
   tenantSso: 'sso',
+  /** P7-GTM-1: a merchant's own referral code, and one merchant referring another. */
+  referralCode: 'rfc',
+  referral: 'rfl',
   notification: 'ntf',
   // promotional calling (ADR-0010)
   checkout: 'chk',

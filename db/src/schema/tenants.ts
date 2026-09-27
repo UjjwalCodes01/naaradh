@@ -35,6 +35,7 @@ import {
   numberStatus,
   profileStatus,
   purpose,
+  referralStatus,
   scriptStatus,
   ssoStatus,
   stirShakenAttestation,
@@ -212,6 +213,63 @@ export const tenantSso = pgTable(
     ),
     uniqueIndex('tenant_sso_tenant_uq').on(t.tenantId),
     uniqueIndex('tenant_sso_slug_uq').on(t.slug),
+  ],
+).enableRLS();
+
+/** P7-GTM-1: each merchant's own code, created the first time they open the referrals page. */
+export const referralCodes = pgTable(
+  'referral_codes',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    /** 8 characters without look-alikes (no 0/O, 1/I/L), so it survives being read aloud. */
+    code: text('code').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check('referral_codes_id_format', idFormat(t.id, 'rfc')),
+    check('referral_codes_format', sql`${t.code} ~ '^[A-HJ-KMNP-Z2-9]{8}$'`),
+    uniqueIndex('referral_codes_tenant_uq').on(t.tenantId),
+    uniqueIndex('referral_codes_code_uq').on(t.code),
+  ],
+).enableRLS();
+
+/**
+ * P7-GTM-1: one merchant referred by another. `tenant_id` is the REFERRED merchant (one row at
+ * most — nobody is referred twice); both sides may read the row. Created only through
+ * `claim_referral()`, which applies the anti-abuse rules; moved on only by the billing worker.
+ * `referred_name` is a snapshot at claim time, so the referrer never needs to read the other
+ * tenant's row. The reward, when there is one, is a `credit` ledger row with `ref` = this id,
+ * which the ledger's unique index makes impossible to write twice.
+ */
+export const referrals = pgTable(
+  'referrals',
+  {
+    id: id(),
+    tenantId: text('tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    referrerTenantId: text('referrer_tenant_id')
+      .notNull()
+      .references(() => tenants.id),
+    code: text('code').notNull(),
+    referredName: text('referred_name').notNull(),
+    status: referralStatus('status').notNull().default('claimed'),
+    claimedAt: ts('claimed_at').notNull(),
+    qualifiedAt: ts('qualified_at'),
+    rewardedAt: ts('rewarded_at'),
+    creditLedgerId: text('credit_ledger_id'),
+    voidReason: text('void_reason'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    check('referrals_id_format', idFormat(t.id, 'rfl')),
+    check('referrals_not_self', sql`${t.tenantId} <> ${t.referrerTenantId}`),
+    uniqueIndex('referrals_referred_uq').on(t.tenantId),
+    index('referrals_referrer_idx').on(t.referrerTenantId, t.status),
   ],
 ).enableRLS();
 

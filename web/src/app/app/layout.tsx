@@ -22,6 +22,7 @@ const NAV: [string, string, Role][] = [
   ['/app/scripts', 'Call scripts', 'manager'],
   ['/app/privacy', 'Privacy & opt-outs', 'operator'],
   ['/app/billing', 'Billing', 'viewer'],
+  ['/app/referrals', 'Referrals', 'manager'],
   ['/app/settings', 'Settings', 'manager'],
   ['/app/team', 'Team', 'manager'],
   ['/app/developers', 'Developers', 'owner'],

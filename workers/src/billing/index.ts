@@ -13,6 +13,7 @@ import {
   fromStripeStatus,
   markTenantCapped,
   planTenantOf,
+  runReferralSweep,
   settlePosting,
   type ClaimedPosting,
   type FetchedSubscription,
@@ -608,6 +609,8 @@ export async function runBilling(
       if (day !== lastReconcile && now.getUTCHours() * 60 + now.getUTCMinutes() >= 20 * 60 + 30) {
         lastReconcile = day;
         ctx.log.info(await runReconciliationOnce(ctx), 'billing reconciliation');
+        // P7-GTM-1: move referrals on, and credit referrers once a reward is decided (ADR-0017).
+        ctx.log.info(await runReferralSweep(ctx.service, now), 'referral sweep');
       }
     },
   });

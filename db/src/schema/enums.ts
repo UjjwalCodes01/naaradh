@@ -24,6 +24,17 @@ export const userRole = pgEnum('user_role', ['viewer', 'operator', 'manager', 'o
  * configuration nobody has proved can never be enforced on everyone else.
  */
 export const ssoStatus = pgEnum('sso_status', ['testing', 'active', 'disabled']);
+/**
+ * P7-GTM-1 referrals. `claimed` → `qualified` once the referred merchant has paid for real use
+ * for long enough; → `rewarded` when the referrer's credit is written; `void` when the referred
+ * merchant leaves or is suspended first.
+ */
+export const referralStatus = pgEnum('referral_status', [
+  'claimed',
+  'qualified',
+  'rewarded',
+  'void',
+]);
 
 export const integrationKind = pgEnum('integration_kind', [
   'shopify',
