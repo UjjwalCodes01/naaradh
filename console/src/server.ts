@@ -10,7 +10,14 @@ import {
   setKillSwitch,
   suppress,
 } from '@naaradh/compliance';
-import { audit, explainOutcome, resolveDispute } from '@naaradh/pipeline';
+import {
+  VOICE_ENGINES,
+  VOICE_LOCALES,
+  audit,
+  explainOutcome,
+  parseVoiceOverrides,
+  resolveDispute,
+} from '@naaradh/pipeline';
 import { NaaradhError, addDays, fastifyLoggerOptions, newId, trustProxyOf } from '@naaradh/shared';
 import { badge, h, when, type Raw } from './html.js';
 import {
@@ -270,6 +277,25 @@ export async function buildConsole(deps: ConsoleDeps): Promise<FastifyInstance> 
           <button class="${t.dltLinkedAt === null ? '' : 'danger'}">${t.dltLinkedAt === null ? 'Mark PE linked to Naaradh' : 'Remove DLT link'}</button>
         </form>
         <p class="muted">Only after seeing on the DLT portal that this PE authorised Naaradh as its telemarketer (docs/go-live/02-phone-numbers-and-dlt.md §3). <a href="/numbers?tenant=${t.id}">Numbers owned by this tenant →</a></p>
+      </div>
+      <h2>Custom voices (enterprise)</h2>
+      <div class="card">${(() => {
+        const voices = parseVoiceOverrides(t.voiceOverrides);
+        const rows = Object.entries(voices).flatMap(([engine, byLocale]) =>
+          Object.entries(byLocale).map(([locale, voice]) => ({ engine, locale, voice })),
+        );
+        return rows.length === 0
+          ? h`<p class="muted">Engine default voices.</p>`
+          : h`<table><tr><th>Engine</th><th>Locale</th><th>Voice</th></tr>${rows.map((r) => h`<tr><td>${r.engine}</td><td>${r.locale}</td><td><code>${r.voice}</code></td></tr>`)}</table>`;
+      })()}
+        <form method="post" action="/tenants/${t.id}/voice" style="margin-top:8px">
+          <select name="engine">${VOICE_ENGINES.map((e) => h`<option>${e}</option>`)}</select>
+          <select name="locale">${VOICE_LOCALES.map((l) => h`<option>${l}</option>`)}</select>
+          <input name="voice_id" size="28" placeholder="vendor voice id (empty = default)">
+          <input name="evidence" size="50" required minlength="10" placeholder="Where it was provisioned; clone consent reference">
+          <button>Set voice</button>
+        </form>
+        <p class="muted">A cloned voice needs the merchant's written consent to clone it, referenced in the note. Outbound only; inbound profiles carry their own voice.</p>
       </div>
       <h2>Complaints (${COMPLAINT_WINDOW_DAYS} days)</h2>
       <table><tr><th>Received</th><th>Source</th><th>Call</th><th>Status</th></tr>${complaints.map((c) => h`<tr><td>${when(c.receivedAt)}</td><td>${c.source}</td><td>${c.useCase ?? '—'} ${c.purpose === 'promotional' ? badge('promotional', 'warn') : ''}</td><td>${c.status}</td></tr>`)}</table>

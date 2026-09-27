@@ -3,8 +3,10 @@ import {
   DIRECT_USE_CASES,
   DirectTenantInput,
   DltLinkInput,
+  VoiceOverrideInput,
   createDirectTenant,
   setDltLink,
+  setVoiceOverride,
 } from '@naaradh/pipeline';
 import { h } from '../html.js';
 import { body, done, problem, render, type ConsoleDeps } from '../support.js';
@@ -110,6 +112,34 @@ export function registerMerchantRoutes(app: FastifyInstance, deps: ConsoleDeps):
         r.linkedAt === null
           ? 'DLT link removed; promotional calling is blocked for this merchant.'
           : 'DLT link recorded; promotional use cases may now be enabled by the merchant.',
+      );
+    } catch (error) {
+      return await done(reply, back, false, problem(error));
+    }
+  });
+
+  /**
+   * P7-ENT-1 custom voices. Set only after the voice exists on that engine's account; for a
+   * cloned voice the evidence must reference the merchant's written consent to clone it.
+   */
+  app.post<{ Params: { id: string } }>('/tenants/:id/voice', async (request, reply) => {
+    const back = `/tenants/${encodeURIComponent(request.params.id)}`;
+    try {
+      const b = body(request);
+      const input = VoiceOverrideInput.parse({
+        engine: b['engine'],
+        locale: b['locale'],
+        voiceId: opt(b['voice_id']) ?? null,
+        evidence: b['evidence'],
+      });
+      await setVoiceOverride(deps.db, { email: request.staff ?? '' }, request.params.id, input);
+      return await done(
+        reply,
+        back,
+        true,
+        input.voiceId === null
+          ? `${input.engine} ${input.locale} is back on the default voice.`
+          : `New ${input.engine} ${input.locale} calls use ${input.voiceId}. Agents already created keep their voice until the script changes version.`,
       );
     } catch (error) {
       return await done(reply, back, false, problem(error));

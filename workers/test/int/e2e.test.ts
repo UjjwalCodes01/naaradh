@@ -1,6 +1,6 @@
 import { memoryMailer } from '@naaradh/notify';
 import { createHmac } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { RedisContainer, type StartedRedisContainer } from '@testcontainers/redis';
 import { Redis } from 'ioredis';
 import { createDb, type Db } from '@naaradh/db';
@@ -16,6 +16,7 @@ import {
 } from '@naaradh/shared';
 import { FAKE_IN } from '@naaradh/shared/test/fake-phones';
 import { EngineRegistry } from '@naaradh/engines-registry';
+import { setVoiceOverride } from '@naaradh/pipeline';
 import { COD_CONFIRM_HI_IN } from '@naaradh/call-scripts';
 import { buildServer as buildHooks } from '../../../hooks/src/server.js';
 import { memoryPublisher } from '../../../hooks/src/pubsub.js';
@@ -779,5 +780,71 @@ describe('Shopify write-back queue (P1-SHOP-2)', () => {
       writeback_attempts: 2,
       writeback_next_at: null,
     });
+  });
+});
+
+// ---- P7-ENT-1: a custom voice reaches the agent, and only staff can set one ---------------------
+
+describe('custom voices (P7-ENT-1)', () => {
+  // A number no other test here dials, so no merge, suppression or attempt limit interferes.
+  const RECIPIENT = '+916000000377';
+
+  it("a staff-set voice is the one the engine's agent is created with", async () => {
+    advance(120);
+    await setVoiceOverride(svcDb, { email: 'ops@naaradh.com' }, TENANT, {
+      engine: 'simulator',
+      locale: 'hi-IN',
+      voiceId: 'brand-voice-1',
+      evidence: 'Provisioned on the simulator for the e2e test',
+    });
+    const spy = vi.spyOn(ctx.registry.get('simulator'), 'createAgent');
+    await postOrder(RECIPIENT);
+    await drain();
+    advance(3);
+    const outcomes = await dispatchOnce(ctx);
+    // Read the calls before restoring: mockRestore also clears what the spy recorded.
+    const voices = spy.mock.calls.map(([spec]) => spec.voiceId);
+    spy.mockRestore();
+    expect(outcomes.some((o) => o.kind === 'dialing')).toBe(true);
+    // A new voice means a new agent: the cached one (default voice) is not reused.
+    expect(voices).toContain('brand-voice-1');
+    await drain();
+  });
+
+  it('the change is audited with its evidence', async () => {
+    const r = await service.query<{ after: { evidence: string } }>(
+      `select after from audit_log where tenant_id = $1 and action = 'tenant.voice_set'`,
+      [TENANT],
+    );
+    expect(r.rows.at(-1)?.after.evidence).toContain('Provisioned');
+  });
+
+  it("negative: the merchant's own role cannot set a voice", async () => {
+    const app = new RoleClient(pg.urls.app);
+    try {
+      await app.query(`select set_config('app.tenant_id', $1, false)`, [TENANT]);
+      await expect(
+        app.query(
+          `update tenants set voice_overrides = '{"simulator":{"hi-IN":"x"}}' where id = $1`,
+          [TENANT],
+        ),
+      ).rejects.toThrow(/permission denied/);
+    } finally {
+      await app.end();
+    }
+  });
+
+  it('clearing it sends new agents back to the default voice', async () => {
+    await setVoiceOverride(svcDb, { email: 'ops@naaradh.com' }, TENANT, {
+      engine: 'simulator',
+      locale: 'hi-IN',
+      voiceId: null,
+      evidence: 'Merchant asked to go back to the default voice',
+    });
+    const r = await service.query<{ v: unknown }>(
+      `select voice_overrides as v from tenants where id = $1`,
+      [TENANT],
+    );
+    expect(r.rows[0]?.v).toEqual({});
   });
 });

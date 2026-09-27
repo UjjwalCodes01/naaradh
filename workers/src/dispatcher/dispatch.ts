@@ -19,7 +19,7 @@ import {
   type EngineAgentRef,
   type Locale,
 } from '@naaradh/engines-core';
-import { audit, emitMerchantEvent } from '@naaradh/pipeline';
+import { audit, emitMerchantEvent, voiceFor } from '@naaradh/pipeline';
 import {
   OUTBOUND_TOOLS,
   TOOL_RULES,
@@ -303,11 +303,12 @@ async function prepareDial(
   const to = decryptPhone(contact.phoneEnc, ctx.keys.privateKeyPem);
 
   const [tenant] = await tx
-    .select({ name: schema.tenants.name })
+    .select({ name: schema.tenants.name, voiceOverrides: schema.tenants.voiceOverrides })
     .from(schema.tenants)
     .where(eq(schema.tenants.id, tenantId))
     .limit(1);
   const slots = { brand: tenant?.name ?? 'the store', ...variables };
+  const voice = voiceFor(tenant?.voiceOverrides, pass.engine, loaded.intent.locale);
   const rendered = renderScript(validated.template, slots, {
     recordingConsent: pass.recordingConsent,
   });
@@ -434,7 +435,7 @@ async function prepareDial(
       systemPrompt,
       // The template, not this customer's rendering: the agent is reused across calls.
       firstUtterance: rendered.firstUtteranceTemplate,
-      voiceId: 'default',
+      voiceId: voice,
       maxDurationSec: pass.maxDurationSec,
       ...(tools.length === 0 ? {} : { tools }),
       webhookUrl: `${ctx.hooksBaseUrl}${engineWebhookPath(ctx.engineWebhookKey, pass.engine, tenantId)}`,
@@ -443,8 +444,9 @@ async function prepareDial(
         schema: extractionJsonSchema(validated.template.extraction),
       },
     },
-    // The opening differs by recording-consent mode, so the cached agent must too.
-    agentKey: `${
+    // The opening differs by recording-consent mode, and the voice by tenant (P7-ENT-1), so the
+    // cached agent must too: changing a voice creates a new agent instead of reusing the old one.
+    agentKey: `voice-${voice}.${
       profile === undefined || toolNames.length === 0
         ? 'notools'
         : `${profile.id}.v${String(profile.version)}`

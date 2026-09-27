@@ -9,6 +9,7 @@ import {
   FEEDBACK_EN_IN,
   FEEDBACK_HI_IN,
   LEAD_CALLBACK_EN_IN,
+  SUPPORTED_LOCALES,
   type ScriptTemplate,
 } from '@naaradh/call-scripts';
 import {
@@ -715,4 +716,90 @@ export async function pendingDltLinks(
     .orderBy(schema.tenants.name)
     .limit(100);
   return rows.flatMap((r) => (r.dltPeId === null ? [] : [{ ...r, dltPeId: r.dltPeId }]));
+}
+
+// ---------------------------------------------------------------------------------------------
+// Custom voices (P7-ENT-1)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The engines a voice can be set for. Kept here rather than imported from the engine registry so
+ * the dashboard does not bundle every adapter; `workers/test/voices.test.ts` fails if the two
+ * lists ever disagree.
+ */
+export const VOICE_ENGINES = ['simulator', 'bolna', 'omnidim', 'retell'] as const;
+
+/** The locales a voice can be set for: every locale Naaradh has a disclosure for. */
+export const VOICE_LOCALES: readonly string[] = SUPPORTED_LOCALES;
+
+/** A vendor voice id: printable, no spaces or quotes — it goes into a vendor's JSON as data. */
+const VOICE_ID = /^[A-Za-z0-9._:/-]{1,128}$/;
+
+export const VoiceOverrideInput = z.object({
+  engine: z.enum(VOICE_ENGINES),
+  locale: z.string().refine((l) => SUPPORTED_LOCALES.includes(l), 'is not a locale Naaradh speaks'),
+  /** Null clears the override: that engine and locale go back to the default voice. */
+  voiceId: z.string().trim().regex(VOICE_ID, 'is not a voice id').nullable(),
+  /** What was provisioned where, and the merchant's written consent if the voice is cloned. */
+  evidence: Note,
+});
+
+export type VoiceOverrides = Record<string, Record<string, string>>;
+
+/** Reads the stored overrides defensively: anything not shaped as expected is ignored. */
+export function parseVoiceOverrides(raw: unknown): VoiceOverrides {
+  const out: VoiceOverrides = {};
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return out;
+  for (const [engine, byLocale] of Object.entries(raw)) {
+    if (typeof byLocale !== 'object' || byLocale === null || Array.isArray(byLocale)) continue;
+    for (const [locale, voice] of Object.entries(byLocale as Record<string, unknown>))
+      if (typeof voice === 'string' && VOICE_ID.test(voice)) (out[engine] ??= {})[locale] = voice;
+  }
+  return out;
+}
+
+/** The voice an outbound agent speaks with: the tenant's own, else the engine's default. */
+export function voiceFor(raw: unknown, engine: string, locale: string): string {
+  return parseVoiceOverrides(raw)[engine]?.[locale] ?? 'default';
+}
+
+export async function setVoiceOverride(
+  db: Db,
+  staff: StaffActor,
+  tenantId: string,
+  input: z.infer<typeof VoiceOverrideInput>,
+): Promise<VoiceOverrides> {
+  return db.transaction(async (tx) => {
+    const [t] = await tx
+      .select({ voiceOverrides: schema.tenants.voiceOverrides })
+      .from(schema.tenants)
+      .where(eq(schema.tenants.id, tenantId))
+      .limit(1);
+    if (t === undefined) throw new NaaradhError('NOT_FOUND', 'tenant not found');
+    const before = parseVoiceOverrides(t.voiceOverrides);
+    // Rebuilt rather than mutated: the engine's entry without this locale, then the new voice.
+    const others = Object.fromEntries(
+      Object.entries(before[input.engine] ?? {}).filter(([locale]) => locale !== input.locale),
+    );
+    const forEngine =
+      input.voiceId === null ? others : { ...others, [input.locale]: input.voiceId };
+    const after: VoiceOverrides = Object.fromEntries([
+      ...Object.entries(before).filter(([engine]) => engine !== input.engine),
+      ...(Object.keys(forEngine).length === 0 ? [] : [[input.engine, forEngine] as const]),
+    ]);
+    await tx
+      .update(schema.tenants)
+      .set({ voiceOverrides: after })
+      .where(eq(schema.tenants.id, tenantId));
+    await audit(tx, {
+      tenantId,
+      ...staffAudit(staff),
+      action: input.voiceId === null ? 'tenant.voice_cleared' : 'tenant.voice_set',
+      targetType: 'tenant',
+      targetId: tenantId,
+      before: { voice_overrides: before },
+      after: { voice_overrides: after, evidence: input.evidence },
+    });
+    return after;
+  });
 }

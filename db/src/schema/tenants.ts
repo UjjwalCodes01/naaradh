@@ -69,6 +69,14 @@ export const tenants = pgTable(
     pausedReason: text('paused_reason'),
     uninstalledAt: ts('uninstalled_at'),
 
+    /**
+     * P7-ENT-1 custom voices: `{ "<engine>": { "<locale>": "<vendor voice id>" } }`, set by staff
+     * once a voice (often the merchant's own, cloned) exists on that engine's account. Absent →
+     * the engine's default voice for the locale. Service-role column: not in the app role's
+     * UPDATE grant, because a voice id only means something after it is provisioned with the
+     * vendor. Applies to outbound agents; an inbound profile carries its own `voice_id`.
+     */
+    voiceOverrides: jsonb('voice_overrides').notNull().default({}),
     // DLT (SPEC §3.3). Promotional purposes require a linked PE.
     dltPeId: text('dlt_pe_id'),
     dltLinkedAt: ts('dlt_linked_at'),
@@ -124,6 +132,7 @@ export const tenants = pgTable(
     check('tenants_retention_range', sql`${t.retentionDays} between 30 and 365`),
     check('tenants_concurrency_range', sql`${t.maxConcurrency} between 1 and 100`),
     check('tenants_country_iso', sql`${t.country} ~ '^[A-Z]{2}$'`),
+    check('tenants_voice_overrides_object', sql`jsonb_typeof(${t.voiceOverrides}) = 'object'`),
     check('tenants_currency_iso', sql`${t.currency} ~ '^[A-Z]{3}$'`),
     index('tenants_status_idx').on(t.status),
   ],
