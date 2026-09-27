@@ -294,6 +294,12 @@ export interface EngineCapabilities {
    * no ringing, no carrier, no answer rate — so it demonstrates a script, never a number.
    */
   readonly webCall: boolean;
+  /**
+   * Whether keypad presses (DTMF) reach the agent as the caller's input. Decides how a support
+   * line menu is read out: "press or say 1" where they do, "say 1" where they do not, so nobody
+   * presses a key that does nothing (P7-INB-1).
+   */
+  readonly keypadInput: boolean;
 }
 
 export interface WebCallRequest {

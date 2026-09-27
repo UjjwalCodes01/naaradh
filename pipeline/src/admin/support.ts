@@ -59,6 +59,8 @@ export const ProfileInput = z.object({
   /** Invariant 14 as amended by ADR-0006 — off unless the merchant turns it on. */
   agent_cancel_enabled: z.boolean().default(false),
   voice_id: z.string().max(100).nullable().default(null),
+  /** P7-INB-1: an optional spoken menu, read out after the greeting. */
+  menu: z.array(z.object({ key: z.string(), label: z.string() })).default([]),
 });
 export type ProfileInput = z.infer<typeof ProfileInput>;
 
@@ -119,6 +121,7 @@ function validateProfile(body: ProfileInput) {
     pinnedFacts: body.pinned_facts,
     toolsEnabled: body.tools_enabled,
     closedMessage: body.closed_message,
+    menu: body.menu,
   });
   if (!v.ok)
     throw new NaaradhError('VALIDATION_FAILED', 'inbound profile is invalid', {
@@ -164,6 +167,7 @@ export function profileView(p: ProfileRow) {
     monthly_minute_cap: p.monthlyMinuteCap,
     agent_cancel_enabled: p.agentCancelEnabled,
     voice_id: p.voiceId,
+    menu: p.menu as { key: string; label: string }[],
     updated_at: p.updatedAt.toISOString(),
   };
 }
@@ -216,6 +220,7 @@ function profileColumns(body: ProfileInput, keys: StaffKeys) {
       monthlyMinuteCap: body.monthly_minute_cap,
       agentCancelEnabled: body.agent_cancel_enabled,
       voiceId: body.voice_id,
+      menu: valid.menu.map((o) => ({ key: o.key, label: sanitiseMerchantText(o.label, 40) })),
     },
   };
 }
@@ -313,6 +318,7 @@ export async function setProfileStatus(
       pinnedFacts: existing.pinnedFacts,
       toolsEnabled: existing.toolsEnabled,
       closedMessage: existing.closedMessage,
+      menu: existing.menu,
     });
     if (!v.ok)
       throw new NaaradhError('VALIDATION_FAILED', 'inbound profile is invalid', {

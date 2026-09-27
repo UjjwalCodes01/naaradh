@@ -374,6 +374,10 @@ const ProfileView = obj(
       'Invariant 14: off by default; when on, the agent may cancel an unshipped COD order after the two-step confirmation.',
     ),
     voice_id: nullable(str()),
+    menu: arr(
+      obj({ key: str('`0`–`9`'), label: str('What the option is for, max 40 characters.') }),
+      'Spoken after the greeting (P7-INB-1). Steers the conversation only; grants nothing.',
+    ),
     updated_at: dateTime(),
   },
   'An inbound profile as the API returns it.',
@@ -1270,6 +1274,7 @@ const profileBody = documentProperties(fromZod(ProfileInput), {
     'Inbound minutes per month before the line falls back to `fallback_forward`/the closed message.',
   agent_cancel_enabled:
     'Lets the agent cancel an unshipped COD order after the two-step confirmation (E-84). Off by default; a ticket is raised instead.',
+  menu: 'Optional IVR-style menu, up to 6 options with unique keys `0`–`9`, read out after the greeting: "for order status, press or say 1" where the engine passes keypad presses, "say 1" where it does not. A choice only tells the agent the topic — every identity check and transfer rule still applies.',
 });
 
 const appointmentSchema = obj({

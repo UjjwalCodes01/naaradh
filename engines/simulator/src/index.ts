@@ -183,6 +183,8 @@ export class SimulatorAdapter implements VoiceEngineAdapter {
       callLookup: true,
       // The simulator dials nothing anyway; a browser call would prove nothing extra.
       webCall: false,
+      // The simulator has no keypad; it exercises the spoken menu.
+      keypadInput: false,
     };
   }
 

@@ -45,6 +45,7 @@ describe('omnidim: what it declares', () => {
       progressEvents: false,
       callLookup: false,
       webCall: false,
+      keypadInput: false,
     });
   });
 

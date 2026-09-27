@@ -149,6 +149,8 @@ export class RetellAdapter implements VoiceEngineAdapter {
       callLookup: true,
       // /v3/create-web-call: no number, no carrier. [VERIFY] with one browser call.
       webCall: true,
+      // allow_user_dtmf (default on) passes digits to the model. [VERIFY] on a recorded call.
+      keypadInput: true,
     };
   }
 
@@ -246,6 +248,8 @@ export class RetellAdapter implements VoiceEngineAdapter {
       max_call_duration_ms: spec.maxDurationSec * 1000,
       // Machine detection on every agent: a voicemail is never talked to (E-24).
       enable_voicemail_detection: true,
+      // Keypad presses reach the model as the caller's input (support-line menus, P7-INB-1).
+      allow_user_dtmf: true,
       ...(spec.webhookUrl === undefined ? {} : { webhook_url: spec.webhookUrl }),
       ...(spec.extraction === undefined
         ? {}

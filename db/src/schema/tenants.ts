@@ -462,6 +462,11 @@ export const inboundProfiles = pgTable(
     /** Invariant 14 — the agent may execute a two-step cancellation only when this is on. */
     agentCancelEnabled: boolean('agent_cancel_enabled').notNull().default(false),
     voiceId: text('voice_id'),
+    /**
+     * P7-INB-1: `[{ key: '1', label: 'Order status' }, …]`, read out after the greeting (never
+     * before the disclosure). A menu only steers the conversation; it grants no tool or action.
+     */
+    menu: jsonb('menu').notNull().default([]),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -472,6 +477,10 @@ export const inboundProfiles = pgTable(
     check('inbound_profiles_caller_limit', sql`${t.maxCallsPerCallerHour} between 1 and 60`),
     check('inbound_profiles_duration', sql`${t.maxDurationSec} between 60 and 1800`),
     check('inbound_profiles_pinned_facts_max', sql`cardinality(${t.pinnedFacts}) <= 20`),
+    check(
+      'inbound_profiles_menu_array',
+      sql`jsonb_typeof(${t.menu}) = 'array' and jsonb_array_length(${t.menu}) <= 6`,
+    ),
     check(
       'inbound_profiles_fallback_pair',
       sql`(${t.fallbackForwardEnc} is null) = (${t.fallbackForwardKid} is null)`,

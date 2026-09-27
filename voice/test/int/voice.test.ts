@@ -1406,3 +1406,40 @@ describe('time-of-day routing (P7-INB-1)', () => {
     await service.query(`update numbers set tenant_id = null where id = $1`, [unrouted]);
   });
 });
+
+// ---- P7-INB-1: a spoken menu on the support line ------------------------------------------------
+
+describe('support-line menu (P7-INB-1)', () => {
+  const menu = [
+    { key: '1', label: 'Order status' },
+    { key: '0', label: 'Speak to someone' },
+  ];
+  const version = async () =>
+    (await q<{ version: number }>(`select version from inbound_profiles where id = $1`, [P1]))[0]
+      ?.version ?? 0;
+
+  it('changing the menu bumps the profile version stamped on calls', async () => {
+    const before = await version();
+    await service.query(`update inbound_profiles set menu = $1 where id = $2`, [
+      JSON.stringify(menu),
+      P1,
+    ]);
+    expect(await version()).toBe(before + 1);
+  });
+
+  it('is read after the disclosure, spoken-only on an engine without keypad input', async () => {
+    current = new Date('2026-09-14T06:30:00Z'); // 12:00 IST, the day profile
+    const call = await context(SUPPORT_T1, FAKE_IN.customer);
+    expect(call.body?.action).toBe('answer');
+    const first = call.body?.first_utterance ?? '';
+    expect(first).toMatch(/AI assistant/);
+    expect(first).toContain('For Order status, say 1.');
+    expect(first).not.toMatch(/press/i);
+    expect(first.indexOf('AI assistant')).toBeLessThan(first.indexOf('Order status'));
+    expect(call.body?.system_prompt).toContain('1 = Order status; 0 = Speak to someone');
+  });
+
+  afterAll(async () => {
+    await service.query(`update inbound_profiles set menu = '[]' where id = $1`, [P1]);
+  });
+});

@@ -144,6 +144,8 @@ export class BolnaAdapter implements VoiceEngineAdapter {
       callLookup: true,
       // Bolna's calls are telephony only.
       webCall: false,
+      // Not documented for Bolna agents; menus are spoken-only until verified.
+      keypadInput: false,
     };
   }
 

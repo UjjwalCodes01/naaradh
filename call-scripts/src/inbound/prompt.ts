@@ -1,3 +1,4 @@
+import { menuPromptLines, menuSentence, type MenuOption } from './menu.js';
 import { substitute } from '../render.js';
 import { sanitiseMerchantText } from './profile.js';
 import { TOOL_NAMES, type ToolName } from './tools.js';
@@ -61,6 +62,10 @@ export interface InboundPromptInput {
   readonly hoursText: string;
   readonly toolsEnabled: readonly ToolName[];
   readonly transferAvailableNow: boolean;
+  /** P7-INB-1: read out after the greeting; absent or empty = no menu. */
+  readonly menu?: readonly MenuOption[];
+  /** Whether this engine passes keypad presses to the agent (`capabilities().keypadInput`). */
+  readonly keypad?: boolean;
   readonly caller: {
     readonly withheld: boolean;
     /** Caller ID matches at least one recent order. Count only — no details. */
@@ -76,7 +81,13 @@ export interface RenderedInbound {
 
 export function renderInboundPrompt(input: InboundPromptInput): RenderedInbound {
   const brand = sanitiseMerchantText(input.brand, 80);
-  const firstUtterance = substitute(input.greeting, { brand });
+  const menu = input.menu ?? [];
+  const keypad = input.keypad === true;
+  const spokenMenu = menuSentence(input.locale, menu, keypad);
+  // The menu comes after the greeting, never before: the disclosure is still heard first.
+  const firstUtterance = [substitute(input.greeting, { brand }), spokenMenu]
+    .filter((x) => x.length > 0)
+    .join(' ');
 
   const tools = TOOL_NAMES.filter((t) => input.toolsEnabled.includes(t));
   const facts = input.pinnedFacts.map((f) => `- ${sanitiseMerchantText(f, 200)}`);
@@ -102,6 +113,7 @@ export function renderInboundPrompt(input: InboundPromptInput): RenderedInbound 
       ? 'A person is available for transfer right now.'
       : 'Nobody is available for transfer right now; offer a callback ticket instead.',
     callerLine,
+    ...menuPromptLines(menu, keypad),
   ]
     .filter((line) => line.length > 0)
     .join('\n');

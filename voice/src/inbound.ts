@@ -23,6 +23,7 @@ import {
 } from '@naaradh/pipeline';
 import {
   DEFAULT_ABUSE_MESSAGES,
+  Menu,
   greetingDiscloses,
   renderInboundPrompt,
   toolDefinitions,
@@ -583,6 +584,9 @@ async function buildAnswer(
     hoursText: hoursText(profile),
     toolsEnabled: tools,
     transferAvailableNow: transferNow,
+    // A stored menu that no longer parses is dropped rather than read out wrong.
+    menu: Menu.safeParse(profile.menu).data ?? [],
+    keypad: deps.registry.get(vendor).capabilities().keypadInput,
     caller,
   });
   return {

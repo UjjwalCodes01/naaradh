@@ -105,6 +105,8 @@ export class OmnidimAdapter implements VoiceEngineAdapter {
       callLookup: false,
       // OmniDimension's calls are telephony only.
       webCall: false,
+      // Not documented for OmniDimension; menus are spoken-only.
+      keypadInput: false,
     };
   }
 

@@ -107,3 +107,11 @@ export {
   type InboundPromptInput,
   type RenderedInbound,
 } from './inbound/prompt.js';
+export {
+  MENU_MAX_OPTIONS,
+  MENU_PHRASES,
+  Menu,
+  MenuOption,
+  menuPromptLines,
+  menuSentence,
+} from './inbound/menu.js';

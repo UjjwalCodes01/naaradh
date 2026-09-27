@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { DISCLOSURES, normaliseForMatch } from '../disclosures.js';
 import { sanitiseValue } from '../variables.js';
 import { OPENING_MAX_CHARS } from '../validate.js';
+import { MENU_PHRASES, Menu } from './menu.js';
 import { TOOL_NAMES, isToolName, type ToolName } from './tools.js';
 
 /**
@@ -16,6 +17,8 @@ export const InboundProfileInput = z.object({
   pinnedFacts: z.array(z.string().trim().min(3).max(200)).max(20).default([]),
   toolsEnabled: z.array(z.string()).min(1),
   closedMessage: z.string().trim().min(10).max(400),
+  /** P7-INB-1: an optional spoken menu, read out after the greeting. */
+  menu: Menu,
 });
 
 export type InboundProfileInput = z.infer<typeof InboundProfileInput>;
@@ -28,7 +31,8 @@ export interface ProfileValidationError {
     | 'disclosure_recording_missing'
     | 'unknown_tool'
     | 'greeting_variable_not_allowed'
-    | 'duplicate_tool';
+    | 'duplicate_tool'
+    | 'menu_locale_unsupported';
   readonly message: string;
   readonly path?: string;
 }
@@ -100,6 +104,13 @@ export function validateInboundProfile(input: unknown): ProfileValidation {
       errors.push({ code: 'duplicate_tool', message: `${t} listed twice`, path: 'toolsEnabled' });
     seen.add(t);
   }
+
+  if (p.menu.length > 0 && MENU_PHRASES[p.locale] === undefined)
+    errors.push({
+      code: 'menu_locale_unsupported',
+      message: `menus cannot be read out in ${p.locale} yet`,
+      path: 'menu',
+    });
 
   return errors.length === 0
     ? { ok: true, profile: { ...p, toolsEnabled: p.toolsEnabled as ToolName[] } }
