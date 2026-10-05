@@ -10,13 +10,13 @@
     "./test/fake-phones": "./test/fake-phones.ts"
   },
   "dependencies": {
-    "libphonenumber-js": "1.13.13",
+    "libphonenumber-js": "1.13.14",
     "luxon": "3.7.2",
     "pino": "10.3.1",
     "ulid": "2.3.0",
     "zod": "3.24.1"
   },
   "devDependencies": {
-    "@types/luxon": "3.7.5"
+    "@types/luxon": "3.7.6"
   }
 }

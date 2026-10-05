@@ -16,6 +16,6 @@
     "zod": "3.24.1"
   },
   "devDependencies": {
-    "@types/luxon": "3.7.5"
+    "@types/luxon": "3.7.6"
   }
 }
