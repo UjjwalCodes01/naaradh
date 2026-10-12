@@ -52,6 +52,12 @@ RUN rm -rf node_modules \
 
 # ---------------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS runtime
+# Debian security fixes published after the base image was built: the digest pin freezes the
+# base, and trivy (CI) fails the build on any fixable CRITICAL, so apply them here. Upgrades only
+# packages already installed; nothing new is added.
+RUN apt-get update \
+ && apt-get -y --no-install-recommends upgrade \
+ && rm -rf /var/lib/apt/lists/*
 # The runtime never installs anything: drop the package managers and their CVE surface.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
       /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
