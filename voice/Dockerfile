@@ -13,7 +13,7 @@
 # */Dockerfile together — docs/runbooks/deploy.md "Base image"):
 #   docker pull node:22.<x>.<y>-bookworm-slim
 #   docker inspect --format '{{index .RepoDigests 0}}' node:22.<x>.<y>-bookworm-slim
-ARG NODE_IMAGE=node:22.23.2-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5
+ARG NODE_IMAGE=node:22.23.3-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
 
 # ---------------------------------------------------------------------------------------------
 FROM ${NODE_IMAGE} AS base
