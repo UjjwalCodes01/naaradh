@@ -15,10 +15,10 @@
     "lint": "eslint src test"
   },
   "dependencies": {
-    "@google-cloud/bigquery": "9.0.3",
-    "@google-cloud/pubsub": "6.0.1",
+    "@google-cloud/bigquery": "9.4.0",
+    "@google-cloud/pubsub": "6.3.1",
     "@google-cloud/secret-manager": "6.1.1",
-    "@google-cloud/storage": "8.1.0",
+    "@google-cloud/storage": "8.4.0",
     "@naaradh/calendar": "workspace:*",
     "@naaradh/compliance": "workspace:*",
     "@naaradh/crm": "workspace:*",
@@ -32,16 +32,16 @@
     "@naaradh/call-scripts": "workspace:*",
     "@naaradh/shared": "workspace:*",
     "@naaradh/shopify-sdk": "workspace:*",
-    "drizzle-orm": "0.45.3",
+    "drizzle-orm": "0.45.4",
     "ioredis": "5.6.1",
     "luxon": "3.7.2",
     "zod": "3.24.1"
   },
   "devDependencies": {
     "@naaradh/engine-simulator": "workspace:*",
-    "@testcontainers/redis": "12.1.0",
-    "@types/luxon": "3.7.5",
+    "@testcontainers/redis": "12.2.1",
+    "@types/luxon": "3.7.6",
     "tsup": "8.3.5",
-    "tsx": "4.19.2"
+    "tsx": "4.23.15"
   }
 }
